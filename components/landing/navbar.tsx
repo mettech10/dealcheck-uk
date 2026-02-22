@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { BarChart3, Menu, X } from "lucide-react"
+import { BarChart3, Menu, X, User } from "lucide-react"
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -43,8 +43,11 @@ export function Navbar() {
         </div>
 
         <div className="hidden md:flex">
-          <Button asChild size="default">
-            <Link href="/analyse">Analyse a Deal</Link>
+          <Button asChild size="default" variant="outline">
+            <Link href="/login">
+              <User className="size-4" />
+              Log In / Sign Up
+            </Link>
           </Button>
         </div>
 
@@ -84,8 +87,11 @@ export function Navbar() {
             >
               Pricing
             </a>
-            <Button asChild size="default" className="w-full">
-              <Link href="/analyse">Analyse a Deal</Link>
+            <Button asChild size="default" variant="outline" className="w-full">
+              <Link href="/login">
+                <User className="size-4" />
+                Log In / Sign Up
+              </Link>
             </Button>
           </div>
         </div>

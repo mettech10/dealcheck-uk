@@ -1,72 +1,189 @@
-import { streamText } from "ai"
-
 export async function POST(req: Request) {
-  const { propertyData, calculationResults } = await req.json()
+  const body = await req.json()
+  const { mode } = body
 
-  const result = streamText({
-    model: "openai/gpt-4o-mini",
-    system: `You are an expert UK property investment analyst. You analyse property deals for buy-to-let investors, landlords, and property professionals.
+  const openclawUrl = process.env.OPENCLAW_API_URL
+  const openclawKey = process.env.OPENCLAW_API_KEY
 
-You provide clear, actionable analysis based on the financial metrics provided. You understand UK-specific concepts like SDLT, Section 24, HMO licensing, EPC requirements, and regional rental markets.
+  if (!openclawUrl) {
+    return Response.json(
+      { error: "OpenClaw API URL is not configured. Please set OPENCLAW_API_URL in environment variables." },
+      { status: 500 }
+    )
+  }
 
-Your analysis should be structured, practical, and data-driven. Always be honest about risks.
+  // ── URL Mode: Forward listing URL to OpenClaw ──────────────────────
+  if (mode === "url") {
+    const { url } = body
 
-Format your response exactly as follows:
-1. Start with "Deal Score: X" where X is a number from 0-100
-2. Then use markdown headings for each section
+    if (!url || typeof url !== "string") {
+      return Response.json(
+        { error: "A valid property listing URL is required." },
+        { status: 400 }
+      )
+    }
 
-The deal score should be based on:
-- Gross yield above 7% is excellent, 5-7% is good, below 5% is poor
-- Positive monthly cash flow is essential, above £200/month is good
-- Cash-on-cash ROI above 8% is excellent, 5-8% is good, below 5% is poor
-- Net yield above 5% is excellent, 3-5% is good, below 3% is poor
+    try {
+      const openclawRes = await fetch(openclawUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(openclawKey ? { Authorization: `Bearer ${openclawKey}` } : {}),
+        },
+        body: JSON.stringify({
+          mode: "url",
+          url,
+          instructions:
+            "Analyse this UK property listing URL. Extract the property details (address, price, bedrooms, type, etc.) and provide a full investment analysis including: Deal Score (0-100), Summary, Strengths, Risks & Concerns, and Recommendation. Calculate or estimate SDLT, mortgage costs, rental yield, cash flow, and ROI where possible.",
+        }),
+      })
 
-Be realistic and UK-focused.`,
-    prompt: `Analyse this UK property investment deal:
+      if (!openclawRes.ok) {
+        const errText = await openclawRes.text().catch(() => "Unknown error")
+        return Response.json(
+          { error: `OpenClaw returned an error: ${errText}` },
+          { status: openclawRes.status }
+        )
+      }
+
+      // Check if OpenClaw returns a stream or JSON
+      const contentType = openclawRes.headers.get("content-type") || ""
+
+      if (contentType.includes("text/event-stream") || contentType.includes("text/plain")) {
+        // Stream the response through to the client
+        return new Response(openclawRes.body, {
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "no-cache",
+          },
+        })
+      }
+
+      // JSON response
+      const data = await openclawRes.json()
+      return Response.json(data)
+    } catch (err) {
+      return Response.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to connect to OpenClaw. Please check your API configuration.",
+        },
+        { status: 502 }
+      )
+    }
+  }
+
+  // ── Manual Mode: Forward property data + calculations to OpenClaw ──
+  if (mode === "manual") {
+    const { propertyData, calculationResults } = body
+
+    if (!propertyData || !calculationResults) {
+      return Response.json(
+        { error: "Property data and calculation results are required." },
+        { status: 400 }
+      )
+    }
+
+    // Build a detailed prompt payload for OpenClaw
+    const analysisPayload = {
+      mode: "manual",
+      propertyData,
+      calculationResults,
+      instructions: `Analyse this UK property investment deal:
 
 **Property Details:**
 - Address: ${propertyData.address}
 - Type: ${propertyData.propertyType}
 - Bedrooms: ${propertyData.bedrooms}
 - Condition: ${propertyData.condition}
-- Purchase Price: £${propertyData.purchasePrice.toLocaleString()}
+- Purchase Price: £${Number(propertyData.purchasePrice).toLocaleString()}
 
 **Financing:**
 - Method: ${propertyData.purchaseMethod}
-${propertyData.purchaseMethod === "mortgage" ? `- Deposit: ${propertyData.depositPercentage}% (£${calculationResults.depositAmount.toLocaleString()})
-- Mortgage Amount: £${calculationResults.mortgageAmount.toLocaleString()}
+${
+  propertyData.purchaseMethod === "mortgage"
+    ? `- Deposit: ${propertyData.depositPercentage}% (£${Number(calculationResults.depositAmount).toLocaleString()})
+- Mortgage Amount: £${Number(calculationResults.mortgageAmount).toLocaleString()}
 - Interest Rate: ${propertyData.interestRate}%
 - Term: ${propertyData.mortgageTerm} years
 - Type: ${propertyData.mortgageType}
-- Monthly Mortgage: £${calculationResults.monthlyMortgagePayment.toLocaleString()}` : "- Cash purchase"}
+- Monthly Mortgage: £${Number(calculationResults.monthlyMortgagePayment).toLocaleString()}`
+    : "- Cash purchase"
+}
 
 **Calculated Metrics:**
-- SDLT: £${calculationResults.sdltAmount.toLocaleString()} ${propertyData.isAdditionalProperty ? "(includes 5% surcharge)" : ""}
-- Total Capital Required: £${calculationResults.totalCapitalRequired.toLocaleString()}
-- Monthly Rent: £${propertyData.monthlyRent.toLocaleString()}
-- Monthly Cash Flow: £${calculationResults.monthlyCashFlow.toLocaleString()}
-- Annual Cash Flow: £${calculationResults.annualCashFlow.toLocaleString()}
+- SDLT: £${Number(calculationResults.sdltAmount).toLocaleString()} ${propertyData.isAdditionalProperty ? "(includes 5% surcharge)" : ""}
+- Total Capital Required: £${Number(calculationResults.totalCapitalRequired).toLocaleString()}
+- Monthly Rent: £${Number(propertyData.monthlyRent).toLocaleString()}
+- Monthly Cash Flow: £${Number(calculationResults.monthlyCashFlow).toLocaleString()}
+- Annual Cash Flow: £${Number(calculationResults.annualCashFlow).toLocaleString()}
 - Gross Yield: ${calculationResults.grossYield}%
 - Net Yield: ${calculationResults.netYield}%
 - Cash-on-Cash ROI: ${calculationResults.cashOnCashReturn}%
 - Void Period: ${propertyData.voidWeeks} weeks/year
 - Management Fee: ${propertyData.managementFeePercent}%
-- Annual Running Costs: £${calculationResults.annualRunningCosts.toLocaleString()}
-${propertyData.refurbishmentBudget > 0 ? `- Refurbishment Budget: £${propertyData.refurbishmentBudget.toLocaleString()}` : ""}
+- Annual Running Costs: £${Number(calculationResults.annualRunningCosts).toLocaleString()}
+${Number(propertyData.refurbishmentBudget) > 0 ? `- Refurbishment Budget: £${Number(propertyData.refurbishmentBudget).toLocaleString()}` : ""}
 
 **5-Year Projection (Year 5):**
-- Projected Property Value: £${calculationResults.fiveYearProjection[4]?.propertyValue.toLocaleString() ?? "N/A"}
-- Projected Equity: £${calculationResults.fiveYearProjection[4]?.equity.toLocaleString() ?? "N/A"}
-- Cumulative Cash Flow: £${calculationResults.fiveYearProjection[4]?.cumulativeCashFlow.toLocaleString() ?? "N/A"}
-- Total Return: £${calculationResults.fiveYearProjection[4]?.totalReturn.toLocaleString() ?? "N/A"}
+- Projected Property Value: £${Number(calculationResults.fiveYearProjection?.[4]?.propertyValue ?? 0).toLocaleString()}
+- Projected Equity: £${Number(calculationResults.fiveYearProjection?.[4]?.equity ?? 0).toLocaleString()}
+- Cumulative Cash Flow: £${Number(calculationResults.fiveYearProjection?.[4]?.cumulativeCashFlow ?? 0).toLocaleString()}
+- Total Return: £${Number(calculationResults.fiveYearProjection?.[4]?.totalReturn ?? 0).toLocaleString()}
 
-Provide your analysis with the following sections:
-1. Deal Score (0-100)
-2. ## Summary - A 2-3 sentence overall assessment
-3. ## Strengths - Bullet points of what makes this a good deal
-4. ## Risks & Concerns - Bullet points of potential issues
-5. ## Recommendation - Your final verdict and any suggestions to improve the deal`,
-  })
+Provide your analysis with:
+1. Deal Score: X (0-100)
+2. ## Summary
+3. ## Strengths
+4. ## Risks & Concerns
+5. ## Recommendation`,
+    }
 
-  return result.toTextStreamResponse()
+    try {
+      const openclawRes = await fetch(openclawUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(openclawKey ? { Authorization: `Bearer ${openclawKey}` } : {}),
+        },
+        body: JSON.stringify(analysisPayload),
+      })
+
+      if (!openclawRes.ok) {
+        const errText = await openclawRes.text().catch(() => "Unknown error")
+        return Response.json(
+          { error: `OpenClaw returned an error: ${errText}` },
+          { status: openclawRes.status }
+        )
+      }
+
+      const contentType = openclawRes.headers.get("content-type") || ""
+
+      if (contentType.includes("text/event-stream") || contentType.includes("text/plain")) {
+        return new Response(openclawRes.body, {
+          headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "no-cache",
+          },
+        })
+      }
+
+      const data = await openclawRes.json()
+      return Response.json(data)
+    } catch (err) {
+      return Response.json(
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to connect to OpenClaw. Please check your API configuration.",
+        },
+        { status: 502 }
+      )
+    }
+  }
+
+  return Response.json({ error: "Invalid mode. Use 'url' or 'manual'." }, { status: 400 })
 }
