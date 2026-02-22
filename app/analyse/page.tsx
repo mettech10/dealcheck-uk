@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react"
 import Link from "next/link"
+import { useCompletion } from "@ai-sdk/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PropertyForm } from "@/components/analyse/property-form"
@@ -24,149 +25,96 @@ export default function AnalysePage() {
   const [formData, setFormData] = useState<PropertyFormData | null>(null)
   const [results, setResults] = useState<CalculationResults | null>(null)
   const [listingUrl, setListingUrl] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [aiText, setAiText] = useState("")
-  const [aiLoading, setAiLoading] = useState(false)
+  const [urlLoading, setUrlLoading] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
 
-  // Helper to call OpenClaw via our API proxy
-  const callAnalysisAPI = useCallback(
-    async (body: Record<string, unknown>) => {
-      setAiText("")
-      setAiLoading(true)
+  const { complete, completion, isLoading: aiLoading } = useCompletion({
+    api: "/api/analyse",
+  })
 
-      try {
-        const res = await fetch("/api/analyse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => null)
-          throw new Error(
-            errData?.error || "Analysis failed. Please try again."
-          )
-        }
-
-        const contentType = res.headers.get("content-type") || ""
-
-        // Handle streaming response from OpenClaw
-        if (
-          contentType.includes("text/event-stream") ||
-          contentType.includes("text/plain")
-        ) {
-          const reader = res.body?.getReader()
-          const decoder = new TextDecoder()
-          if (reader) {
-            let accumulated = ""
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              accumulated += decoder.decode(value, { stream: true })
-              setAiText(accumulated)
-            }
-          }
-        } else {
-          // JSON response from OpenClaw
-          const data = await res.json()
-
-          // If OpenClaw returns structured property data, use it
-          if (data.propertyData) {
-            setFormData(data.propertyData)
-            if (data.calculationResults) {
-              setResults(data.calculationResults)
-            } else {
-              setResults(calculateAll(data.propertyData))
-            }
-          }
-
-          // Extract AI analysis text from various possible response shapes
-          const analysis =
-            data.aiAnalysis ||
-            data.analysis ||
-            data.text ||
-            data.response ||
-            data.content ||
-            data.message ||
-            (typeof data === "string" ? data : JSON.stringify(data, null, 2))
-
-          setAiText(analysis)
-        }
-      } catch (err) {
-        throw err
-      } finally {
-        setAiLoading(false)
-      }
-    },
-    []
-  )
-
-  // Manual form submission
+  // Manual form submission (existing behavior)
   const handleManualSubmit = useCallback(
     async (data: PropertyFormData) => {
-      setError(null)
-      setIsLoading(true)
-
       const calcResults = calculateAll(data)
       setFormData(data)
       setResults(calcResults)
 
-      try {
-        await callAnalysisAPI({
+      await complete("analyse", {
+        body: {
           mode: "manual",
           propertyData: data,
           calculationResults: calcResults,
-        })
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Analysis failed."
-        )
-      } finally {
-        setIsLoading(false)
-      }
+        },
+      })
     },
-    [callAnalysisAPI]
+    [complete]
   )
 
   // URL-based submission
   const handleUrlSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault()
-      setError(null)
+      setUrlError(null)
 
       if (!listingUrl.trim()) {
-        setError("Please enter a property listing URL")
+        setUrlError("Please enter a property listing URL")
         return
       }
 
+      // Basic URL validation
       try {
         new URL(listingUrl)
       } catch {
-        setError(
-          "Please enter a valid URL (e.g. https://www.rightmove.co.uk/...)"
-        )
+        setUrlError("Please enter a valid URL (e.g. https://www.rightmove.co.uk/...)")
         return
       }
 
-      setIsLoading(true)
+      setUrlLoading(true)
 
       try {
-        await callAnalysisAPI({ mode: "url", url: listingUrl })
+        const res = await fetch("/api/analyse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "url", url: listingUrl }),
+        })
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null)
+          throw new Error(errorData?.error || "Failed to analyse listing. Please try again.")
+        }
+
+        const data = await res.json()
+
+        // If the API returns parsed property data + calculation results, use them
+        if (data.propertyData && data.calculationResults) {
+          setFormData(data.propertyData)
+          setResults(data.calculationResults)
+        }
+
+        // If the API returns AI analysis text, trigger completion display
+        if (data.aiAnalysis) {
+          await complete("analyse", {
+            body: {
+              mode: "url",
+              url: listingUrl,
+              cachedAnalysis: data.aiAnalysis,
+            },
+          })
+        }
       } catch (err) {
-        setError(
+        setUrlError(
           err instanceof Error
             ? err.message
             : "Something went wrong. Please try again."
         )
       } finally {
-        setIsLoading(false)
+        setUrlLoading(false)
       }
     },
-    [listingUrl, callAnalysisAPI]
+    [listingUrl, complete]
   )
 
-  const isProcessing = isLoading || aiLoading
+  const isProcessing = urlLoading || (aiLoading && !results)
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -231,7 +179,7 @@ export default function AnalysePage() {
         </div>
 
         {/* URL Input Mode */}
-        {inputMode === "url" && !results && !aiText && (
+        {inputMode === "url" && !results && (
           <div className="mb-8 max-w-3xl">
             <form onSubmit={handleUrlSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
@@ -253,7 +201,7 @@ export default function AnalysePage() {
                       value={listingUrl}
                       onChange={(e) => {
                         setListingUrl(e.target.value)
-                        setError(null)
+                        setUrlError(null)
                       }}
                       className="h-12 pl-10 text-base"
                     />
@@ -261,10 +209,10 @@ export default function AnalysePage() {
                   <Button
                     type="submit"
                     size="xl"
-                    disabled={isProcessing}
+                    disabled={urlLoading}
                     className="shrink-0"
                   >
-                    {isProcessing ? (
+                    {urlLoading ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
                         Analysing...
@@ -274,8 +222,8 @@ export default function AnalysePage() {
                     )}
                   </Button>
                 </div>
-                {error && (
-                  <p className="text-sm text-destructive">{error}</p>
+                {urlError && (
+                  <p className="text-sm text-destructive">{urlError}</p>
                 )}
               </div>
 
@@ -293,8 +241,8 @@ export default function AnalysePage() {
           </div>
         )}
 
-        {/* Manual Input Mode */}
-        {inputMode === "manual" && !results && !aiText && (
+        {/* Manual Input Mode or Results */}
+        {inputMode === "manual" && !results && (
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
             {/* Form Panel */}
             <div className="rounded-xl border border-border/50 bg-card p-6">
@@ -322,7 +270,7 @@ export default function AnalysePage() {
         )}
 
         {/* Results view (shared between both modes) */}
-        {(results && formData) || (aiText && !isLoading) ? (
+        {results && formData && (
           <div className="flex flex-col gap-6">
             {/* New analysis button */}
             <div className="flex items-center gap-3">
@@ -333,14 +281,13 @@ export default function AnalysePage() {
                   setResults(null)
                   setFormData(null)
                   setListingUrl("")
-                  setError(null)
-                  setAiText("")
+                  setUrlError(null)
                 }}
               >
                 <ArrowLeft className="size-3.5" />
                 New Analysis
               </Button>
-              {formData?.address && (
+              {formData.address && (
                 <span className="text-sm text-muted-foreground">
                   Showing results for{" "}
                   <span className="font-medium text-foreground">
@@ -350,34 +297,14 @@ export default function AnalysePage() {
               )}
             </div>
 
-            {results && formData ? (
-              <AnalysisResults
-                data={formData}
-                results={results}
-                aiText={aiText}
-                aiLoading={aiLoading}
-              />
-            ) : (
-              /* URL mode - AI text only (no structured data) */
-              <div className="rounded-xl border border-primary/20 bg-card p-6">
-                <div className="mb-4 flex items-center gap-2">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
-                    <BarChart3 className="size-4 text-primary" />
-                  </div>
-                  <h3 className="text-base font-semibold text-foreground">
-                    AI Investment Analysis
-                  </h3>
-                </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                  {aiText}
-                  {aiLoading && (
-                    <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary" />
-                  )}
-                </div>
-              </div>
-            )}
+            <AnalysisResults
+              data={formData}
+              results={results}
+              aiText={completion}
+              aiLoading={aiLoading}
+            />
           </div>
-        ) : null}
+        )}
       </main>
     </div>
   )
