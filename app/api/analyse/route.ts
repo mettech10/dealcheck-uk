@@ -5,6 +5,10 @@ export async function POST(req: Request) {
   const openclawUrl = process.env.OPENCLAW_API_URL
   const openclawKey = process.env.OPENCLAW_API_KEY
 
+  console.log("[v0] OpenClaw URL:", openclawUrl)
+  console.log("[v0] OpenClaw Key present:", !!openclawKey)
+  console.log("[v0] Request mode:", mode)
+
   if (!openclawUrl) {
     return Response.json(
       { error: "OpenClaw API URL is not configured. Please set OPENCLAW_API_URL in environment variables." },
@@ -12,13 +16,12 @@ export async function POST(req: Request) {
     )
   }
 
-  // Validate the URL is actually reachable
-  let parsedUrl: URL
+  // Validate the URL format
   try {
-    parsedUrl = new URL(openclawUrl)
+    new URL(openclawUrl)
   } catch {
     return Response.json(
-      { error: "OPENCLAW_API_URL is not a valid URL. Please check your environment variables." },
+      { error: `OPENCLAW_API_URL is not a valid URL: "${openclawUrl}". Please check your environment variables.` },
       { status: 500 }
     )
   }
@@ -80,6 +83,7 @@ export async function POST(req: Request) {
       const data = await openclawRes.json()
       return Response.json(data)
     } catch (err) {
+      console.error("[v0] OpenClaw URL mode fetch error:", err)
       const message =
         err instanceof Error && err.name === "AbortError"
           ? "Request to OpenClaw timed out after 60 seconds. The service may be busy -- please try again."
@@ -194,6 +198,7 @@ Provide your analysis with:
       const data = await openclawRes.json()
       return Response.json(data)
     } catch (err) {
+      console.error("[v0] OpenClaw manual mode fetch error:", err)
       const message =
         err instanceof Error && err.name === "AbortError"
           ? "Request to OpenClaw timed out after 60 seconds. The service may be busy -- please try again."

@@ -77,16 +77,9 @@ export default function LoginPage() {
   const handleGoogleLogin = () => {
     setError(null)
     startTransition(async () => {
-      try {
-        const result = await signInWithGoogle()
-        if (result?.error) {
-          setError(result.error)
-        }
-      } catch {
-        // OAuth redirect may be blocked in iframe/preview environments
-        setError(
-          "Google sign-in requires a full browser window. If you're in a preview, try opening the app in a new tab or deploy it first."
-        )
+      const result = await signInWithGoogle()
+      if (result?.error) {
+        setError(result.error)
       }
     })
   }
