@@ -1,13 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useTransition } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { BarChart3, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react"
+import {
+  signInWithEmail,
+  signUpWithEmail,
+  signInWithGoogle,
+} from "@/app/auth/actions"
 
 function GoogleIcon() {
   return (
@@ -33,25 +38,51 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
-  const router = useRouter()
+  const searchParams = useSearchParams()
+  const authError = searchParams.get("error")
+
   const [mode, setMode] = useState<"login" | "signup">("login")
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(
+    authError === "auth" ? "Authentication failed. Please try again." : null
+  )
+  const [success, setSuccess] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleEmailSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    setIsLoading(true)
-    // Mock auth - navigate to analyse page after a brief delay
-    setTimeout(() => {
-      router.push("/analyse")
-    }, 800)
+    setError(null)
+    setSuccess(null)
+
+    const formData = new FormData(e.currentTarget)
+
+    startTransition(async () => {
+      if (mode === "login") {
+        const result = await signInWithEmail(formData)
+        if (result?.error) {
+          setError(result.error)
+        }
+        // On success, signInWithEmail redirects via server action
+      } else {
+        const result = await signUpWithEmail(formData)
+        if (result?.error) {
+          setError(result.error)
+        } else if (result?.success) {
+          setSuccess(result.success)
+        }
+      }
+    })
   }
 
-  const handleSocialLogin = () => {
-    setIsLoading(true)
-    setTimeout(() => {
-      router.push("/analyse")
-    }, 800)
+  const handleGoogleLogin = () => {
+    setError(null)
+    startTransition(async () => {
+      const result = await signInWithGoogle()
+      if (result?.error) {
+        setError(result.error)
+      }
+      // On success, signInWithGoogle redirects via server action
+    })
   }
 
   return (
@@ -97,7 +128,11 @@ export default function LoginPage() {
           <div className="mb-6 flex rounded-lg border border-border/50 bg-card p-1">
             <button
               type="button"
-              onClick={() => setMode("login")}
+              onClick={() => {
+                setMode("login")
+                setError(null)
+                setSuccess(null)
+              }}
               className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
                 mode === "login"
                   ? "bg-primary text-primary-foreground shadow-sm"
@@ -108,7 +143,11 @@ export default function LoginPage() {
             </button>
             <button
               type="button"
-              onClick={() => setMode("signup")}
+              onClick={() => {
+                setMode("signup")
+                setError(null)
+                setSuccess(null)
+              }}
               className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all ${
                 mode === "signup"
                   ? "bg-primary text-primary-foreground shadow-sm"
@@ -119,16 +158,32 @@ export default function LoginPage() {
             </button>
           </div>
 
+          {/* Error / Success messages */}
+          {error && (
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="mb-4 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+              {success}
+            </div>
+          )}
+
           {/* Social buttons */}
           <div className="flex flex-col gap-3">
             <Button
               variant="outline"
               size="lg"
               className="w-full gap-3 border-border/50 bg-card hover:bg-accent"
-              onClick={handleSocialLogin}
-              disabled={isLoading}
+              onClick={handleGoogleLogin}
+              disabled={isPending}
             >
-              <GoogleIcon />
+              {isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <GoogleIcon />
+              )}
               Continue with Google
             </Button>
           </div>
@@ -141,7 +196,7 @@ export default function LoginPage() {
           </div>
 
           {/* Email form */}
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
             {mode === "signup" && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="name" className="text-sm text-foreground">
@@ -149,9 +204,11 @@ export default function LoginPage() {
                 </Label>
                 <Input
                   id="name"
+                  name="name"
                   type="text"
                   placeholder="John Smith"
                   required={mode === "signup"}
+                  disabled={isPending}
                 />
               </div>
             )}
@@ -162,9 +219,11 @@ export default function LoginPage() {
               </Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="you@example.com"
                 required
+                disabled={isPending}
               />
             </div>
 
@@ -173,22 +232,21 @@ export default function LoginPage() {
                 <Label htmlFor="password" className="text-sm text-foreground">
                   Password
                 </Label>
-                {mode === "login" && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                )}
               </div>
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
-                  placeholder={mode === "signup" ? "Create a password" : "Enter your password"}
+                  placeholder={
+                    mode === "signup"
+                      ? "Create a password (min. 6 characters)"
+                      : "Enter your password"
+                  }
                   required
+                  minLength={6}
                   className="pr-10"
+                  disabled={isPending}
                 />
                 <button
                   type="button"
@@ -209,9 +267,9 @@ export default function LoginPage() {
               type="submit"
               size="lg"
               className="mt-2 w-full"
-              disabled={isLoading}
+              disabled={isPending}
             >
-              {isLoading ? (
+              {isPending ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
                   {mode === "login" ? "Signing in..." : "Creating account..."}
@@ -231,7 +289,11 @@ export default function LoginPage() {
                 {"Don't have an account? "}
                 <button
                   type="button"
-                  onClick={() => setMode("signup")}
+                  onClick={() => {
+                    setMode("signup")
+                    setError(null)
+                    setSuccess(null)
+                  }}
                   className="text-primary hover:underline"
                 >
                   Sign up for free
@@ -242,7 +304,11 @@ export default function LoginPage() {
                 {"Already have an account? "}
                 <button
                   type="button"
-                  onClick={() => setMode("login")}
+                  onClick={() => {
+                    setMode("login")
+                    setError(null)
+                    setSuccess(null)
+                  }}
                   className="text-primary hover:underline"
                 >
                   Log in
@@ -254,11 +320,11 @@ export default function LoginPage() {
           {mode === "signup" && (
             <p className="mt-4 text-center text-xs text-muted-foreground">
               By creating an account, you agree to our{" "}
-              <span className="text-primary hover:underline cursor-pointer">
+              <span className="cursor-pointer text-primary hover:underline">
                 Terms of Service
               </span>{" "}
               and{" "}
-              <span className="text-primary hover:underline cursor-pointer">
+              <span className="cursor-pointer text-primary hover:underline">
                 Privacy Policy
               </span>
               .

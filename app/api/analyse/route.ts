@@ -12,6 +12,17 @@ export async function POST(req: Request) {
     )
   }
 
+  // Validate the URL is actually reachable
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(openclawUrl)
+  } catch {
+    return Response.json(
+      { error: "OPENCLAW_API_URL is not a valid URL. Please check your environment variables." },
+      { status: 500 }
+    )
+  }
+
   // ── URL Mode: Forward listing URL to OpenClaw ──────────────────────
   if (mode === "url") {
     const { url } = body
@@ -24,6 +35,9 @@ export async function POST(req: Request) {
     }
 
     try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 60000)
+
       const openclawRes = await fetch(openclawUrl, {
         method: "POST",
         headers: {
@@ -36,7 +50,10 @@ export async function POST(req: Request) {
           instructions:
             "Analyse this UK property listing URL. Extract the property details (address, price, bedrooms, type, etc.) and provide a full investment analysis including: Deal Score (0-100), Summary, Strengths, Risks & Concerns, and Recommendation. Calculate or estimate SDLT, mortgage costs, rental yield, cash flow, and ROI where possible.",
         }),
+        signal: controller.signal,
       })
+
+      clearTimeout(timeout)
 
       if (!openclawRes.ok) {
         const errText = await openclawRes.text().catch(() => "Unknown error")
@@ -63,15 +80,13 @@ export async function POST(req: Request) {
       const data = await openclawRes.json()
       return Response.json(data)
     } catch (err) {
-      return Response.json(
-        {
-          error:
-            err instanceof Error
-              ? err.message
-              : "Failed to connect to OpenClaw. Please check your API configuration.",
-        },
-        { status: 502 }
-      )
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Request to OpenClaw timed out after 60 seconds. The service may be busy -- please try again."
+          : err instanceof Error
+            ? `Failed to connect to OpenClaw: ${err.message}`
+            : "Failed to connect to OpenClaw. Please check your API configuration."
+      return Response.json({ error: message }, { status: 502 })
     }
   }
 
@@ -142,6 +157,9 @@ Provide your analysis with:
     }
 
     try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 60000)
+
       const openclawRes = await fetch(openclawUrl, {
         method: "POST",
         headers: {
@@ -149,7 +167,10 @@ Provide your analysis with:
           ...(openclawKey ? { Authorization: `Bearer ${openclawKey}` } : {}),
         },
         body: JSON.stringify(analysisPayload),
+        signal: controller.signal,
       })
+
+      clearTimeout(timeout)
 
       if (!openclawRes.ok) {
         const errText = await openclawRes.text().catch(() => "Unknown error")
@@ -173,15 +194,13 @@ Provide your analysis with:
       const data = await openclawRes.json()
       return Response.json(data)
     } catch (err) {
-      return Response.json(
-        {
-          error:
-            err instanceof Error
-              ? err.message
-              : "Failed to connect to OpenClaw. Please check your API configuration.",
-        },
-        { status: 502 }
-      )
+      const message =
+        err instanceof Error && err.name === "AbortError"
+          ? "Request to OpenClaw timed out after 60 seconds. The service may be busy -- please try again."
+          : err instanceof Error
+            ? `Failed to connect to OpenClaw: ${err.message}`
+            : "Failed to connect to OpenClaw. Please check your API configuration."
+      return Response.json({ error: message }, { status: 502 })
     }
   }
 

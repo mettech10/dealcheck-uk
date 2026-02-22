@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from "react"
 import Link from "next/link"
-import { useCompletion } from "@ai-sdk/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PropertyForm } from "@/components/analyse/property-form"
@@ -25,96 +24,160 @@ export default function AnalysePage() {
   const [formData, setFormData] = useState<PropertyFormData | null>(null)
   const [results, setResults] = useState<CalculationResults | null>(null)
   const [listingUrl, setListingUrl] = useState("")
-  const [urlLoading, setUrlLoading] = useState(false)
-  const [urlError, setUrlError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [aiText, setAiText] = useState("")
+  const [aiLoading, setAiLoading] = useState(false)
 
-  const { complete, completion, isLoading: aiLoading } = useCompletion({
-    api: "/api/analyse",
-  })
-
-  // Manual form submission (existing behavior)
-  const handleManualSubmit = useCallback(
-    async (data: PropertyFormData) => {
-      const calcResults = calculateAll(data)
-      setFormData(data)
-      setResults(calcResults)
-
-      await complete("analyse", {
-        body: {
-          mode: "manual",
-          propertyData: data,
-          calculationResults: calcResults,
-        },
-      })
-    },
-    [complete]
-  )
-
-  // URL-based submission
-  const handleUrlSubmit = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault()
-      setUrlError(null)
-
-      if (!listingUrl.trim()) {
-        setUrlError("Please enter a property listing URL")
-        return
-      }
-
-      // Basic URL validation
-      try {
-        new URL(listingUrl)
-      } catch {
-        setUrlError("Please enter a valid URL (e.g. https://www.rightmove.co.uk/...)")
-        return
-      }
-
-      setUrlLoading(true)
+  // Call the OpenClaw proxy API and handle the response
+  const callAnalysisAPI = useCallback(
+    async (body: Record<string, unknown>) => {
+      setAiText("")
+      setAiLoading(true)
 
       try {
         const res = await fetch("/api/analyse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "url", url: listingUrl }),
+          body: JSON.stringify(body),
         })
 
         if (!res.ok) {
-          const errorData = await res.json().catch(() => null)
-          throw new Error(errorData?.error || "Failed to analyse listing. Please try again.")
+          const errData = await res.json().catch(() => null)
+          throw new Error(
+            errData?.error || "Analysis failed. Please try again."
+          )
         }
 
+        const contentType = res.headers.get("content-type") || ""
+
+        // Handle streaming text response from OpenClaw
+        if (
+          contentType.includes("text/event-stream") ||
+          contentType.includes("text/plain")
+        ) {
+          const reader = res.body?.getReader()
+          const decoder = new TextDecoder()
+          if (reader) {
+            let accumulated = ""
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              accumulated += decoder.decode(value, { stream: true })
+              setAiText(accumulated)
+            }
+          }
+          return
+        }
+
+        // Handle JSON response
         const data = await res.json()
 
-        // If the API returns parsed property data + calculation results, use them
-        if (data.propertyData && data.calculationResults) {
+        // If OpenClaw returns structured property data, use it for charts
+        if (data.propertyData) {
           setFormData(data.propertyData)
-          setResults(data.calculationResults)
+          if (data.calculationResults) {
+            setResults(data.calculationResults)
+          } else {
+            setResults(calculateAll(data.propertyData))
+          }
         }
 
-        // If the API returns AI analysis text, trigger completion display
-        if (data.aiAnalysis) {
-          await complete("analyse", {
-            body: {
-              mode: "url",
-              url: listingUrl,
-              cachedAnalysis: data.aiAnalysis,
-            },
-          })
-        }
+        // Extract AI analysis text from various possible response shapes
+        const analysis =
+          data.aiAnalysis ||
+          data.analysis ||
+          data.text ||
+          data.response ||
+          data.content ||
+          data.message ||
+          (typeof data === "string" ? data : JSON.stringify(data, null, 2))
+
+        setAiText(analysis)
+      } finally {
+        setAiLoading(false)
+      }
+    },
+    []
+  )
+
+  // Manual form submission -- runs local calculations then sends to OpenClaw
+  const handleManualSubmit = useCallback(
+    async (data: PropertyFormData) => {
+      setError(null)
+      setIsLoading(true)
+
+      const calcResults = calculateAll(data)
+      setFormData(data)
+      setResults(calcResults)
+
+      try {
+        await callAnalysisAPI({
+          mode: "manual",
+          propertyData: data,
+          calculationResults: calcResults,
+        })
       } catch (err) {
-        setUrlError(
+        // Calculations still show, only AI commentary failed
+        setError(
+          err instanceof Error
+            ? err.message
+            : "AI analysis failed, but your numbers are ready below."
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [callAnalysisAPI]
+  )
+
+  // URL-based submission -- sends URL to OpenClaw for scraping + analysis
+  const handleUrlSubmit = useCallback(
+    async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault()
+      setError(null)
+
+      if (!listingUrl.trim()) {
+        setError("Please enter a property listing URL")
+        return
+      }
+
+      try {
+        new URL(listingUrl)
+      } catch {
+        setError(
+          "Please enter a valid URL (e.g. https://www.rightmove.co.uk/...)"
+        )
+        return
+      }
+
+      setIsLoading(true)
+
+      try {
+        await callAnalysisAPI({ mode: "url", url: listingUrl })
+      } catch (err) {
+        setError(
           err instanceof Error
             ? err.message
             : "Something went wrong. Please try again."
         )
       } finally {
-        setUrlLoading(false)
+        setIsLoading(false)
       }
     },
-    [listingUrl, complete]
+    [listingUrl, callAnalysisAPI]
   )
 
-  const isProcessing = urlLoading || (aiLoading && !results)
+  const hasResults = (results && formData) || aiText
+  const isProcessing = isLoading || aiLoading
+
+  const resetAll = () => {
+    setResults(null)
+    setFormData(null)
+    setListingUrl("")
+    setError(null)
+    setAiText("")
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -150,36 +213,38 @@ export default function AnalysePage() {
           </p>
         </div>
 
-        {/* Input Mode Selector */}
-        <div className="mb-8 flex rounded-lg border border-border/50 bg-card p-1 max-w-lg">
-          <button
-            type="button"
-            onClick={() => setInputMode("url")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
-              inputMode === "url"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Link2 className="size-4" />
-            Paste Listing URL
-          </button>
-          <button
-            type="button"
-            onClick={() => setInputMode("manual")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
-              inputMode === "manual"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <ClipboardEdit className="size-4" />
-            Enter Details Manually
-          </button>
-        </div>
+        {/* Input Mode Selector -- hidden once we have results */}
+        {!hasResults && (
+          <div className="mb-8 flex max-w-lg rounded-lg border border-border/50 bg-card p-1">
+            <button
+              type="button"
+              onClick={() => setInputMode("url")}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+                inputMode === "url"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Link2 className="size-4" />
+              Paste Listing URL
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode("manual")}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+                inputMode === "manual"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <ClipboardEdit className="size-4" />
+              Enter Details Manually
+            </button>
+          </div>
+        )}
 
         {/* URL Input Mode */}
-        {inputMode === "url" && !results && (
+        {inputMode === "url" && !hasResults && (
           <div className="mb-8 max-w-3xl">
             <form onSubmit={handleUrlSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
@@ -201,18 +266,19 @@ export default function AnalysePage() {
                       value={listingUrl}
                       onChange={(e) => {
                         setListingUrl(e.target.value)
-                        setUrlError(null)
+                        setError(null)
                       }}
                       className="h-12 pl-10 text-base"
+                      disabled={isProcessing}
                     />
                   </div>
                   <Button
                     type="submit"
                     size="xl"
-                    disabled={urlLoading}
+                    disabled={isProcessing}
                     className="shrink-0"
                   >
-                    {urlLoading ? (
+                    {isProcessing ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
                         Analysing...
@@ -222,8 +288,8 @@ export default function AnalysePage() {
                     )}
                   </Button>
                 </div>
-                {urlError && (
-                  <p className="text-sm text-destructive">{urlError}</p>
+                {error && (
+                  <p className="text-sm text-destructive">{error}</p>
                 )}
               </div>
 
@@ -241,8 +307,8 @@ export default function AnalysePage() {
           </div>
         )}
 
-        {/* Manual Input Mode or Results */}
-        {inputMode === "manual" && !results && (
+        {/* Manual Input Mode */}
+        {inputMode === "manual" && !hasResults && (
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
             {/* Form Panel */}
             <div className="rounded-xl border border-border/50 bg-card p-6">
@@ -269,25 +335,30 @@ export default function AnalysePage() {
           </div>
         )}
 
-        {/* Results view (shared between both modes) */}
-        {results && formData && (
+        {/* Loading state (URL mode) */}
+        {isProcessing && inputMode === "url" && !hasResults && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Loader2 className="mb-4 size-10 animate-spin text-primary" />
+            <h3 className="text-lg font-semibold text-foreground">
+              Analysing Property...
+            </h3>
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+              Your AI agent is scraping the listing and running a full
+              investment analysis. This may take a moment.
+            </p>
+          </div>
+        )}
+
+        {/* Results view */}
+        {hasResults && (
           <div className="flex flex-col gap-6">
             {/* New analysis button */}
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setResults(null)
-                  setFormData(null)
-                  setListingUrl("")
-                  setUrlError(null)
-                }}
-              >
+              <Button variant="outline" size="sm" onClick={resetAll}>
                 <ArrowLeft className="size-3.5" />
                 New Analysis
               </Button>
-              {formData.address && (
+              {formData?.address && (
                 <span className="text-sm text-muted-foreground">
                   Showing results for{" "}
                   <span className="font-medium text-foreground">
@@ -297,12 +368,38 @@ export default function AnalysePage() {
               )}
             </div>
 
-            <AnalysisResults
-              data={formData}
-              results={results}
-              aiText={completion}
-              aiLoading={aiLoading}
-            />
+            {results && formData ? (
+              <AnalysisResults
+                data={formData}
+                results={results}
+                aiText={aiText}
+                aiLoading={aiLoading}
+              />
+            ) : (
+              /* URL mode -- AI text only (no structured data from OpenClaw) */
+              <div className="rounded-xl border border-primary/20 bg-card p-6">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
+                    <BarChart3 className="size-4 text-primary" />
+                  </div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    AI Investment Analysis
+                  </h3>
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                  {aiText}
+                  {aiLoading && (
+                    <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
           </div>
         )}
       </main>

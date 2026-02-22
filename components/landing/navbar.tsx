@@ -3,9 +3,14 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { BarChart3, Menu, X, User } from "lucide-react"
+import { BarChart3, Menu, X, User, LogOut } from "lucide-react"
+import { signOut } from "@/app/auth/actions"
 
-export function Navbar() {
+interface NavbarProps {
+  user?: { email?: string; name?: string } | null
+}
+
+export function Navbar({ user }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -42,23 +47,50 @@ export function Navbar() {
           </a>
         </div>
 
-        <div className="hidden md:flex">
-          <Button asChild size="default" variant="outline">
-            <Link href="/login">
-              <User className="size-4" />
-              Log In / Sign Up
-            </Link>
-          </Button>
+        {/* Desktop auth area */}
+        <div className="hidden items-center gap-3 md:flex">
+          {user ? (
+            <>
+              <Button asChild size="default">
+                <Link href="/analyse">Analyse a Deal</Link>
+              </Button>
+              <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-3 py-1.5">
+                <div className="flex size-6 items-center justify-center rounded-full bg-primary/20">
+                  <User className="size-3 text-primary" />
+                </div>
+                <span className="max-w-[120px] truncate text-xs text-muted-foreground">
+                  {user.name || user.email}
+                </span>
+              </div>
+              <form action={signOut}>
+                <Button variant="ghost" size="sm" type="submit">
+                  <LogOut className="size-3.5" />
+                  <span className="sr-only">Sign out</span>
+                </Button>
+              </form>
+            </>
+          ) : (
+            <Button asChild size="default" variant="outline">
+              <Link href="/login">
+                <User className="size-4" />
+                Log In / Sign Up
+              </Link>
+            </Button>
+          )}
         </div>
 
         {/* Mobile toggle */}
         <button
           type="button"
-          className="md:hidden text-foreground"
+          className="text-foreground md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle menu"
         >
-          {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+          {mobileOpen ? (
+            <X className="size-5" />
+          ) : (
+            <Menu className="size-5" />
+          )}
         </button>
       </nav>
 
@@ -87,12 +119,48 @@ export function Navbar() {
             >
               Pricing
             </a>
-            <Button asChild size="default" variant="outline" className="w-full">
-              <Link href="/login">
-                <User className="size-4" />
-                Log In / Sign Up
-              </Link>
-            </Button>
+
+            {user ? (
+              <>
+                <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
+                  <User className="size-3.5" />
+                  <span className="truncate">
+                    {user.name || user.email}
+                  </span>
+                </div>
+                <Button
+                  asChild
+                  size="default"
+                  className="w-full"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Link href="/analyse">Analyse a Deal</Link>
+                </Button>
+                <form action={signOut}>
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="w-full"
+                    type="submit"
+                  >
+                    <LogOut className="size-4" />
+                    Sign Out
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <Button
+                asChild
+                size="default"
+                variant="outline"
+                className="w-full"
+              >
+                <Link href="/login">
+                  <User className="size-4" />
+                  Log In / Sign Up
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
       )}
