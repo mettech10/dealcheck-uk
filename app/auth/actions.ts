@@ -24,6 +24,12 @@ export async function signInWithEmail(formData: FormData) {
 export async function signUpWithEmail(formData: FormData) {
   const supabase = await createClient()
 
+  const { headers } = await import("next/headers")
+  const headersList = await headers()
+  const host = headersList.get("host") || ""
+  const protocol = headersList.get("x-forwarded-proto") || "https"
+  const origin = `${protocol}://${host}`
+
   const email = formData.get("email") as string
   const password = formData.get("password") as string
   const name = formData.get("name") as string
@@ -34,7 +40,7 @@ export async function signUpWithEmail(formData: FormData) {
     options: {
       emailRedirectTo:
         process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL ? "" : ""}${typeof window !== "undefined" ? window.location.origin : process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}/auth/callback`,
+        `${origin}/auth/callback`,
       data: {
         full_name: name,
       },
@@ -51,15 +57,20 @@ export async function signUpWithEmail(formData: FormData) {
 export async function signInWithGoogle() {
   const supabase = await createClient()
 
-  const origin =
-    process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000"
+  const { headers } = await import("next/headers")
+  const headersList = await headers()
+  const host = headersList.get("host") || ""
+  const protocol = headersList.get("x-forwarded-proto") || "https"
+  const origin = `${protocol}://${host}`
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: `${origin}/auth/callback`,
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent",
+      },
     },
   })
 
