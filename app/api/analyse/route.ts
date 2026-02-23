@@ -2,43 +2,13 @@ export async function POST(req: Request) {
   const body = await req.json()
   const { mode } = body
 
-  const openclawUrl = process.env.OPENCLAW_API_URL
-  const openclawKey = process.env.OPENCLAW_API_KEY
+  // Flask backend URL (Metusa Deal Analyzer)
+  const flaskUrl = process.env.FLASK_API_URL || "http://127.0.0.1:5000"
 
-  console.log("[v0] OpenClaw URL:", openclawUrl)
-  console.log("[v0] OpenClaw Key present:", !!openclawKey)
-  console.log("[v0] Request mode:", mode)
+  console.log("[DealCheck] Flask URL:", flaskUrl)
+  console.log("[DealCheck] Request mode:", mode)
 
-  if (!openclawUrl) {
-    return Response.json(
-      { error: "OpenClaw API URL is not configured. Set OPENCLAW_API_URL in environment variables." },
-      { status: 500 }
-    )
-  }
-
-  // Build the OpenResponses API URL
-  // The user may have set the base URL (e.g. https://gateway.openclaw.ai)
-  // or the full endpoint (e.g. https://gateway.openclaw.ai/v1/responses)
-  let apiUrl: string
-  try {
-    const parsed = new URL(openclawUrl)
-    // If the path doesn't already include /v1/responses, append it
-    if (parsed.pathname.endsWith("/v1/responses")) {
-      apiUrl = openclawUrl
-    } else {
-      // Strip trailing slash and append the endpoint
-      apiUrl = openclawUrl.replace(/\/+$/, "") + "/v1/responses"
-    }
-  } catch {
-    return Response.json(
-      { error: `OPENCLAW_API_URL is not a valid URL: "${openclawUrl}". Check your environment variables.` },
-      { status: 500 }
-    )
-  }
-
-  console.log("[v0] Resolved OpenClaw API URL:", apiUrl)
-
-  // ── URL Mode: Ask OpenClaw to analyse a listing URL ──────────────
+  // ── URL Mode: Scrape and analyse a listing URL ──────────────
   if (mode === "url") {
     const { url } = body
 
@@ -49,22 +19,123 @@ export async function POST(req: Request) {
       )
     }
 
-    const inputMessage = `Analyse this UK property listing: ${url}
+    try {
+      // Step 1: Extract property data from URL using Flask backend
+      console.log("[DealCheck] Extracting URL:", url)
+      
+      const extractRes = await fetch(`${flaskUrl}/extract-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      })
 
-Please scrape the listing and extract all property details (address, price, bedrooms, property type, etc.).
-Then provide a full investment analysis including:
-1. Deal Score (0-100)
-2. Summary of the property and area
-3. Strengths of this deal
-4. Risks & Concerns
-5. Recommendation (buy / avoid / negotiate)
+      if (!extractRes.ok) {
+        const err = await extractRes.json()
+        return Response.json(
+          { error: err.message || "Failed to extract property data from URL" },
+          { status: 400 }
+        )
+      }
 
-Also calculate or estimate: SDLT (stamp duty), mortgage costs, rental yield, monthly cash flow, and ROI where possible.`
+      const extractedData = await extractRes.json()
+      console.log("[DealCheck] Extracted data:", extractedData)
 
-    return await callOpenClaw(apiUrl, openclawKey, inputMessage)
+      if (!extractedData.success) {
+        return Response.json(
+          { error: extractedData.message || "Could not extract data from URL" },
+          { status: 400 }
+        )
+      }
+
+      // Step 2: Get AI analysis from Flask backend
+      // Build property data for analysis
+      const propertyData = {
+        address: extractedData.data?.address || "Unknown",
+        postcode: extractedData.data?.postcode || "",
+        dealType: "BTL",
+        purchasePrice: extractedData.data?.price || 0,
+        monthlyRent: 0, // Will need to estimate or ask user
+        bedrooms: extractedData.data?.bedrooms || 3,
+        propertyType: extractedData.data?.property_type || "Unknown"
+      }
+
+      // Call AI analysis endpoint
+      const analysisRes = await fetch(`${flaskUrl}/ai-analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(propertyData)
+      })
+
+      if (!analysisRes.ok) {
+        const err = await analysisRes.json()
+        return Response.json(
+          { error: err.message || "AI analysis failed" },
+          { status: 500 }
+        )
+      }
+
+      const analysisData = await analysisRes.json()
+      console.log("[DealCheck] AI analysis:", analysisData)
+
+      if (!analysisData.success) {
+        return Response.json(
+          { error: analysisData.message || "Analysis failed" },
+          { status: 500 }
+        )
+      }
+
+      // Format response for frontend
+      const results = analysisData.results
+      
+      const analysisText = `
+**Deal Score: ${results.deal_score || 'N/A'}/100**
+
+## Summary
+${results.ai_verdict || 'Analysis not available'}
+
+## Property Details
+- **Address:** ${propertyData.address}
+- **Price:** £${Number(propertyData.purchasePrice).toLocaleString()}
+- **Type:** ${propertyData.propertyType}
+- **Bedrooms:** ${propertyData.bedrooms}
+
+## Financial Metrics
+- **Gross Yield:** ${results.gross_yield?.toFixed(2) || 'N/A'}%
+- **Net Yield:** ${results.net_yield?.toFixed(2) || 'N/A'}%
+- **Monthly Cashflow:** £${results.monthly_cashflow?.toFixed(0) || 'N/A'}
+- **Cash-on-Cash ROI:** ${results.cash_on_cash?.toFixed(2) || 'N/A'}%
+- **Stamp Duty:** £${results.stamp_duty?.toLocaleString() || 'N/A'}
+
+## Strengths
+${results.ai_strengths || 'Not available'}
+
+## Risks & Concerns
+${results.ai_risks || 'Not available'}
+
+## Recommendation
+${results.ai_next_steps || 'Not available'}
+
+## Area Assessment
+${results.ai_area || 'Not available'}
+`
+
+      return Response.json({
+        aiAnalysis: analysisText,
+        extractedData: extractedData.data,
+        raw: results
+      })
+
+    } catch (err) {
+      console.error("[DealCheck] URL analysis error:", err)
+      const message = err instanceof Error ? err.message : "Unknown error"
+      return Response.json(
+        { error: `Analysis failed: ${message}` },
+        { status: 500 }
+      )
+    }
   }
 
-  // ── Manual Mode: Forward property data + calculations ────────────
+  // ── Manual Mode: Analyse property data with calculations ────────────
   if (mode === "manual") {
     const { propertyData, calculationResults } = body
 
@@ -75,162 +146,103 @@ Also calculate or estimate: SDLT (stamp duty), mortgage costs, rental yield, mon
       )
     }
 
-    const inputMessage = `Analyse this UK property investment deal:
+    try {
+      console.log("[DealCheck] Manual analysis for:", propertyData.address)
 
-**Property Details:**
-- Address: ${propertyData.address || "Not specified"}
-- Type: ${propertyData.propertyType || "Unknown"}
-- Bedrooms: ${propertyData.bedrooms || "Unknown"}
-- Condition: ${propertyData.condition || "Unknown"}
-- Purchase Price: £${Number(propertyData.purchasePrice).toLocaleString()}
+      // Call Flask backend AI analysis
+      const analysisRes = await fetch(`${flaskUrl}/ai-analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: propertyData.address,
+          postcode: propertyData.postcode,
+          dealType: propertyData.purchaseMethod === "mortgage" ? "BTL" : "CASH",
+          purchasePrice: Number(propertyData.purchasePrice),
+          monthlyRent: Number(propertyData.monthlyRent),
+          bedrooms: Number(propertyData.bedrooms) || 3,
+          deposit: propertyData.depositPercentage,
+          interestRate: propertyData.interestRate,
+          isAdditionalProperty: propertyData.isAdditionalProperty
+        })
+      })
 
-**Financing:**
-- Method: ${propertyData.purchaseMethod}
-${
-  propertyData.purchaseMethod === "mortgage"
-    ? `- Deposit: ${propertyData.depositPercentage}% (£${Number(calculationResults.depositAmount).toLocaleString()})
-- Mortgage Amount: £${Number(calculationResults.mortgageAmount).toLocaleString()}
-- Interest Rate: ${propertyData.interestRate}%
-- Term: ${propertyData.mortgageTerm} years
-- Type: ${propertyData.mortgageType}
-- Monthly Mortgage: £${Number(calculationResults.monthlyMortgagePayment).toLocaleString()}`
-    : "- Cash purchase"
-}
+      if (!analysisRes.ok) {
+        const err = await analysisRes.json()
+        return Response.json(
+          { error: err.message || "AI analysis failed" },
+          { status: 500 }
+        )
+      }
 
-**Calculated Metrics:**
-- SDLT: £${Number(calculationResults.sdltAmount).toLocaleString()} ${propertyData.isAdditionalProperty ? "(includes 5% surcharge)" : ""}
-- Total Capital Required: £${Number(calculationResults.totalCapitalRequired).toLocaleString()}
-- Monthly Rent: £${Number(propertyData.monthlyRent).toLocaleString()}
-- Monthly Cash Flow: £${Number(calculationResults.monthlyCashFlow).toLocaleString()}
-- Annual Cash Flow: £${Number(calculationResults.annualCashFlow).toLocaleString()}
-- Gross Yield: ${calculationResults.grossYield}%
-- Net Yield: ${calculationResults.netYield}%
-- Cash-on-Cash ROI: ${calculationResults.cashOnCashReturn}%
-- Void Period: ${propertyData.voidWeeks} weeks/year
-- Management Fee: ${propertyData.managementFeePercent}%
-- Annual Running Costs: £${Number(calculationResults.annualRunningCosts).toLocaleString()}
-${Number(propertyData.refurbishmentBudget) > 0 ? `- Refurbishment Budget: £${Number(propertyData.refurbishmentBudget).toLocaleString()}` : ""}
+      const analysisData = await analysisRes.json()
+      console.log("[DealCheck] Manual analysis result:", analysisData)
 
-**5-Year Projection (Year 5):**
-- Projected Property Value: £${Number(calculationResults.fiveYearProjection?.[4]?.propertyValue ?? 0).toLocaleString()}
-- Projected Equity: £${Number(calculationResults.fiveYearProjection?.[4]?.equity ?? 0).toLocaleString()}
-- Cumulative Cash Flow: £${Number(calculationResults.fiveYearProjection?.[4]?.cumulativeCashFlow ?? 0).toLocaleString()}
-- Total Return: £${Number(calculationResults.fiveYearProjection?.[4]?.totalReturn ?? 0).toLocaleString()}
+      if (!analysisData.success) {
+        return Response.json(
+          { error: analysisData.message || "Analysis failed" },
+          { status: 500 }
+        )
+      }
 
-Provide your analysis with:
-1. Deal Score: X (0-100)
-2. ## Summary
-3. ## Strengths
-4. ## Risks & Concerns
-5. ## Recommendation`
+      const results = analysisData.results
 
-    return await callOpenClaw(apiUrl, openclawKey, inputMessage)
+      // Format comprehensive analysis
+      const analysisText = `
+**Deal Score: ${results.deal_score || 'N/A'}/100 | Verdict: ${results.verdict || 'REVIEW'}**
+
+## Summary
+${results.ai_verdict || 'Analysis not available'}
+
+## Property Details
+- **Address:** ${propertyData.address || 'Not specified'}
+- **Type:** ${propertyData.propertyType || 'Unknown'}
+- **Bedrooms:** ${propertyData.bedrooms || 'Unknown'}
+- **Purchase Price:** £${Number(propertyData.purchasePrice).toLocaleString()}
+
+## Financing
+${propertyData.purchaseMethod === "mortgage" 
+  ? `- **Deposit:** ${propertyData.depositPercentage}% (£${Number(calculationResults.depositAmount).toLocaleString()})
+- **Mortgage:** £${Number(calculationResults.mortgageAmount).toLocaleString()} at ${propertyData.interestRate}%
+- **Monthly Payment:** £${Number(calculationResults.monthlyMortgagePayment).toLocaleString()}`
+  : '- **Cash Purchase**'}
+
+## Calculated Metrics
+- **SDLT:** £${Number(calculationResults.sdltAmount).toLocaleString()} ${propertyData.isAdditionalProperty ? "(includes 5% surcharge)" : ""}
+- **Total Capital Required:** £${Number(calculationResults.totalCapitalRequired).toLocaleString()}
+- **Monthly Rent:** £${Number(propertyData.monthlyRent).toLocaleString()}
+- **Monthly Cash Flow:** £${Number(calculationResults.monthlyCashFlow).toLocaleString()}
+- **Annual Cash Flow:** £${Number(calculationResults.annualCashFlow).toLocaleString()}
+- **Gross Yield:** ${calculationResults.grossYield}%
+- **Net Yield:** ${calculationResults.netYield}%
+- **Cash-on-Cash ROI:** ${calculationResults.cashOnCashReturn}%
+
+## Strengths
+${results.ai_strengths || 'Not available'}
+
+## Risks & Concerns
+${results.ai_risks || 'Not available'}
+
+## Recommendation
+${results.ai_next_steps || 'Not available'}
+
+## Area Assessment
+${results.ai_area || 'Not available'}
+`
+
+      return Response.json({
+        aiAnalysis: analysisText,
+        raw: results
+      })
+
+    } catch (err) {
+      console.error("[DealCheck] Manual analysis error:", err)
+      const message = err instanceof Error ? err.message : "Unknown error"
+      return Response.json(
+        { error: `Analysis failed: ${message}` },
+        { status: 500 }
+      )
+    }
   }
 
   return Response.json({ error: "Invalid mode. Use 'url' or 'manual'." }, { status: 400 })
-}
-
-// ── Shared function to call OpenClaw's OpenResponses API ───────────
-async function callOpenClaw(
-  apiUrl: string,
-  apiKey: string | undefined,
-  input: string
-) {
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 90000)
-
-    console.log("[v0] Sending to OpenClaw:", apiUrl)
-
-    const openclawRes = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: "openclaw",
-        input,
-        stream: false,
-        instructions:
-          "You are a UK property investment analyst. Provide detailed, data-driven investment analysis with clear deal scores, strengths, risks, and actionable recommendations.",
-      }),
-      signal: controller.signal,
-    })
-
-    clearTimeout(timeout)
-
-    console.log("[v0] OpenClaw response status:", openclawRes.status)
-    console.log("[v0] OpenClaw response content-type:", openclawRes.headers.get("content-type"))
-
-    if (!openclawRes.ok) {
-      const errText = await openclawRes.text().catch(() => "Unknown error")
-      console.error("[v0] OpenClaw error body:", errText)
-      return Response.json(
-        { error: `OpenClaw returned ${openclawRes.status}: ${errText}` },
-        { status: openclawRes.status }
-      )
-    }
-
-    const contentType = openclawRes.headers.get("content-type") || ""
-
-    // Stream SSE responses through to client
-    if (contentType.includes("text/event-stream")) {
-      return new Response(openclawRes.body, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
-      })
-    }
-
-    // JSON response -- extract the text output
-    const data = await openclawRes.json()
-    console.log("[v0] OpenClaw response keys:", Object.keys(data))
-
-    // OpenResponses format: data.output is an array of output items
-    let analysisText = ""
-    if (data.output && Array.isArray(data.output)) {
-      for (const item of data.output) {
-        if (item.type === "message" && item.content) {
-          for (const part of item.content) {
-            if (part.type === "output_text") {
-              analysisText += part.text
-            }
-          }
-        }
-      }
-    }
-
-    // Fallback: try common response shapes
-    if (!analysisText) {
-      analysisText =
-        data.text ||
-        data.response ||
-        data.content ||
-        data.message ||
-        data.aiAnalysis ||
-        data.analysis ||
-        (typeof data === "string" ? data : "")
-    }
-
-    // Last resort: return the whole thing
-    if (!analysisText) {
-      analysisText = JSON.stringify(data, null, 2)
-    }
-
-    return Response.json({
-      aiAnalysis: analysisText,
-      raw: data,
-    })
-  } catch (err) {
-    console.error("[v0] OpenClaw fetch error:", err)
-    const message =
-      err instanceof Error && err.name === "AbortError"
-        ? "Request to OpenClaw timed out after 90 seconds. The service may be busy -- please try again."
-        : err instanceof Error
-          ? `Failed to connect to OpenClaw: ${err.message}`
-          : "Failed to connect to OpenClaw. Please check your API configuration."
-    return Response.json({ error: message }, { status: 502 })
-  }
 }
