@@ -241,6 +241,26 @@ export default function AnalysePage() {
         // Handle JSON response
         const data = await res.json()
 
+        // Extract AI analysis text -- our API returns { aiAnalysis: "..." }
+        let analysis = data.aiAnalysis || ""
+        let parsedResults = null
+
+        // Try to parse JSON response
+        if (analysis && typeof analysis === 'string') {
+          try {
+            const parsed = JSON.parse(analysis)
+            if (parsed.results) {
+              parsedResults = parsed.results
+              // Format for text display
+              analysis = formatAnalysisResults(parsed.results)
+            } else if (parsed.success && parsed.message) {
+              analysis = parsed.message
+            }
+          } catch (e) {
+            // Not JSON, use as-is
+          }
+        }
+
         // If backend returns structured property data, use it for charts
         if (data.propertyData) {
           setFormData(data.propertyData)
@@ -249,25 +269,60 @@ export default function AnalysePage() {
           } else {
             setResults(calculateAll(data.propertyData))
           }
-        }
-
-        // Extract AI analysis text -- our API returns { aiAnalysis: "..." }
-        let analysis = data.aiAnalysis || ""
-
-        // Try to parse JSON response and format it nicely
-        if (analysis && typeof analysis === 'string') {
-          try {
-            const parsed = JSON.parse(analysis)
-            if (parsed.results) {
-              // Format the results nicely
-              const r = parsed.results
-              analysis = formatAnalysisResults(r)
-            } else if (parsed.success && parsed.message) {
-              analysis = parsed.message
-            }
-          } catch (e) {
-            // Not JSON, use as-is
+        } else if (parsedResults) {
+          // URL mode: Build formData and results from parsed AI results
+          const propertyData: PropertyFormData = {
+            address: parsedResults.address || 'Unknown',
+            postcode: parsedResults.postcode || '',
+            propertyType: parsedResults.property_type || 'Terrace',
+            bedrooms: parseInt(parsedResults.bedrooms) || 3,
+            bathrooms: 1,
+            purchasePrice: parseFloat(parsedResults.purchase_price?.replace(/[^0-9.]/g, '')) || 0,
+            monthlyRent: parseFloat(parsedResults.monthly_rent?.replace(/[^0-9.]/g, '')) || 0,
+            deposit: parseFloat(parsedResults.deposit_pct) || 25,
+            interestRate: parseFloat(parsedResults.interest_rate) || 3.75,
+            dealType: (parsedResults.deal_type as any) || 'BTL',
+            refurbCosts: 0,
+            arv: 0,
+            roomCount: 0,
+            avgRoomRate: 0,
+            internal_area: 1000
           }
+          setFormData(propertyData)
+          
+          // Build calculation results from parsed data
+          const calcResults: CalculationResults = {
+            grossYield: parseFloat(parsedResults.gross_yield) || 0,
+            netYield: parseFloat(parsedResults.net_yield) || 0,
+            monthlyCashflow: parseFloat(parsedResults.monthly_cashflow) || 0,
+            cashOnCash: parseFloat(parsedResults.cash_on_cash) || 0,
+            totalInvestment: parseFloat(parsedResults.total_purchase_costs?.replace(/[^0-9.]/g, '')) || 0,
+            stampDuty: parseFloat(parsedResults.stamp_duty?.replace(/[^0-9.]/g, '')) || 0,
+            depositAmount: parseFloat(parsedResults.deposit_amount?.replace(/[^0-9.]/g, '')) || 0,
+            loanAmount: parseFloat(parsedResults.loan_amount?.replace(/[^0-9.]/g, '')) || 0,
+            monthlyMortgage: parseFloat(parsedResults.monthly_mortgage) || 0,
+            annualRent: parseFloat(parsedResults.annual_rent?.replace(/[^0-9.]/g, '')) || 0,
+            annualExpenses: parseFloat(parsedResults.total_annual_expenses?.replace(/[^0-9.]/g, '')) || 0,
+            netAnnualIncome: parseFloat(parsedResults.net_annual_income?.replace(/[^0-9.]/g, '')) || 0,
+            totalCashInvested: parseFloat(parsedResults.deposit_amount?.replace(/[^0-9.]/g, '')) + 
+                             parseFloat(parsedResults.stamp_duty?.replace(/[^0-9.]/g, '')) + 3995 || 0,
+            breakEvenMonth: 0,
+            paybackPeriod: 0,
+            fiveYearProjection: parsedResults.five_year_projection || [],
+            verdict: parsedResults.verdict || 'REVIEW',
+            riskLevel: parsedResults.risk_level || 'MEDIUM',
+            dealScore: parsedResults.deal_score || 0,
+            strengths: parsedResults.strengths || [],
+            weaknesses: parsedResults.weaknesses || [],
+            article4: parsedResults.article_4 || null,
+            strategyRecommendations: parsedResults.strategy_recommendations || null,
+            refurbEstimates: parsedResults.refurb_estimates || null,
+            location: parsedResults.location || null,
+            scoreBreakdown: parsedResults.score_breakdown || null,
+            comparableSales: parsedResults.comparable_sales || [],
+            comparableRents: parsedResults.comparable_rents || []
+          }
+          setResults(calcResults)
         }
 
         if (analysis) {
