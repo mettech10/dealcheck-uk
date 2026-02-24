@@ -1,6 +1,66 @@
 "use client"
 
 import { useState, useCallback } from "react"
+
+// Helper to format analysis results from backend
+function formatAnalysisResults(r: Record<string, any>): string {
+  const verdict = r.verdict || 'N/A'
+  const score = r.deal_score || 0
+  const label = r.deal_score_label || 'N/A'
+  
+  let emoji = '🟡'
+  if (verdict === 'PROCEED') emoji = '🟢'
+  if (verdict === 'AVOID') emoji = '🔴'
+  
+  let formatted = `${emoji} VERDICT: ${verdict}\n`
+  formatted += `⭐ DEAL SCORE: ${score}/100 (${label})\n`
+  formatted += `📍 ${r.address || 'N/A'} - ${r.postcode || 'N/A'}\n`
+  formatted += `💷 Purchase Price: £${r.purchase_price || 'N/A'}\n\n`
+  
+  formatted += `📊 KEY METRICS\n`
+  formatted += `─`.repeat(40) + `\n`
+  formatted += `• Gross Yield: ${r.gross_yield || 'N/A'}%\n`
+  formatted += `• Net Yield: ${r.net_yield || 'N/A'}%\n`
+  formatted += `• Monthly Cashflow: £${r.monthly_cashflow || 'N/A'}\n`
+  formatted += `• Cash-on-Cash: ${r.cash_on_cash || 'N/A'}%\n\n`
+  
+  formatted += `💰 PURCHASE COSTS\n`
+  formatted += `─`.repeat(40) + `\n`
+  formatted += `• Stamp Duty: £${r.stamp_duty || 'N/A'}\n`
+  formatted += `• Deposit (25%): £${r.deposit_amount || 'N/A'}\n`
+  formatted += `• Loan Amount: £${r.loan_amount || 'N/A'}\n`
+  formatted += `• Monthly Mortgage: £${r.monthly_mortgage || 'N/A'} @ ${r.interest_rate || 'N/A'}%\n\n`
+  
+  if (r.ai_strengths) {
+    formatted += `✅ STRENGTHS\n`
+    formatted += `─`.repeat(40) + `\n`
+    const strengths = r.ai_strengths.split('<br>').filter((s: string) => s.trim())
+    strengths.slice(0, 3).forEach((s: string) => {
+      formatted += `• ${s.trim().substring(0, 60)}\n`
+    })
+    formatted += `\n`
+  }
+  
+  if (r.ai_risks) {
+    formatted += `⚠️  RISKS\n`
+    formatted += `─`.repeat(40) + `\n`
+    const risks = r.ai_risks.split('<br>').filter((s: string) => s.trim())
+    risks.slice(0, 3).forEach((s: string) => {
+      formatted += `• ${s.trim().substring(0, 60)}\n`
+    })
+    formatted += `\n`
+  }
+  
+  if (r.next_steps && r.next_steps.length > 0) {
+    formatted += `📋 NEXT STEPS\n`
+    formatted += `─`.repeat(40) + `\n`
+    r.next_steps.slice(0, 4).forEach((step: string) => {
+      formatted += `→ ${step}\n`
+    })
+  }
+  
+  return formatted
+}
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -84,7 +144,23 @@ export default function AnalysePage() {
         }
 
         // Extract AI analysis text -- our API returns { aiAnalysis: "..." }
-        const analysis = data.aiAnalysis || ""
+        let analysis = data.aiAnalysis || ""
+
+        // Try to parse JSON response and format it nicely
+        if (analysis && typeof analysis === 'string') {
+          try {
+            const parsed = JSON.parse(analysis)
+            if (parsed.results) {
+              // Format the results nicely
+              const r = parsed.results
+              analysis = formatAnalysisResults(r)
+            } else if (parsed.success && parsed.message) {
+              analysis = parsed.message
+            }
+          } catch (e) {
+            // Not JSON, use as-is
+          }
+        }
 
         if (analysis) {
           setAiText(analysis)
