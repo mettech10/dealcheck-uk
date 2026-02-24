@@ -97,7 +97,13 @@ export async function POST(req: Request) {
     const propertyPayload = scrapedData.data || scrapedData
     console.log("[v0] FLASK PROXY: Step 2 - AI analysis via /ai-analyze")
     console.log("[v0] FLASK PROXY: Sending property data:", propertyPayload)
-    const aiRes = await sendToFlask("/ai-analyze", { ...propertyPayload, url })
+    // Add default dealType if not present (scraping doesn't know the strategy)
+    const aiPayload = { 
+      ...propertyPayload, 
+      url,
+      dealType: propertyPayload.dealType || 'BTL'  // Default to BTL if not specified
+    }
+    const aiRes = await sendToFlask("/ai-analyze", aiPayload)
 
     if (!aiRes.ok) {
       return aiRes
