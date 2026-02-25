@@ -264,12 +264,12 @@ export default function AnalysePage() {
         }
 
         // If backend returns structured property data, use it for charts
-        if (data.data) {
-          setFormData(data.data)
+        if (data.propertyData) {
+          setFormData(data.propertyData)
           if (data.calculationResults) {
             setResults(data.calculationResults)
           } else {
-            setResults(calculateAll(data.data))
+            setResults(calculateAll(data.propertyData))
           }
         } else if (parsedResults) {
           // URL mode: Build formData from parsed AI results, then use calculateAll
@@ -386,12 +386,12 @@ export default function AnalysePage() {
 
         const data = await res.json()
 
-        if (!data.success || !data.data) {
+        if (!data.success || !data.propertyData) {
           throw new Error("No property data was returned from the listing.")
         }
 
         // Map scraped data to form fields for pre-filling
-        const scraped = data.data
+        const scraped = data.propertyData
         const mapped: Partial<PropertyFormData> = {
           address: scraped.address || "",
           postcode: scraped.postcode || "",
