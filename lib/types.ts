@@ -1,7 +1,7 @@
-export type PropertyType = "house" | "flat" | "hmo" | "commercial"
+export type PropertyType = "house" | "flat" | "commercial"
+export type InvestmentType = "btl" | "brr" | "hmo" | "flip" | "r2sa" | "development"
 export type PropertyCondition = "excellent" | "good" | "fair" | "needs-work"
-export type PurchaseMethod = "mortgage" | "cash"
-export type MortgageType = "repayment" | "interest-only"
+export type PurchaseType = "mortgage" | "bridging-loan" | "cash"
 
 export interface PropertyFormData {
   // Property Details
@@ -9,6 +9,7 @@ export interface PropertyFormData {
   postcode: string
   purchasePrice: number
   propertyType: PropertyType
+  investmentType: InvestmentType
   bedrooms: number
   condition: PropertyCondition
 
@@ -19,11 +20,10 @@ export interface PropertyFormData {
   surveyCosts: number
 
   // Financing
-  purchaseMethod: PurchaseMethod
+  purchaseType: PurchaseType
   depositPercentage: number
   interestRate: number
   mortgageTerm: number
-  mortgageType: MortgageType
 
   // Rental Income
   monthlyRent: number
@@ -35,7 +35,7 @@ export interface PropertyFormData {
   insurance: number
   maintenance: number
   groundRent: number
-  serviceCharge: number
+  bills: number
 }
 
 export interface CalculationResults {

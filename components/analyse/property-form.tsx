@@ -21,18 +21,18 @@ const schema = z.object({
   address: z.string().min(1, "Address is required"),
   postcode: z.string().min(1, "Postcode is required"),
   purchasePrice: z.coerce.number().min(1, "Enter a purchase price"),
-  propertyType: z.enum(["house", "flat", "hmo", "commercial"]),
+  propertyType: z.enum(["house", "flat", "commercial"]),
+  investmentType: z.enum(["btl", "brr", "hmo", "flip", "r2sa", "development"]),
   bedrooms: z.coerce.number().min(0).max(20),
   condition: z.enum(["excellent", "good", "fair", "needs-work"]),
   isAdditionalProperty: z.boolean(),
   refurbishmentBudget: z.coerce.number().min(0),
   legalFees: z.coerce.number().min(0),
   surveyCosts: z.coerce.number().min(0),
-  purchaseMethod: z.enum(["mortgage", "cash"]),
+  purchaseType: z.enum(["mortgage", "bridging-loan", "cash"]),
   depositPercentage: z.coerce.number().min(0).max(100),
   interestRate: z.coerce.number().min(0).max(20),
   mortgageTerm: z.coerce.number().min(1).max(40),
-  mortgageType: z.enum(["repayment", "interest-only"]),
   monthlyRent: z.coerce.number().min(0),
   annualRentIncrease: z.coerce.number().min(0).max(20),
   voidWeeks: z.coerce.number().min(0).max(52),
@@ -40,7 +40,7 @@ const schema = z.object({
   insurance: z.coerce.number().min(0),
   maintenance: z.coerce.number().min(0),
   groundRent: z.coerce.number().min(0),
-  serviceCharge: z.coerce.number().min(0),
+  bills: z.coerce.number().min(0),
 })
 
 interface PropertyFormProps {
@@ -79,17 +79,17 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
     postcode: "",
     purchasePrice: 0,
     propertyType: "house",
+    investmentType: "btl",
     bedrooms: 3,
     condition: "good",
     isAdditionalProperty: true,
     refurbishmentBudget: 0,
     legalFees: 1500,
     surveyCosts: 500,
-    purchaseMethod: "mortgage",
+    purchaseType: "mortgage",
     depositPercentage: 25,
     interestRate: 5.5,
     mortgageTerm: 25,
-    mortgageType: "interest-only",
     monthlyRent: 0,
     annualRentIncrease: 2,
     voidWeeks: 2,
@@ -97,7 +97,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
     insurance: 300,
     maintenance: 500,
     groundRent: 0,
-    serviceCharge: 0,
+    bills: 0,
   }
 
   const {
@@ -111,7 +111,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
     defaultValues: { ...baseDefaults, ...defaultValues },
   })
 
-  const purchaseMethod = watch("purchaseMethod")
+  const purchaseType = watch("purchaseType")
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
@@ -177,9 +177,29 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="house">House</SelectItem>
-                    <SelectItem value="flat">Flat</SelectItem>
-                    <SelectItem value="hmo">HMO</SelectItem>
+                    <SelectItem value="flat">Flat/Apartment</SelectItem>
                     <SelectItem value="commercial">Commercial</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </FormField>
+          <FormField label="Investment Type">
+            <Controller
+              control={control}
+              name="investmentType"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="btl">BTL</SelectItem>
+                    <SelectItem value="brr">BRR</SelectItem>
+                    <SelectItem value="hmo">HMO</SelectItem>
+                    <SelectItem value="flip">Flip</SelectItem>
+                    <SelectItem value="r2sa">R2SA</SelectItem>
+                    <SelectItem value="development">Development</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -275,10 +295,10 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
       <div className="flex flex-col gap-4">
         <h3 className="text-base font-semibold text-foreground">Financing</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Purchase Method">
+          <FormField label="Purchase Type">
             <Controller
               control={control}
-              name="purchaseMethod"
+              name="purchaseType"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
                   <SelectTrigger className="w-full">
@@ -286,13 +306,14 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="mortgage">Mortgage</SelectItem>
+                    <SelectItem value="bridging-loan">Bridging Loan</SelectItem>
                     <SelectItem value="cash">Cash</SelectItem>
                   </SelectContent>
                 </Select>
               )}
             />
           </FormField>
-          {purchaseMethod === "mortgage" && (
+          {purchaseType !== "cash" && (
             <>
               <FormField label="Deposit" hint="% of purchase price">
                 <div className="relative">
@@ -322,23 +343,6 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
               </FormField>
               <FormField label="Mortgage Term" hint="In years">
                 <Input type="number" {...register("mortgageTerm")} />
-              </FormField>
-              <FormField label="Mortgage Type">
-                <Controller
-                  control={control}
-                  name="mortgageType"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="repayment">Repayment</SelectItem>
-                        <SelectItem value="interest-only">Interest Only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
               </FormField>
             </>
           )}
@@ -449,7 +453,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
               />
             </div>
           </FormField>
-          <FormField label="Service Charge (Annual)">
+          <FormField label="Bills (Monthly)">
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                 {"£"}
@@ -457,7 +461,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
               <Input
                 type="number"
                 className="pl-7"
-                {...register("serviceCharge")}
+                {...register("bills")}
               />
             </div>
           </FormField>
