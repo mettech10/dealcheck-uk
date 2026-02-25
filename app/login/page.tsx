@@ -94,7 +94,7 @@ function LoginForm() {
               <BarChart3 className="size-3.5 text-primary-foreground" />
             </div>
             <span className="text-sm font-semibold text-foreground">
-              DealCheck UK
+              Metalyzi
             </span>
           </Link>
           <Button asChild variant="ghost" size="sm">

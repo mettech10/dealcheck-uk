@@ -8,7 +8,7 @@ export function Footer() {
           <div className="flex size-7 items-center justify-center rounded-lg bg-primary">
             <BarChart3 className="size-3.5 text-primary-foreground" />
           </div>
-          <span className="text-sm font-semibold text-foreground">DealCheck UK</span>
+          <span className="text-sm font-semibold text-foreground">Metalyzi</span>
         </div>
         <div className="flex items-center gap-6">
           <a
@@ -37,7 +37,7 @@ export function Footer() {
           </a>
         </div>
         <p className="text-xs text-muted-foreground">
-          {"© 2026 DealCheck UK. All rights reserved."}
+          {"© 2026 Metalyzi. All rights reserved."}
         </p>
       </div>
     </footer>

@@ -21,7 +21,7 @@ export function Navbar({ user }: NavbarProps) {
             <BarChart3 className="size-4.5 text-primary-foreground" />
           </div>
           <span className="text-lg font-semibold tracking-tight text-foreground">
-            DealCheck UK
+            Metalyzi
           </span>
         </Link>
 

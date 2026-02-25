@@ -15,7 +15,7 @@ export function CTA() {
               Start Analysing Your Next Deal
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              Join over 10,000 investors who trust DealCheck UK to make smarter,
+              Join over 10,000 investors who trust Metalyzi to make smarter,
               data-driven property investment decisions.
             </p>
             <div className="mt-8">

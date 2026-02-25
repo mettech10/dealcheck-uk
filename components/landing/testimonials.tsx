@@ -1,7 +1,7 @@
 const testimonials = [
   {
     quote:
-      "DealCheck UK has completely changed how I evaluate properties. What used to take me hours with spreadsheets now takes 30 seconds.",
+      "Metalyzi has completely changed how I evaluate properties. What used to take me hours with spreadsheets now takes 30 seconds.",
     name: "James Thornton",
     title: "Buy-to-Let Investor, Manchester",
     initials: "JT",
@@ -15,7 +15,7 @@ const testimonials = [
   },
   {
     quote:
-      "I recommend DealCheck UK to every client looking at investment properties. The reports are professional and the SDLT calculations are spot on.",
+      "I recommend Metalyzi to every client looking at investment properties. The reports are professional and the SDLT calculations are spot on.",
     name: "David Chen",
     title: "Property Consultant, Birmingham",
     initials: "DC",
