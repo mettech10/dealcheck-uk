@@ -560,7 +560,7 @@ export default function AnalysePage() {
 
         {/* Manual Input Mode */}
         {inputMode === "manual" && !hasResults && (
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+          <div className="max-w-4xl">
             {/* Form Panel */}
             <div className="rounded-xl border border-border/50 bg-card p-6">
               <PropertyForm
@@ -570,21 +570,6 @@ export default function AnalysePage() {
                 defaultValues={prefillData || undefined}
                 prefilled={scrapedFromUrl}
               />
-            </div>
-
-            {/* Empty state */}
-            <div className="flex h-full min-h-[400px] flex-col items-center justify-center rounded-xl border border-dashed border-border/50 bg-card/30 p-12 text-center">
-              <div className="mb-4 flex size-16 items-center justify-center rounded-2xl bg-primary/10">
-                <BarChart3 className="size-7 text-primary" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground">
-                {scrapedFromUrl ? "Almost There" : "No Analysis Yet"}
-              </h3>
-              <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
-                {scrapedFromUrl
-                  ? "We've imported property details from the listing. Fill in the remaining fields (rent, financing, running costs) and hit \"Analyse This Deal\" for a full breakdown."
-                  : "Fill in the property details on the left and hit \"Analyse This Deal\" to see a full financial breakdown and AI-powered insights."}
-              </p>
             </div>
           </div>
         )}

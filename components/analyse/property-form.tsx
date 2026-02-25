@@ -23,6 +23,7 @@ const schema = z.object({
   purchasePrice: z.coerce.number().min(1, "Enter a purchase price"),
   propertyType: z.enum(["house", "flat", "commercial"]),
   investmentType: z.enum(["btl", "brr", "hmo", "flip", "r2sa", "development"]),
+  sqm: z.coerce.number().min(0).optional(),
   bedrooms: z.coerce.number().min(0).max(20),
   condition: z.enum(["excellent", "good", "fair", "needs-work"]),
   isAdditionalProperty: z.boolean(),
@@ -80,6 +81,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
     purchasePrice: 0,
     propertyType: "house",
     investmentType: "btl",
+    sqm: undefined,
     bedrooms: 3,
     condition: "good",
     isAdditionalProperty: true,
@@ -204,6 +206,19 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
                 </Select>
               )}
             />
+          </FormField>
+          <FormField label="Sqm" hint="Property size in square meters (optional)">
+            <div className="relative">
+              <Input
+                type="number"
+                className="pr-12"
+                placeholder="85"
+                {...register("sqm")}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                m²
+              </span>
+            </div>
           </FormField>
           <FormField label="Bedrooms">
             <Input type="number" {...register("bedrooms")} />

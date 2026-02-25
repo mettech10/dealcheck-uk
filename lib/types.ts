@@ -10,6 +10,7 @@ export interface PropertyFormData {
   purchasePrice: number
   propertyType: PropertyType
   investmentType: InvestmentType
+  sqm?: number
   bedrooms: number
   condition: PropertyCondition
 
