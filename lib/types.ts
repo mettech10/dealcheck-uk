@@ -25,6 +25,13 @@ export interface PropertyFormData {
   depositPercentage: number
   interestRate: number
   mortgageTerm: number
+  mortgageType: "repayment" | "interest-only"
+  
+  // Bridging Loan (if applicable)
+  bridgingMonthlyRate?: number // e.g., 0.75 for 0.75% per month
+  bridgingTermMonths?: number // typically 3-18 months
+  bridgingArrangementFee?: number // % of loan
+  bridgingExitFee?: number // % of loan
 
   // Rental Income
   monthlyRent: number
@@ -50,9 +57,23 @@ export interface CalculationResults {
   depositAmount: number
   mortgageAmount: number
 
-  // Mortgage
+  // Mortgage / Bridging Loan
   monthlyMortgagePayment: number
   annualMortgageCost: number
+  
+  // Bridging Loan Specific (if applicable)
+  bridgingLoanDetails?: {
+    loanAmount: number
+    monthlyInterestRate: number
+    termMonths: number
+    monthlyInterest: number
+    totalInterest: number
+    arrangementFee: number
+    exitFee: number
+    totalCost: number
+    totalRepayment: number
+    apr: number
+  }
 
   // Yields
   grossYield: number
@@ -91,4 +112,36 @@ export interface AIAnalysis {
   strengths: string[]
   risks: string[]
   recommendation: string
+  // New sections for market data
+  soldComparables?: SoldComparable[]
+  rentComparables?: RentComparable[]
+  houseValuation?: HouseValuation
+}
+
+export interface SoldComparable {
+  address: string
+  price: number
+  bedrooms: number
+  date: string
+  type: string
+  note?: string
+}
+
+export interface RentComparable {
+  address: string
+  monthlyRent: number
+  bedrooms: number
+  type: string
+  source?: string
+}
+
+export interface HouseValuation {
+  estimate: number
+  confidence: string
+  range?: {
+    low: number
+    high: number
+  }
+  source?: string
+  note?: string
 }

@@ -80,6 +80,73 @@ export function calculateMortgagePayment(
 }
 
 /**
+ * Calculate bridging loan costs
+ * Bridging loans typically:
+ * - Higher interest (0.5-1.5% per month = 6-18% annual)
+ * - Shorter term (3-18 months)
+ * - Arrangement fee (1-2% of loan)
+ * - Exit fee (0-1% of loan)
+ * - Interest rolled up (paid at end) or retained (deducted upfront)
+ */
+export function calculateBridgingLoan(
+  loanAmount: number,
+  monthlyRate: number, // e.g., 0.75 for 0.75% per month
+  termMonths: number,
+  arrangementFeePercent: number = 1,
+  exitFeePercent: number = 0.5,
+  interestRolledUp: boolean = true
+): {
+  monthlyInterest: number
+  totalInterest: number
+  arrangementFee: number
+  exitFee: number
+  totalCost: number
+  totalRepayment: number
+  apr: number
+} {
+  if (loanAmount <= 0 || monthlyRate <= 0) {
+    return {
+      monthlyInterest: 0,
+      totalInterest: 0,
+      arrangementFee: 0,
+      exitFee: 0,
+      totalCost: 0,
+      totalRepayment: 0,
+      apr: 0
+    }
+  }
+
+  // Monthly interest charge
+  const monthlyInterest = Math.round(loanAmount * (monthlyRate / 100) * 100) / 100
+  
+  // Total interest over term
+  const totalInterest = Math.round(monthlyInterest * termMonths * 100) / 100
+  
+  // Fees
+  const arrangementFee = Math.round(loanAmount * (arrangementFeePercent / 100))
+  const exitFee = Math.round(loanAmount * (exitFeePercent / 100))
+  
+  // Total cost of bridging
+  const totalCost = totalInterest + arrangementFee + exitFee
+  
+  // Total to repay
+  const totalRepayment = loanAmount + (interestRolledUp ? totalInterest : 0) + exitFee
+  
+  // Calculate approximate APR
+  const apr = Math.round((monthlyRate * 12 + (arrangementFeePercent + exitFeePercent) / termMonths * 12) * 100) / 100
+  
+  return {
+    monthlyInterest,
+    totalInterest,
+    arrangementFee,
+    exitFee,
+    totalCost,
+    totalRepayment,
+    apr
+  }
+}
+
+/**
  * Calculate gross rental yield
  */
 export function calculateGrossYield(annualRent: number, purchasePrice: number): number {
@@ -171,18 +238,44 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     data.surveyCosts +
     data.refurbishmentBudget
 
-  // Mortgage payment
-  const monthlyMortgagePayment =
-    data.purchaseMethod === "cash"
-      ? 0
-      : calculateMortgagePayment(
-          mortgageAmount,
-          data.interestRate,
-          data.mortgageTerm,
-          data.mortgageType
-        )
+  // Mortgage or Bridging Loan calculations
+  let monthlyMortgagePayment = 0
+  let annualMortgageCost = 0
+  let bridgingLoanDetails = undefined
 
-  const annualMortgageCost = monthlyMortgagePayment * 12
+  if (data.purchaseMethod === "cash") {
+    // Cash purchase - no financing costs
+    monthlyMortgagePayment = 0
+    annualMortgageCost = 0
+  } else if (data.purchaseType === "bridging-loan") {
+    // Bridging loan calculations
+    // Default bridging: 0.75% per month, 12 months, 1% arrangement, 0.5% exit
+    const bridgingMonthlyRate = data.bridgingMonthlyRate || 0.75 // 0.75% per month default
+    const bridgingTermMonths = data.bridgingTermMonths || 12 // 12 months default
+    
+    bridgingLoanDetails = calculateBridgingLoan(
+      mortgageAmount,
+      bridgingMonthlyRate,
+      bridgingTermMonths,
+      data.bridgingArrangementFee || 1, // 1% default
+      data.bridgingExitFee || 0.5, // 0.5% default
+      true // interest rolled up
+    )
+    
+    // For cash flow calculations, bridging has no monthly payments
+    // (interest is rolled up and paid at exit)
+    monthlyMortgagePayment = 0
+    annualMortgageCost = 0
+  } else {
+    // Standard mortgage
+    monthlyMortgagePayment = calculateMortgagePayment(
+      mortgageAmount,
+      data.interestRate,
+      data.mortgageTerm,
+      data.mortgageType
+    )
+    annualMortgageCost = monthlyMortgagePayment * 12
+  }
 
   // Rental income (adjusted for voids)
   const effectiveWeeks = 52 - data.voidWeeks
@@ -249,6 +342,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     mortgageAmount,
     monthlyMortgagePayment,
     annualMortgageCost,
+    bridgingLoanDetails,
     grossYield,
     netYield,
     monthlyIncome,
