@@ -5,18 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { motion } from "framer-motion"
-import { 
-  HeroText, 
-  fadeInUp, 
-  fadeInDown, 
-  scaleIn, 
-  staggerContainer,
-  staggerItem,
-  FloatingElement,
-  PulseElement,
-  AnimatedNumber,
-  HoverCard 
-} from "@/components/animations"
+import { HeroText, PulseElement } from "@/components/animations"
 
 export function Hero() {
   return (
@@ -33,7 +22,7 @@ export function Hero() {
       {/* Radial glow - Original */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,oklch(0.75_0.15_190_/_0.08)_0%,transparent_70%)]" />
 
-      <div className="relative mx-auto flex max-w-7xl flex-col items-center px-6 pb-24 pt-20 text-center md:pb-32 md:pt-28" style={{ minHeight: "auto" }}>
+      <div className="relative mx-auto flex max-w-7xl flex-col items-center px-6 pb-24 pt-20 text-center md:pb-32 md:pt-28">
         {/* Animated Badge */}
         <motion.div
           initial={{ opacity: 0, y: -30, scale: 0.9 }}
@@ -42,30 +31,30 @@ export function Hero() {
         >
           <Badge
             variant="outline"
-            className="mb-6 gap-1.5 border-[#D4AF37]/50 bg-[#D4AF37]/10 px-4 py-1.5 text-[#D4AF37] shadow-lg shadow-[#D4AF37]/20"
+            className="mb-6 gap-1.5 border-primary/30 bg-primary/5 px-3 py-1 text-primary"
           >
             <motion.div
               animate={{ rotate: [0, 15, -15, 0] }}
               transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             >
-              <Sparkles className="size-4" />
+              <Sparkles className="size-3" />
             </motion.div>
             AI-Powered Property Analysis
           </Badge>
         </motion.div>
 
         {/* Animated Headline */}
-        <div className="max-w-4xl text-balance text-4xl font-bold tracking-tight text-foreground md:text-6xl lg:text-7xl">
-          <HeroText text="Know Your Numbers" className="text-white" delay={0.4} />
+        <h1 className="max-w-4xl text-balance text-4xl font-bold tracking-tight text-foreground md:text-6xl lg:text-7xl">
+          <HeroText text="Know Your Numbers" delay={0.4} />
           <motion.div
             initial={{ opacity: 0, x: -50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 1.2, ease: [0.22, 1, 0.36, 1] }}
-            className="text-[#D4AF37] mt-2"
+            className="mt-2"
           >
             Before You Invest
           </motion.div>
-        </div>
+        </h1>
 
         {/* Animated Subtitle */}
         <motion.p
@@ -87,7 +76,7 @@ export function Hero() {
           className="mt-10 flex flex-col items-center gap-4 sm:flex-row"
         >
           <PulseElement>
-            <Button asChild size="xl" className="bg-[#D4AF37] text-[#1B1F3B] hover:bg-[#D4AF37]/90 shadow-lg shadow-[#D4AF37]/30">
+            <Button asChild size="xl">
               <Link href="/analyse">
                 Analyse a Deal
                 <motion.span
@@ -101,7 +90,7 @@ export function Hero() {
           </PulseElement>
           
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button asChild variant="outline" size="lg" className="border-white/30 hover:bg-white/10">
+            <Button asChild variant="outline" size="lg">
               <a href="#features">See How It Works</a>
             </Button>
           </motion.div>
@@ -112,25 +101,25 @@ export function Hero() {
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 2.4, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-20 grid w-full max-w-3xl grid-cols-1 gap-8 rounded-2xl border border-[#D4AF37]/20 bg-[#1B1F3B]/60 backdrop-blur-md px-8 py-8 shadow-2xl shadow-[#D4AF37]/10 sm:grid-cols-3"
+          className="mt-20 grid w-full max-w-3xl grid-cols-1 gap-8 rounded-xl border border-border/50 bg-card/50 px-8 py-6 backdrop-blur-sm sm:grid-cols-3"
         >
           {[
-            { value: 10000, suffix: "+", label: "Deals Analysed" },
-            { value: 98, suffix: "%", label: "Calculation Accuracy" },
-            { value: 4, suffix: "+ hrs", label: "Saved Per Deal" },
+            { value: "10,000+", label: "Deals Analysed" },
+            { value: "98%", label: "Calculation Accuracy" },
+            { value: "4+ hrs", label: "Saved Per Deal" },
           ].map((stat, i) => (
             <motion.div
               key={i}
-              className="flex flex-col items-center gap-2"
+              className="flex flex-col items-center gap-1"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 2.6 + i * 0.2 }}
               whileHover={{ scale: 1.05, y: -5 }}
             >
-              <span className="text-3xl font-bold text-[#D4AF37] md:text-4xl">
-                {stat.value.toLocaleString()}{stat.suffix}
+              <span className="text-2xl font-bold text-foreground md:text-3xl">
+                {stat.value}
               </span>
-              <span className="text-sm text-white/70 font-medium">{stat.label}</span>
+              <span className="text-sm text-muted-foreground">{stat.label}</span>
             </motion.div>
           ))}
         </motion.div>
@@ -147,12 +136,12 @@ export function Hero() {
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             className="flex flex-col items-center gap-2"
           >
-            <span className="text-xs text-white/50">Scroll to explore</span>
-            <motion.div className="h-8 w-5 rounded-full border-2 border-white/30 flex justify-center pt-2">
+            <span className="text-xs text-muted-foreground">Scroll to explore</span>
+            <motion.div className="h-8 w-5 rounded-full border-2 border-border flex justify-center pt-2">
               <motion.div
                 animate={{ y: [0, 8, 0], opacity: [1, 0.3, 1] }}
                 transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                className="h-1.5 w-1.5 rounded-full bg-[#D4AF37]"
+                className="h-1.5 w-1.5 rounded-full bg-primary"
               />
             </motion.div>
           </motion.div>
