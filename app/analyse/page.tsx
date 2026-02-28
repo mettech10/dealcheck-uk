@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 
 // Helper to format analysis results from backend
 function formatAnalysisResults(r: Record<string, any>): string {
@@ -192,6 +192,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PropertyForm } from "@/components/analyse/property-form"
 import { AnalysisResults } from "@/components/analyse/analysis-results"
+import { RecentDeals } from "@/components/analyse/recent-deals"
 import { calculateAll } from "@/lib/calculations"
 import type { PropertyFormData, CalculationResults } from "@/lib/types"
 import {
@@ -437,6 +438,52 @@ export default function AnalysePage() {
     [listingUrl]
   )
 
+  // Track last-saved analysis so we don't double-save on re-renders
+  const savedKeyRef = useRef<string | null>(null)
+  // Ref to always have the latest aiText synchronously in effects
+  const aiTextRef = useRef("")
+  useEffect(() => { aiTextRef.current = aiText }, [aiText])
+
+  // Auto-save to Supabase after AI analysis finishes (aiLoading → false with content)
+  const [recentDealsVersion, setRecentDealsVersion] = useState(0)
+  useEffect(() => {
+    // Only fire when AI loading just completed and we have data
+    if (aiLoading || !aiText || !formData) return
+
+    // Build a unique key for this analysis to prevent double-saves
+    const key = `${formData.address}|${formData.purchasePrice}|${aiText.length}`
+    if (savedKeyRef.current === key) return
+    savedKeyRef.current = key
+
+    // Extract score from AI text
+    const scoreMatch = aiText.match(/SCORE:\s*(\d+)/i) || aiText.match(/⭐ SCORE:\s*(\d+)/i)
+    const dealScore = scoreMatch ? parseInt(scoreMatch[1]) : null
+
+    fetch("/api/analyses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        address: formData.address || "Unknown",
+        postcode: formData.postcode || null,
+        investment_type: formData.investmentType || "btl",
+        purchase_price: formData.purchasePrice || 0,
+        deal_score: dealScore,
+        monthly_cashflow: results?.monthlyCashFlow ?? null,
+        annual_cashflow: results?.annualCashFlow ?? null,
+        gross_yield: results?.grossYield ?? null,
+        form_data: formData,
+        results: results,
+        ai_text: aiText,
+      }),
+    })
+      .then((r) => {
+        if (r.ok) setRecentDealsVersion((v) => v + 1)
+      })
+      .catch(() => {
+        // Not logged in or DB error — silently skip, saving is best-effort
+      })
+  }, [aiLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const hasResults = (results && formData) || aiText
   const isProcessing = isLoading || aiLoading
 
@@ -448,6 +495,7 @@ export default function AnalysePage() {
     setAiText("")
     setPrefillData(null)
     setScrapedFromUrl(false)
+    savedKeyRef.current = null
   }
 
   const handleSavePDF = () => {
@@ -894,6 +942,13 @@ export default function AnalysePage() {
             manually.
           </p>
         </div>
+
+        {/* Recent Deals — shown only when not viewing a current analysis */}
+        {!hasResults && !isProcessing && (
+          <div className="mb-8">
+            <RecentDeals key={recentDealsVersion} />
+          </div>
+        )}
 
         {/* Input Mode Selector -- hidden once we have results */}
         {!hasResults && (
