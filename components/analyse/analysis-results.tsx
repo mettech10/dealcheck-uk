@@ -167,6 +167,13 @@ export function AnalysisResults({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Deal Score — top centre, visible immediately */}
+      {parsedAI.score !== null && (
+        <div className="flex flex-col items-center gap-1 py-4">
+          <DealScore score={parsedAI.score} />
+        </div>
+      )}
+
       {/* Key Metrics Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
@@ -437,13 +444,6 @@ export function AnalysisResults({
             </div>
           ) : (
             <div className="flex flex-col gap-6">
-              {/* Deal Score */}
-              {parsedAI.score !== null && (
-                <div className="flex justify-center">
-                  <DealScore score={parsedAI.score} />
-                </div>
-              )}
-
               {/* AI Text */}
               <div className="prose prose-sm prose-invert max-w-none">
                 {parsedAI.sections.length > 0 ? (

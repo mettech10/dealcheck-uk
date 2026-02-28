@@ -109,6 +109,7 @@ export async function POST(req: Request) {
     }
 
     // Map scraped fields to our PropertyFormData field names
+    const rawSqm = Number(raw.sqm) || 0
     const mappedData = {
       address: raw.address || "",
       postcode: raw.postcode || "",
@@ -116,6 +117,7 @@ export async function POST(req: Request) {
       propertyType,
       bedrooms: Number(raw.bedrooms) || 3,
       description: raw.description || "",
+      sqm: rawSqm > 0 ? rawSqm : undefined,
     }
 
     console.log("[v0] FLASK PROXY: Mapped scrape data:", mappedData)

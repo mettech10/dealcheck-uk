@@ -424,3 +424,43 @@ export function formatCurrency(value: number): string {
 export function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`
 }
+
+/**
+ * Estimate refurbishment cost based on floor area and condition.
+ * Rates are per sq metre, adjusted for London postcodes and property type.
+ *
+ * Condition → cost/sqm (ex-London):
+ *   excellent  →  £0    (move-in ready, no refurb)
+ *   good       →  £40   (cosmetic only: redecorate, carpets)
+ *   fair       →  £100  (medium: kitchen/bathroom update, replastering)
+ *   needs-work →  £185  (heavy: full rewire, new heating, full refurb)
+ */
+export function estimateRefurbCost(
+  sqm: number,
+  condition: string,
+  propertyType: string,
+  postcode?: string
+): number {
+  if (!sqm || sqm <= 0) return 0
+
+  const costPerSqm: Record<string, number> = {
+    excellent: 0,
+    good: 40,
+    fair: 100,
+    "needs-work": 185,
+  }
+
+  const base = costPerSqm[condition] ?? 100
+
+  // Flats are slightly cheaper to refurb (no roof, smaller footprint)
+  const typeMultiplier = propertyType === "flat" ? 0.92 : 1.0
+
+  // London premium (~30%) based on postcode prefix
+  const londonPrefixes = ["E", "EC", "N", "NW", "SE", "SW", "W", "WC", "BR", "CR", "DA", "EN", "HA", "IG", "KT", "RM", "SM", "TW", "UB", "WD"]
+  const isLondon = postcode
+    ? londonPrefixes.some((p) => postcode.toUpperCase().startsWith(p))
+    : false
+  const areaMultiplier = isLondon ? 1.3 : 1.0
+
+  return Math.round(sqm * base * typeMultiplier * areaMultiplier)
+}
