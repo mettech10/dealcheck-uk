@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { BarChart3, Menu, X, User, LogOut } from "lucide-react"
+import { Menu, X, User, LogOut } from "lucide-react"
 import { signOut } from "@/app/auth/actions"
 
 interface NavbarProps {
@@ -18,7 +18,13 @@ export function Navbar({ user }: NavbarProps) {
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-            <BarChart3 className="size-4.5 text-primary-foreground" />
+            <svg viewBox="0 0 32 32" className="size-5" fill="currentColor">
+              <rect x="4"  y="4"  width="4" height="22" rx="0.5"/>
+              <rect x="9"  y="16" width="4" height="10" rx="0.5"/>
+              <rect x="14" y="9"  width="4" height="17" rx="0.5"/>
+              <rect x="19" y="16" width="4" height="10" rx="0.5"/>
+              <rect x="24" y="4"  width="4" height="22" rx="0.5"/>
+            </svg>
           </div>
           <span className="text-lg font-semibold tracking-tight text-foreground">
             Metalyzi
