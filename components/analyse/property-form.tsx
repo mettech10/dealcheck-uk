@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/select"
 import { Loader2, Link2, Info } from "lucide-react"
 import type { PropertyFormData } from "@/lib/types"
+import { estimateRefurbCost } from "@/lib/calculations"
 
 const schema = z.object({
   address: z.string().min(1, "Address is required"),
@@ -130,6 +132,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
     handleSubmit,
     control,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<PropertyFormData>({
     resolver: zodResolver(schema),
@@ -138,6 +141,24 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
 
   const purchaseType = watch("purchaseType")
   const investmentType = watch("investmentType")
+  const sqmValue = watch("sqm")
+  const conditionValue = watch("condition")
+  const propertyTypeValue = watch("propertyType")
+  const postcodeValue = watch("postcode")
+  const refurbValue = watch("refurbishmentBudget")
+
+  // Auto-compute refurb budget from sqm + condition whenever they change,
+  // but only if the user hasn't manually entered a custom refurb amount
+  // (i.e. refurb is still 0 or matches our last auto-estimate).
+  useEffect(() => {
+    if (!sqmValue || sqmValue <= 0) return
+    const estimated = estimateRefurbCost(sqmValue, conditionValue, propertyTypeValue, postcodeValue)
+    // Only overwrite if field is currently 0 or if estimate changed meaningfully
+    if (refurbValue === 0 || refurbValue === undefined) {
+      setValue("refurbishmentBudget", estimated, { shouldDirty: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sqmValue, conditionValue, propertyTypeValue, postcodeValue])
 
   const isR2SA     = investmentType === "r2sa"
   const isHMO      = investmentType === "hmo"
@@ -285,7 +306,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
                 Additional property (5% SDLT surcharge)
               </Label>
             </div>
-            <FormField label="Refurbishment Budget" hint="Leave 0 if none">
+            <FormField label="Refurbishment Budget" hint={sqmValue ? "Auto-estimated from size & condition — edit to override" : "Enter manually or set sqm + condition above"}>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                 <Input type="number" className="pl-7" {...register("refurbishmentBudget")} />
