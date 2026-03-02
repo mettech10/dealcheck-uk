@@ -132,8 +132,10 @@ export function calculateBridgingLoan(
   // Total to repay
   const totalRepayment = loanAmount + (interestRolledUp ? totalInterest : 0) + exitFee
   
-  // Calculate approximate APR
-  const apr = Math.round((monthlyRate * 12 + (arrangementFeePercent + exitFeePercent) / termMonths * 12) * 100) / 100
+  // True APR: compound monthly rate → effective annual + fee drag (matches Flask backend)
+  const effectiveAnnual = (Math.pow(1 + monthlyRate / 100, 12) - 1) * 100
+  const feeDrag = (arrangementFeePercent + exitFeePercent) / Math.max(termMonths / 12, 0.083)
+  const apr = Math.round((effectiveAnnual + feeDrag) * 100) / 100
   
   return {
     monthlyInterest,
@@ -373,13 +375,14 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       ? Math.round((annualCashFlow / totalCapitalRequired) * 10000) / 100
       : 0
 
-  // 5-year projection
+  // 5-year projection — use user-supplied capitalGrowthRate (default 4%, clamped 0–30%)
+  const capitalGrowthRate = Math.min(Math.max(data.capitalGrowthRate ?? 4, 0), 30)
   const fiveYearProjection = calculateProjection(
     data.purchasePrice,
     annualRent,
     annualCashFlow,
     mortgageAmount,
-    3,
+    capitalGrowthRate,
     data.annualRentIncrease
   )
 

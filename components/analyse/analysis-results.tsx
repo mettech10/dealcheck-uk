@@ -321,7 +321,7 @@ export function AnalysisResults({
             <CardHeader>
               <CardTitle className="text-base">5-Year Projection</CardTitle>
               <CardDescription>
-                Assuming 3% capital growth and {data.annualRentIncrease}% rent
+                Assuming {data.capitalGrowthRate ?? 4}% capital growth and {data.annualRentIncrease}% rent
                 increase
               </CardDescription>
             </CardHeader>

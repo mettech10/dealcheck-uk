@@ -171,33 +171,42 @@ function formatAnalysisResults(r: Record<string, any>): string {
     formatted += `\n`
   }
   
-  // STRENGTHS
+  // STRENGTHS — handle both new string[] arrays and legacy '<br>' strings
   if (r.ai_strengths) {
     formatted += `✅ STRENGTHS\n`
     formatted += `─`.repeat(55) + `\n`
-    const strengths = r.ai_strengths.split('<br>').filter((s: string) => s.trim())
-    strengths.slice(0, 3).forEach((s: string) => {
-      formatted += `  • ${s.trim().substring(0, 60)}\n`
+    const strengths: string[] = Array.isArray(r.ai_strengths)
+      ? r.ai_strengths
+      : String(r.ai_strengths).split('<br>').filter((s: string) => s.trim())
+    strengths.slice(0, 4).forEach((s: string) => {
+      formatted += `  • ${s.replace(/^[•\-]\s*/, '').trim().substring(0, 80)}\n`
     })
     formatted += `\n`
   }
-  
-  // RISKS
+
+  // RISKS — handle both new string[] arrays and legacy '<br>' strings
   if (r.ai_risks) {
     formatted += `⚠️  RISKS\n`
     formatted += `─`.repeat(55) + `\n`
-    const risks = r.ai_risks.split('<br>').filter((s: string) => s.trim())
-    risks.slice(0, 3).forEach((s: string) => {
-      formatted += `  • ${s.trim().substring(0, 60)}\n`
+    const risks: string[] = Array.isArray(r.ai_risks)
+      ? r.ai_risks
+      : String(r.ai_risks).split('<br>').filter((s: string) => s.trim())
+    risks.slice(0, 4).forEach((s: string) => {
+      formatted += `  • ${s.replace(/^[•\-]\s*/, '').trim().substring(0, 80)}\n`
     })
     formatted += `\n`
   }
-  
-  // NEXT STEPS
-  if (r.next_steps && r.next_steps.length > 0) {
+
+  // NEXT STEPS — ai_next_steps is now an array; also check legacy next_steps
+  const nextSteps: string[] = Array.isArray(r.ai_next_steps)
+    ? r.ai_next_steps
+    : Array.isArray(r.next_steps)
+      ? r.next_steps
+      : []
+  if (nextSteps.length > 0) {
     formatted += `📋 NEXT STEPS\n`
     formatted += `─`.repeat(55) + `\n`
-    r.next_steps.slice(0, 5).forEach((step: string) => {
+    nextSteps.slice(0, 5).forEach((step: string) => {
       formatted += `  → ${step}\n`
     })
   }
@@ -234,6 +243,11 @@ export default function AnalysePage() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => null)
+          if (errData?.code === "subscription_required") {
+            throw new Error(
+              "🔒 An active subscription is required to run analyses. Please upgrade your plan."
+            )
+          }
           throw new Error(
             errData?.error || "Analysis failed. Please try again."
           )
