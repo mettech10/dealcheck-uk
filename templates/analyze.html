@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Analyze Deal | Metusa Deal Analyzer</title>
+    <meta name="description" content="AI-powered UK property deal analysis. Get instant yield, cashflow, and risk reports for BTL, HMO, BRR, and Flip strategies.">
+    <link rel="canonical" href="https://analyzer.metusaproperty.co.uk/analyze">
+    <!-- OpenGraph -->
+    <meta property="og:type"        content="website">
+    <meta property="og:url"         content="https://analyzer.metusaproperty.co.uk/analyze">
+    <meta property="og:title"       content="Analyze Your Deal | Metusa Deal Analyzer">
+    <meta property="og:description" content="Instant AI-powered property investment analysis — yield, cashflow, risk, and area data in seconds.">
+    <meta property="og:site_name"   content="Metusa Deal Analyzer">
+    <!-- Twitter Card -->
+    <meta name="twitter:card"        content="summary">
+    <meta name="twitter:title"       content="Analyze Your Deal | Metusa Deal Analyzer">
+    <meta name="twitter:description" content="Instant AI-powered property investment analysis — yield, cashflow, risk, and area data in seconds.">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%231B1F3B'/><rect x='5' y='9' width='5' height='27' rx='1' fill='%23D4AF37'/><rect x='11' y='24' width='5' height='12' rx='1' fill='%23D4AF37'/><rect x='17' y='15' width='5' height='21' rx='1' fill='%23D4AF37'/><rect x='23' y='24' width='5' height='12' rx='1' fill='%23D4AF37'/><rect x='29' y='9' width='5' height='27' rx='1' fill='%23D4AF37'/></svg>">
     <style>
@@ -441,6 +453,77 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { color: white; font-weight: 600; font-size: 1rem; }
 
+        /* ── Skeleton loading ────────────────────────────────────────────── */
+        @keyframes shimmer {
+            0%   { background-position: -600px 0; }
+            100% { background-position: 600px 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+            background-size: 600px 100%;
+            animation: shimmer 1.4s infinite linear;
+            border-radius: 6px;
+        }
+        .skeleton-card {
+            background: var(--bg-white);
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+        .skeleton-line { height: 14px; margin-bottom: 10px; }
+        .skeleton-line.w-60 { width: 60%; }
+        .skeleton-line.w-80 { width: 80%; }
+        .skeleton-line.w-40 { width: 40%; }
+        .skeleton-title { height: 20px; width: 45%; margin-bottom: 18px; }
+        .skeleton-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+        .skeleton-metric { height: 70px; border-radius: 10px; }
+        #skeletonResults { display: none; }
+
+        /* ── Comparison modal ────────────────────────────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(27,31,59,0.6);
+            z-index: 9000;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 40px 16px;
+            overflow-y: auto;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--bg-white);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 900px;
+            padding: 32px;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            top: 16px; right: 20px;
+            background: none; border: none;
+            font-size: 1.5rem; cursor: pointer;
+            color: var(--text-light);
+        }
+        .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .compare-col-title {
+            font-weight: 700; font-size: 0.85rem; color: var(--text-light);
+            text-transform: uppercase; letter-spacing: .04em;
+            margin-bottom: 12px;
+        }
+        .compare-row {
+            display: flex; justify-content: space-between;
+            padding: 8px 0; border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+        .compare-row:last-child { border-bottom: none; }
+        .compare-row-label { color: var(--text-light); }
+        .compare-row-val   { font-weight: 600; }
+
+        /* ── Mobile improvements ─────────────────────────────────────────── */
         @media (max-width: 640px) {
             .form-grid { grid-template-columns: 1fr; }
             .form-group.full { grid-column: 1; }
@@ -448,6 +531,9 @@
             .navbar { padding: 14px 20px; }
             .page-wrapper { padding: 20px 14px 40px; }
             .card { padding: 20px; }
+            .pdf-btn-row { flex-direction: column; }
+            .pdf-btn-row .btn { width: 100%; justify-content: center; }
+            .compare-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -472,6 +558,35 @@
 <div class="loading-overlay" id="loadingOverlay">
     <div class="spinner"></div>
     <p class="loading-text" id="loadingText">Analyzing deal...</p>
+</div>
+
+<!-- Comparison modal -->
+<div class="modal-overlay" id="compareModal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeCompare()">×</button>
+        <h2 style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:20px">📊 Deal Comparison</h2>
+        <div class="compare-grid" id="compareGrid"></div>
+    </div>
+</div>
+
+<!-- Skeleton placeholder (shown during analysis) -->
+<div id="skeletonResults">
+    <div class="skeleton-card">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-line w-80"></div>
+        <div class="skeleton skeleton-line w-60"></div>
+        <div class="skeleton-grid">
+            <div class="skeleton skeleton-metric"></div>
+            <div class="skeleton skeleton-metric"></div>
+            <div class="skeleton skeleton-metric"></div>
+        </div>
+    </div>
+    <div class="skeleton-card">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-line w-80"></div>
+        <div class="skeleton skeleton-line w-60"></div>
+        <div class="skeleton skeleton-line w-40"></div>
+    </div>
 </div>
 
 <div class="page-wrapper">
@@ -598,6 +713,14 @@
                     <div class="input-suffix">
                         <span>%</span>
                         <input type="number" id="interestRate" name="interestRate" value="5.5" step="0.1">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="capitalGrowthRate" title="Annual property value appreciation used in the 5-year projection">Capital Growth (annual)</label>
+                    <div class="input-suffix">
+                        <span>%</span>
+                        <input type="number" id="capitalGrowthRate" name="capitalGrowthRate" value="4.0" step="0.5" min="0" max="30">
                     </div>
                 </div>
 
@@ -947,21 +1070,26 @@
         });
     });
 
-    // ── Form Submit ────────────────────────────────────────────────────────
+    // ── Form Submit (submit lock prevents double calls) ────────────────────
+    let _analysisInFlight = false;
     document.getElementById('dealForm').addEventListener('submit', async function(e) {
         e.preventDefault();
+        if (_analysisInFlight) return;   // bulletproof double-submit guard
+        _analysisInFlight = true;
 
         const btn = document.getElementById('analyzeBtn');
         btn.disabled = true;
-        btn.textContent = 'Analyzing...';
-        showLoading('Analyzing your deal...');
+        btn.innerHTML = '<span style="display:inline-flex;gap:8px;align-items:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Analyzing…</span>';
+
+        // Show skeleton
+        document.getElementById('skeletonResults').style.display = 'block';
+        document.getElementById('results').style.display = 'none';
 
         const formData = new FormData(this);
         const data = {};
         formData.forEach((val, key) => {
-            // Convert numeric fields to numbers
             const numFields = [
-                'purchasePrice','monthlyRent','deposit','interestRate','bedrooms',
+                'purchasePrice','monthlyRent','deposit','interestRate','capitalGrowthRate','bedrooms',
                 'refurbCosts','arv',
                 'bridgingMonthlyRate','bridgingTermMonths','bridgingArrangementFee','bridgingExitFee',
                 'roomCount','avgRoomRate',
@@ -987,17 +1115,19 @@
             if (json.success) {
                 lastResults = json.results;
                 renderResults(json.results);
-                // Load crime data async after results shown
                 if (data.postcode) loadCrimeData(data.postcode);
+            } else if (json.code === 'subscription_required') {
+                showError('🔒 Subscription required — please upgrade your plan to run analyses.', 'upgrade');
             } else {
-                alert('Analysis failed: ' + (json.message || 'Unknown error'));
+                showError(json.message || 'Analysis failed. Please check your inputs and try again.');
             }
         } catch (err) {
-            alert('Network error. Please try again.');
+            showError('Network error — please check your connection and try again.');
         } finally {
+            _analysisInFlight = false;
             btn.disabled = false;
             btn.innerHTML = '📊 Analyze This Deal';
-            hideLoading();
+            document.getElementById('skeletonResults').style.display = 'none';
         }
     });
 
@@ -1105,24 +1235,24 @@
             bridgingEl.style.display = 'none';
         }
 
-        // Strengths
+        // Strengths — server now returns arrays; fall back to legacy string parsing
         const strengthsList = document.getElementById('strengthsList');
-        const allStrengths = parsePoints(r.ai_strengths).concat(r.strengths || []);
-        strengthsList.innerHTML = allStrengths.map(s => `<li>${s}</li>`).join('') || '<li>No specific strengths identified</li>';
+        const allStrengths = toPoints(r.ai_strengths).concat(toPoints(r.strengths));
+        strengthsList.innerHTML = allStrengths.map(s => `<li>${esc(s)}</li>`).join('') || '<li>No specific strengths identified</li>';
 
         // Risks
         const risksList = document.getElementById('risksList');
-        const allRisks = parsePoints(r.ai_risks).concat(r.weaknesses || []);
-        risksList.innerHTML = allRisks.map(s => `<li>${s}</li>`).join('') || '<li>No specific risks identified</li>';
+        const allRisks = toPoints(r.ai_risks).concat(toPoints(r.weaknesses));
+        risksList.innerHTML = allRisks.map(s => `<li>${esc(s)}</li>`).join('') || '<li>No specific risks identified</li>';
 
         // Area
         document.getElementById('areaText').textContent = r.ai_area || '';
 
         // Next steps
         const nextStepsList = document.getElementById('nextStepsList');
-        const steps = parsePoints(r.ai_next_steps).concat(r.next_steps || []);
-        const uniqueSteps = [...new Set(steps)].slice(0, 8);
-        nextStepsList.innerHTML = uniqueSteps.map(s => `<li>${s}</li>`).join('') || '<li>Review the analysis above</li>';
+        const allSteps = toPoints(r.ai_next_steps).concat(toPoints(r.next_steps));
+        const uniqueSteps = [...new Set(allSteps)].slice(0, 8);
+        nextStepsList.innerHTML = uniqueSteps.map(s => `<li>${esc(s)}</li>`).join('') || '<li>Review the analysis above</li>';
 
         // 5-year projection
         const proj = r.five_year_projection;
@@ -1132,7 +1262,7 @@
                 <tr>
                     <td><strong>Year ${y.year}</strong></td>
                     <td>£${(y.annual_rent || 0).toLocaleString()}</td>
-                    <td>£${(y.net_income || 0).toLocaleString()}</td>
+                    <td>£${(y.net_income || y.annual_net || 0).toLocaleString()}</td>
                     <td>£${(y.property_value || 0).toLocaleString()}</td>
                     <td>£${(y.equity || 0).toLocaleString()}</td>
                 </tr>`).join('');
@@ -1142,21 +1272,41 @@
     // ── Helpers ────────────────────────────────────────────────────────────
     function fmt(val) {
         if (val === null || val === undefined || val === '') return '–';
-        // val may already be a formatted string "185,000" or a number
         const n = parseFloat(String(val).replace(/,/g, ''));
         if (isNaN(n)) return String(val);
         return n.toLocaleString('en-GB');
     }
 
-    function parsePoints(text) {
-        if (!text) return [];
-        // Split on <br>, •, numbered list, or newlines
-        return text
-            .split(/<br\s*\/?>/i)
-            .join('\n')
+    function esc(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // toPoints: handles both new array format and legacy <br>/bullet strings
+    function toPoints(val) {
+        if (!val) return [];
+        if (Array.isArray(val)) return val.filter(s => s && String(s).trim().length > 2);
+        // Legacy string fallback
+        return String(val)
+            .split(/<br\s*\/?>/i).join('\n')
             .split(/\n/)
             .map(s => s.replace(/^[•\-\d]+[\.\)]\s*/, '').trim())
             .filter(s => s.length > 2);
+    }
+
+    // ── Error display ──────────────────────────────────────────────────────
+    function showError(msg, code) {
+        let el = document.getElementById('analysisError');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'analysisError';
+            el.style.cssText = 'margin:16px 0;padding:16px 20px;border-radius:12px;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;font-weight:500;font-size:0.95rem;display:flex;justify-content:space-between;align-items:center;gap:12px';
+            document.getElementById('dealForm').after(el);
+        }
+        const upgradeLink = code === 'upgrade'
+            ? ' <a href="https://metusaproperty.co.uk/pricing" style="color:#1B1F3B;font-weight:700;text-decoration:underline">View Plans →</a>' : '';
+        el.innerHTML = `<span>${esc(msg)}${upgradeLink}</span><button onclick="this.closest(\'#analysisError\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#991b1b">×</button>`;
+        el.style.display = 'flex';
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     // ── PDF Download ───────────────────────────────────────────────────────
@@ -1236,18 +1386,20 @@
             return;
         }
 
-        list.innerHTML = saved.map(e => {
+        list.innerHTML = saved.map((e, idx) => {
             const d = new Date(e.date);
             const dateStr = d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
             const yieldStr = e.grossYield ? ` · ${parseFloat(e.grossYield).toFixed(1)}% yield` : '';
             const cfStr    = e.cashflow !== undefined ? ` · £${Math.round(e.cashflow)}/mo` : '';
+            const canCompare = saved.length > 1;
             return `
             <div class="saved-item" onclick="loadSavedAnalysis(${e.id})">
                 <div class="saved-item-info">
-                    <div class="saved-item-address">${e.address}</div>
+                    <div class="saved-item-address">${esc(e.address)}</div>
                     <div class="saved-item-meta">${dateStr} · ${e.dealType}${yieldStr}${cfStr}</div>
                 </div>
                 <span class="saved-item-verdict ${e.verdict}">${e.verdict}</span>
+                ${canCompare ? `<button class="saved-delete" onclick="openCompareMenu(event,${e.id})" title="Compare" style="font-size:0.8rem;color:var(--primary)">⚖</button>` : ''}
                 <button class="saved-delete" onclick="deleteSaved(event,${e.id})" title="Delete">×</button>
             </div>`;
         }).join('');
@@ -1262,6 +1414,7 @@
 
     function deleteSaved(event, id) {
         event.stopPropagation();
+        if (!confirm('Delete this saved analysis? This cannot be undone.')) return;
         let saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
         saved = saved.filter(e => e.id !== id);
         localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
@@ -1275,7 +1428,7 @@
         // Populate form fields
         const fd = entry.formData;
         const fields = ['address','postcode','dealType','purchaseType','purchasePrice',
-            'monthlyRent','deposit','interestRate','bedrooms','property_type',
+            'monthlyRent','deposit','interestRate','capitalGrowthRate','bedrooms','property_type',
             'refurbCosts','arv','bridgingMonthlyRate','bridgingTermMonths',
             'bridgingArrangementFee','bridgingExitFee','roomCount','avgRoomRate',
             'saMonthlySARevenue','saSetupCosts'];
@@ -1373,6 +1526,86 @@
                 <div class="crime-card-label">${cat.replace(/-/g,' ')}</div>
             </div>`).join('');
     }
+
+    // ── Deal Comparison ────────────────────────────────────────────────────
+    function openCompareMenu(event, id) {
+        event.stopPropagation();
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        const others = saved.filter(e => e.id !== id);
+        if (!others.length) return;
+
+        // If only one other deal, compare directly
+        if (others.length === 1) {
+            const a = saved.find(e => e.id === id);
+            showComparison(a, others[0]);
+            return;
+        }
+
+        // Prompt user to pick which deal to compare against
+        const names = others.map((e, i) => `${i + 1}. ${e.address} (${e.dealType} · ${e.verdict})`).join('\n');
+        const choice = prompt(`Compare against which deal? Enter number:\n\n${names}`);
+        const idx = parseInt(choice) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= others.length) return;
+        const a = saved.find(e => e.id === id);
+        showComparison(a, others[idx]);
+    }
+
+    function showComparison(a, b) {
+        const ar = a.results || {};
+        const br = b.results || {};
+
+        function row(label, va, vb, higherIsBetter = true) {
+            const an = parseFloat(String(va).replace(/,/g,'')) || 0;
+            const bn = parseFloat(String(vb).replace(/,/g,'')) || 0;
+            const aWin = higherIsBetter ? an >= bn : an <= bn;
+            const aStyle = (an !== 0 && bn !== 0 && aWin)  ? 'color:var(--green);font-weight:700' : '';
+            const bStyle = (an !== 0 && bn !== 0 && !aWin) ? 'color:var(--green);font-weight:700' : '';
+            return `<div class="compare-row"><span class="compare-row-label">${label}</span><span class="compare-row-val" style="${aStyle}">${va}</span><span class="compare-row-val" style="${bStyle}">${vb}</span></div>`;
+        }
+
+        const f = v => v !== undefined && v !== null ? '£' + fmt(v) : '–';
+        const p = v => v !== undefined && v !== null ? parseFloat(v).toFixed(1) + '%' : '–';
+
+        document.getElementById('compareGrid').innerHTML = `
+            <div>
+                <div class="compare-col-title">Deal A</div>
+                <div style="font-weight:700;margin-bottom:12px">${esc(a.address)}</div>
+                <span class="saved-item-verdict ${a.verdict}">${a.verdict}</span>
+            </div>
+            <div>
+                <div class="compare-col-title">Deal B</div>
+                <div style="font-weight:700;margin-bottom:12px">${esc(b.address)}</div>
+                <span class="saved-item-verdict ${b.verdict}">${b.verdict}</span>
+            </div>
+            <div style="grid-column:1/-1">
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:0;margin-top:20px">
+                    <div class="compare-row"><span class="compare-row-label" style="font-weight:700">Metric</span><span style="font-weight:700;font-size:0.8rem;color:var(--text-light)">Deal A</span><span style="font-weight:700;font-size:0.8rem;color:var(--text-light)">Deal B</span></div>
+                    ${[
+                        ['Deal Score', ar.deal_score + '/100', br.deal_score + '/100', true],
+                        ['Gross Yield', p(ar.gross_yield), p(br.gross_yield), true],
+                        ['Net Yield', p(ar.net_yield), p(br.net_yield), true],
+                        ['Monthly Cashflow', f(ar.monthly_cashflow), f(br.monthly_cashflow), true],
+                        ['Cash-on-Cash', p(ar.cash_on_cash), p(br.cash_on_cash), true],
+                        ['Purchase Price', f(ar.purchase_price), f(br.purchase_price), false],
+                        ['Total Cash In', f(ar.total_purchase_costs), f(br.total_purchase_costs), false],
+                        ['Strategy', ar.deal_type || a.dealType, br.deal_type || b.dealType, null],
+                    ].map(r => r[3] === null
+                        ? `<div class="compare-row"><span class="compare-row-label">${r[0]}</span><span class="compare-row-val">${r[1]}</span><span class="compare-row-val">${r[2]}</span></div>`
+                        : row(r[0], r[1], r[2], r[3])
+                    ).join('')}
+                </div>
+            </div>`;
+
+        document.getElementById('compareModal').classList.add('open');
+    }
+
+    function closeCompare() {
+        document.getElementById('compareModal').classList.remove('open');
+    }
+    // Close modal on overlay click
+    document.getElementById('compareModal').addEventListener('click', function(e) {
+        if (e.target === this) closeCompare();
+    });
 </script>
 </body>
 </html>
