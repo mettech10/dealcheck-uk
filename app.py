@@ -4,6 +4,8 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import json
 import os
+import hmac
+import hashlib
 from datetime import datetime
 import pdfkit
 from jinja2 import Template
@@ -354,6 +356,70 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"]
 )
 
+# ── Supabase (optional) ────────────────────────────────────────────────────
+_SUPABASE_URL = os.environ.get('SUPABASE_URL', '').rstrip('/')
+_SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_KEY', '') or os.environ.get('SUPABASE_ANON_KEY', '')
+
+def _sb_headers():
+    return {
+        'apikey': _SUPABASE_KEY,
+        'Authorization': f'Bearer {_SUPABASE_KEY}',
+        'Content-Type': 'application/json',
+    }
+
+def supabase_upsert_subscription(row: dict):
+    """Write/update a subscription row in Supabase. Silently ignores errors if not configured."""
+    if not _SUPABASE_URL or not _SUPABASE_KEY:
+        return
+    try:
+        requests.post(
+            f'{_SUPABASE_URL}/rest/v1/subscriptions',
+            json=row,
+            headers={**_sb_headers(), 'Prefer': 'resolution=merge-duplicates,return=minimal'},
+            timeout=6,
+        )
+    except Exception as e:
+        app.logger.warning(f'[Supabase] upsert failed: {e}')
+
+def check_subscription(email: str) -> bool:
+    """Return True if email has an active subscription. Open-access when Supabase not configured."""
+    if not _SUPABASE_URL or not _SUPABASE_KEY:
+        return True
+    if not email:
+        return False
+    try:
+        resp = requests.get(
+            f'{_SUPABASE_URL}/rest/v1/subscriptions',
+            params={'email': f'eq.{email}', 'status': f'eq.active', 'select': 'id'},
+            headers=_sb_headers(),
+            timeout=5,
+        )
+        return resp.status_code == 200 and len(resp.json()) > 0
+    except Exception as e:
+        app.logger.warning(f'[Supabase] subscription check failed: {e}')
+        return True  # Fail open — don't block users on infra error
+
+# ── Paddle HMAC verification ───────────────────────────────────────────────
+def verify_paddle_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    """
+    Verify Paddle webhook signature.
+    Header format: ts=TIMESTAMP;h1=HMAC_SHA256_HEX
+    Signed string:  {ts}:{raw_body}
+    """
+    if not signature_header or not secret:
+        return False
+    try:
+        parts = dict(p.split('=', 1) for p in signature_header.split(';'))
+        ts  = parts.get('ts', '')
+        h1  = parts.get('h1', '')
+        if not ts or not h1:
+            return False
+        signed = f'{ts}:{raw_body.decode("utf-8")}'
+        expected = hmac.new(secret.encode(), signed.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, h1)
+    except Exception:
+        return False
+
 # PDF Generation Configuration
 PDF_CONFIG = {
     'page-size': 'A4',
@@ -512,21 +578,20 @@ def calculate_deal_score(deal_type, gross_yield, net_yield, monthly_cashflow, ca
     # Ensure score is within 0-100
     return max(0, min(100, score))
 
-def generate_5_year_projection(annual_rent, net_annual_income, purchase_price, cash_invested, interest_rate):
+def generate_5_year_projection(annual_rent, net_annual_income, purchase_price, cash_invested, interest_rate, capital_growth_pct=4.0):
     """
-    Generate 5-year cash flow and equity projection
-    Accounts for rent growth (3% annually) and capital growth (4% annually)
+    Generate 5-year cash flow and equity projection.
+    capital_growth_pct: annual property appreciation (user-supplied or default 4%).
     """
     projections = []
     cumulative_cashflow = 0
-    
-    # Market assumptions
-    rent_growth_rate = 0.03  # 3% annual rent increase
-    capital_growth_rate = 0.04  # 4% annual property value increase
-    
+
+    rent_growth_rate   = 0.03  # 3% annual rent increase (fixed assumption)
+    capital_growth_rate = max(0.0, min(float(capital_growth_pct), 30.0)) / 100  # clamp 0-30%
+
     current_rent = annual_rent
     current_property_value = purchase_price
-    
+
     for year in range(1, 6):
         # Apply growth rates
         current_rent = current_rent * (1 + rent_growth_rate)
@@ -1156,9 +1221,11 @@ def analyze_deal(data):
         exit_fee = loan_amount * (bridging_exit_fee_pct / 100)
         total_bridging_cost = total_interest + arrangement_fee + exit_fee
         total_repayment = loan_amount + total_interest + exit_fee
-        bridging_apr = (bridging_monthly_rate * 12) + (
-            (bridging_arrangement_fee_pct + bridging_exit_fee_pct) / bridging_term_months * 12
-        )
+        # True APR: compound monthly rate → effective annual + fee drag
+        _monthly_r = bridging_monthly_rate / 100
+        _effective_annual = ((1 + _monthly_r) ** 12 - 1) * 100
+        _fee_drag = (bridging_arrangement_fee_pct + bridging_exit_fee_pct) / max(bridging_term_months / 12, 0.083)
+        bridging_apr = round(_effective_annual + _fee_drag, 2)
         bridging_loan_details = {
             'loan_amount': round(loan_amount, 0),
             'monthly_rate': bridging_monthly_rate,
@@ -1363,9 +1430,10 @@ def analyze_deal(data):
     )
     
     # Generate 5-year projection
+    capital_growth_pct = float(data.get('capitalGrowthRate', 4.0) or 4.0)
     five_year_projection = generate_5_year_projection(
-        annual_rent, net_annual_income, purchase_price, 
-        cash_invested, interest_rate
+        annual_rent, net_annual_income, purchase_price,
+        cash_invested, interest_rate, capital_growth_pct
     )
     
     # Get Article 4 info
@@ -2704,13 +2772,13 @@ Be specific: reference actual figures, the specific postcode/area, and the strat
 Do NOT use generic filler. If a metric is weak, say so plainly.
 The Article 4 planning data above is REAL — reference it accurately in your analysis.
 
-JSON schema:
+JSON schema (use arrays — no HTML, no <br>, no bullet characters):
 {{
   "verdict": "<2-3 sentences: clear overall assessment referencing key figures>",
-  "strengths": "<bullet list using • and <br> separating each point — 3-4 specific strengths>",
-  "risks": "<bullet list using • and <br> separating each point — 3-4 specific, deal-relevant risks including Article 4 if applicable>",
+  "strengths": ["<strength 1>", "<strength 2>", "<strength 3>", "<strength 4>"],
+  "risks": ["<risk 1>", "<risk 2>", "<risk 3>", "<risk 4>"],
   "area": "<2-3 sentences: specific to the postcode — rental demand, tenant profile, comparable areas, growth prospects>",
-  "next_steps": "<numbered list 1-5 with <br> between items — actionable, deal-specific steps. If HMO strategy, include Article 4 / licensing guidance as instructed above>"
+  "next_steps": ["<step 1>", "<step 2>", "<step 3>", "<step 4>", "<step 5 — Article 4 / licensing if HMO>"]
 }}"""
 
     # ------------------------------------------------------------------ #
@@ -2745,11 +2813,15 @@ JSON schema:
     # ------------------------------------------------------------------ #
     # Rule-based fallback (no API key / API error)                        #
     # ------------------------------------------------------------------ #
+    def _f(v, default=0.0):
+        try: return float(v) if v is not None else default
+        except (TypeError, ValueError): return default
+
     verdict    = calculated_metrics.get('verdict', 'REVIEW')
-    score      = calculated_metrics.get('deal_score', 50)
-    gross      = calculated_metrics.get('gross_yield', 0)
-    cashflow   = calculated_metrics.get('monthly_cashflow', 0)
-    coc        = calculated_metrics.get('cash_on_cash', 0)
+    score      = int(_f(calculated_metrics.get('deal_score', 50)))
+    gross      = _f(calculated_metrics.get('gross_yield', 0))
+    cashflow   = _f(calculated_metrics.get('monthly_cashflow', 0))
+    coc        = _f(calculated_metrics.get('cash_on_cash', 0))
     postcode   = property_data.get('postcode', 'this area')
 
     # Article 4 fallback guidance
@@ -2794,29 +2866,29 @@ JSON schema:
                 f"{benchmarks['gross_yield']}% benchmark and monthly cashflow of £{cashflow:,.0f} "
                 f"exceeds the £{benchmarks['cashflow']} target, supporting a PROCEED recommendation."
             ),
-            "strengths": (
-                f"• Gross yield of {gross:.1f}% above the {benchmarks['gross_yield']}% benchmark<br>"
-                f"• Monthly cashflow of £{cashflow:,.0f} provides a financial buffer<br>"
-                f"• Cash-on-cash return of {coc:.1f}% indicates efficient capital deployment<br>"
-                f"• Deal score of {score}/100 meets investment criteria"
-            ),
-            "risks": (
-                "• Void periods and unexpected maintenance could erode cashflow<br>"
-                "• Mortgage rate rises will compress net yield — stress-test at 6%+<br>"
-                "• Verify advertised rent against local comparables before committing<br>"
-                f"{_a4_risk_line}"
-            ),
+            "strengths": [
+                f"Gross yield of {gross:.1f}% is above the {benchmarks['gross_yield']}% benchmark",
+                f"Monthly cashflow of £{cashflow:,.0f} provides a meaningful financial buffer",
+                f"Cash-on-cash return of {coc:.1f}% indicates efficient capital deployment",
+                f"Deal score of {score}/100 meets investment criteria",
+            ],
+            "risks": [
+                "Void periods and unexpected maintenance could erode cashflow",
+                "Mortgage rate rises will compress net yield — stress-test at 6%+",
+                "Verify advertised rent against local comparables before committing",
+                _a4_risk_line.lstrip('• '),
+            ],
             "area": (
                 f"{postcode} shows sufficient rental demand to support the assumed rent. "
                 "Verify tenant demand with local letting agents and check comparable listings."
             ),
-            "next_steps": (
-                "1. Confirm achievable rent with 2-3 local letting agents<br>"
-                "2. Arrange a viewing and independent RICS survey (£400-600)<br>"
-                "3. Obtain mortgage Decision in Principle at current rates<br>"
-                f"4. Instruct a solicitor for preliminary searches<br>"
-                f"{_a4_step}"
-            )
+            "next_steps": [
+                "Confirm achievable rent with 2-3 local letting agents",
+                "Arrange a viewing and independent RICS survey (£400-600)",
+                "Obtain mortgage Decision in Principle at current rates",
+                "Instruct a solicitor for preliminary searches",
+                _a4_step.split('. ', 1)[-1] if '. ' in _a4_step else _a4_step,
+            ],
         }
     elif verdict == 'REVIEW':
         if _fb_is_a4 and deal_type != 'HMO':
@@ -2831,29 +2903,29 @@ JSON schema:
                 f"£{cashflow:,.0f}/month are below target benchmarks — further due diligence or "
                 f"price negotiation is required before proceeding."
             ),
-            "strengths": (
-                "• Property may have value-add potential through refurbishment or strategy change<br>"
-                "• Some metrics are close to benchmark — small price reduction could make it work<br>"
-                f"• {postcode} may offer longer-term capital growth<br>"
-                f"• Could work as {_alt_strategy} if current figures are marginal"
-            ),
-            "risks": (
-                f"• Gross yield of {gross:.1f}% is below the {benchmarks['gross_yield']}% minimum<br>"
-                f"• Monthly cashflow of £{cashflow:,.0f} leaves little buffer for voids or repairs<br>"
-                "• Overpaying vs comparable sales would worsen position<br>"
-                f"{_a4_risk_line}"
-            ),
+            "strengths": [
+                "Property may have value-add potential through refurbishment or strategy change",
+                "Some metrics are close to benchmark — a small price reduction could make it work",
+                f"{postcode} may offer longer-term capital growth",
+                f"Could work as {_alt_strategy} if current figures are marginal",
+            ],
+            "risks": [
+                f"Gross yield of {gross:.1f}% is below the {benchmarks['gross_yield']}% minimum",
+                f"Monthly cashflow of £{cashflow:,.0f} leaves little buffer for voids or repairs",
+                "Overpaying vs comparable sales would worsen the position",
+                _a4_risk_line.lstrip('• '),
+            ],
             "area": (
                 f"{postcode} warrants careful research — confirm rental demand and "
                 "recent comparable sales before assuming the projected rent is achievable."
             ),
-            "next_steps": (
-                "1. Research 5+ comparable rentals and 5+ recent sold prices in the postcode<br>"
-                "2. Attempt to negotiate purchase price down by 5-10%<br>"
-                f"3. Model the deal as {_alt_strategy} to check if alternative strategies work<br>"
-                "4. Get a local letting agent's written opinion on achievable rent<br>"
-                f"{_a4_step}"
-            )
+            "next_steps": [
+                "Research 5+ comparable rentals and 5+ recent sold prices in the postcode",
+                "Attempt to negotiate the purchase price down by 5-10%",
+                f"Model the deal as {_alt_strategy} to check if alternative strategies work",
+                "Get a local letting agent's written opinion on achievable rent",
+                _a4_step.split('. ', 1)[-1] if '. ' in _a4_step else _a4_step,
+            ],
         }
     else:
         return {
@@ -2862,28 +2934,28 @@ JSON schema:
                 f"£{cashflow:,.0f}/month are materially below target — this deal does not meet "
                 "minimum investment criteria and should be avoided."
             ),
-            "strengths": (
-                "• Physical asset provides some security<br>"
-                "• May suit a different buyer profile (e.g. owner-occupier)<br>"
-                "• Could be revisited if purchase price drops significantly"
-            ),
-            "risks": (
-                f"• Gross yield of {gross:.1f}% is well below the {benchmarks['gross_yield']}% target<br>"
-                f"• Cashflow of £{cashflow:,.0f}/month is insufficient — risk of negative cashflow<br>"
-                "• Capital at risk if market softens<br>"
-                f"{_a4_risk_line}"
-            ),
+            "strengths": [
+                "Physical asset provides some security",
+                "May suit a different buyer profile (e.g. owner-occupier)",
+                "Could be revisited if the purchase price drops significantly",
+            ],
+            "risks": [
+                f"Gross yield of {gross:.1f}% is well below the {benchmarks['gross_yield']}% target",
+                f"Cashflow of £{cashflow:,.0f}/month is insufficient — risk of negative cashflow",
+                "Capital at risk if the market softens",
+                _a4_risk_line.lstrip('• '),
+            ],
             "area": (
                 f"{postcode} may have good fundamentals but this specific deal is mispriced. "
                 "Continue searching the same area for better-value stock."
             ),
-            "next_steps": (
-                "1. Do not proceed with this deal at the current asking price<br>"
-                "2. Calculate the maximum price that delivers a 6%+ gross yield<br>"
-                "3. Either submit a significantly lower offer or walk away<br>"
-                "4. Set Rightmove/Zoopla alerts for similar properties at lower prices<br>"
-                f"{_a4_step}"
-            )
+            "next_steps": [
+                "Do not proceed with this deal at the current asking price",
+                "Calculate the maximum price that delivers a 6%+ gross yield",
+                "Either submit a significantly lower offer or walk away",
+                "Set Rightmove/Zoopla alerts for similar properties at lower prices",
+                _a4_step.split('. ', 1)[-1] if '. ' in _a4_step else _a4_step,
+            ],
         }
 
 @app.route('/ai-analyze', methods=['POST'])
@@ -2891,17 +2963,32 @@ JSON schema:
 def ai_analyze():
     """
     Full AI-powered deal analysis
-    1. Calculates all financial metrics
-    2. Gets AI-enhanced insights
-    3. Returns comprehensive analysis
+    1. Checks subscription gate (if REQUIRE_SUBSCRIPTION=true)
+    2. Calculates all financial metrics
+    3. Gets AI-enhanced insights
+    4. Returns comprehensive analysis
     """
     try:
         if not request.is_json:
             return jsonify({'success': False, 'message': 'Content-Type must be application/json'}), 400
-        
+
         data = request.get_json(silent=True)
         if not data:
             return jsonify({'success': False, 'message': 'Invalid JSON data'}), 400
+
+        # ── Subscription gate ──────────────────────────────────────────────
+        if os.environ.get('REQUIRE_SUBSCRIPTION', '').lower() == 'true':
+            user_email = (
+                request.headers.get('X-User-Email', '')
+                or str(data.get('userEmail', ''))
+            ).strip().lower()
+            if not check_subscription(user_email):
+                return jsonify({
+                    'success': False,
+                    'code': 'subscription_required',
+                    'message': 'An active subscription is required to run analyses. Please upgrade your plan.',
+                }), 403
+        # ──────────────────────────────────────────────────────────────────
         
         # Validate required fields (only purchasePrice is truly required)
         if 'purchasePrice' not in data or data['purchasePrice'] is None or data['purchasePrice'] == '':
@@ -3464,6 +3551,151 @@ def get_uk_transport_summary():
             'success': False,
             'message': 'Error fetching transport data. Please try again.'
         }), 500
+
+@app.route('/api/crime', methods=['POST'])
+@limiter.limit("20 per minute")
+def get_crime_data():
+    """Get crime statistics for a postcode using Police UK API (free, no key required)"""
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'message': 'Content-Type must be application/json'}), 400
+
+        data = request.get_json()
+        postcode = data.get('postcode', '').strip().upper()
+
+        if not postcode:
+            return jsonify({'success': False, 'message': 'Postcode is required'}), 400
+
+        if not validate_postcode(postcode):
+            return jsonify({'success': False, 'message': 'Invalid postcode format'}), 400
+
+        # Step 1: Get lat/lng from postcodes.io
+        geo_resp = requests.get(
+            f'https://api.postcodes.io/postcodes/{postcode.replace(" ", "")}',
+            timeout=8
+        )
+        if geo_resp.status_code != 200:
+            return jsonify({'success': False, 'message': 'Could not geocode postcode'}), 404
+
+        geo = geo_resp.json().get('result', {})
+        lat = geo.get('latitude')
+        lon = geo.get('longitude')
+        if not lat or not lon:
+            return jsonify({'success': False, 'message': 'No coordinates for postcode'}), 404
+
+        # Step 2: Fetch crimes from Police UK API
+        crime_resp = requests.get(
+            'https://data.police.uk/api/crimes-street/all-crime',
+            params={'lat': lat, 'lng': lon},
+            timeout=12
+        )
+        if crime_resp.status_code != 200:
+            return jsonify({'success': False, 'message': 'Crime API unavailable'}), 503
+
+        crimes = crime_resp.json()
+        total = len(crimes)
+
+        # Aggregate by category
+        categories = {}
+        for c in crimes:
+            cat = c.get('category', 'other')
+            categories[cat] = categories.get(cat, 0) + 1
+
+        # Determine crime level based on total monthly crimes in area
+        if total < 30:
+            crime_level = 'Low'
+        elif total < 80:
+            crime_level = 'Medium'
+        else:
+            crime_level = 'High'
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'total_crimes': total,
+                'crime_level': crime_level,
+                'categories': categories,
+                'lat': lat,
+                'lon': lon,
+            }
+        })
+
+    except requests.Timeout:
+        return jsonify({'success': False, 'message': 'Crime API timed out'}), 503
+    except Exception as e:
+        app.logger.error(f'Crime data error: {str(e)}')
+        return jsonify({'success': False, 'message': 'Error fetching crime data'}), 500
+
+
+@app.route('/webhook/paddle', methods=['POST'])
+def paddle_webhook():
+    """
+    Receive and verify Paddle billing webhooks.
+    Set PADDLE_WEBHOOK_SECRET env var to your Paddle webhook secret.
+    Writes subscription rows to Supabase subscriptions table.
+
+    Expected Supabase schema:
+        CREATE TABLE subscriptions (
+            id              TEXT PRIMARY KEY,  -- paddle subscription id
+            email           TEXT NOT NULL,
+            status          TEXT NOT NULL,     -- 'active' | 'cancelled' | 'paused'
+            plan_id         TEXT,
+            paddle_customer TEXT,
+            created_at      TIMESTAMPTZ DEFAULT now(),
+            updated_at      TIMESTAMPTZ DEFAULT now()
+        );
+    """
+    raw_body = request.get_data()
+    secret   = os.environ.get('PADDLE_WEBHOOK_SECRET', '')
+
+    # Verify signature (skip if secret not configured — dev/test only)
+    if secret:
+        sig_header = request.headers.get('Paddle-Signature', '')
+        if not verify_paddle_signature(raw_body, sig_header, secret):
+            app.logger.warning('[Paddle] Invalid webhook signature')
+            return jsonify({'error': 'invalid signature'}), 400
+
+    try:
+        event = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return jsonify({'error': 'bad json'}), 400
+
+    event_type = event.get('event_type', '') or event.get('alert_name', '')
+    data       = event.get('data', event)  # Paddle v2 wraps payload in 'data'
+
+    app.logger.info(f'[Paddle] Event: {event_type}')
+
+    if event_type in ('subscription.created', 'subscription.activated',
+                      'subscription.updated', 'subscription_created', 'subscription_payment_succeeded'):
+        sub_id    = data.get('id') or data.get('subscription_id', '')
+        email     = (data.get('customer', {}) or {}).get('email') or data.get('email', '')
+        plan_id   = (data.get('items', [{}])[0] or {}).get('price', {}).get('id', '') if data.get('items') else data.get('plan_id', '')
+        customer  = data.get('customer_id') or data.get('customer', {}).get('id', '')
+        if sub_id and email:
+            supabase_upsert_subscription({
+                'id':              sub_id,
+                'email':           email.lower().strip(),
+                'status':          'active',
+                'plan_id':         plan_id,
+                'paddle_customer': customer,
+                'updated_at':      datetime.utcnow().isoformat(),
+            })
+
+    elif event_type in ('subscription.cancelled', 'subscription_cancelled',
+                        'subscription.paused', 'subscription_payment_failed'):
+        sub_id  = data.get('id') or data.get('subscription_id', '')
+        email   = (data.get('customer', {}) or {}).get('email') or data.get('email', '')
+        new_status = 'cancelled' if 'cancel' in event_type else 'paused'
+        if sub_id and email:
+            supabase_upsert_subscription({
+                'id':         sub_id,
+                'email':      email.lower().strip(),
+                'status':     new_status,
+                'updated_at': datetime.utcnow().isoformat(),
+            })
+
+    return jsonify({'received': True}), 200
+
 
 if __name__ == '__main__':
     # Security: Don't run with debug in production
