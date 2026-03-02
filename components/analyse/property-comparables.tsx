@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/calculations"
-import { Home, PoundSterling, TrendingUp, MapPin, AlertCircle } from "lucide-react"
+import { Home, PoundSterling, TrendingUp, MapPin } from "lucide-react"
 
 interface ComparableSale {
   price: number
