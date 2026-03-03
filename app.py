@@ -307,6 +307,33 @@ def validate_postcode_str(postcode):
     pattern = r'^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$'
     return bool(re.match(pattern, postcode.upper().strip()))
 
+
+def resolve_postcode_from_address(address: str) -> str | None:
+    """Query Ideal Postcodes Address Search API with a scraped address string.
+
+    Submits the address to Royal Mail PAF and returns the postcode of the
+    closest-matching result.  Returns None if the key is unset, the request
+    fails, or no results are returned.
+    """
+    if not IDEAL_POSTCODES_API_KEY or not address:
+        return None
+    try:
+        resp = requests.get(
+            'https://api.ideal-postcodes.co.uk/v1/addresses',
+            params={'api_key': IDEAL_POSTCODES_API_KEY, 'q': address},
+            timeout=5,
+        )
+        body = resp.json()
+        results = body.get('result', {}).get('hits', [])
+        if results:
+            postcode = results[0].get('postcode', '')
+            if postcode:
+                print(f"[IdealPostcodes] Resolved '{address[:60]}' → {postcode}")
+                return postcode.upper().strip()
+    except Exception as e:
+        print(f"[IdealPostcodes] Error resolving postcode: {e}")
+    return None
+
 # Security: Input validation functions
 def validate_postcode(postcode):
     """Validate UK postcode format"""
@@ -355,6 +382,9 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"]
 )
+
+# ── Ideal Postcodes (address → postcode lookup) ─────────────────────────────
+IDEAL_POSTCODES_API_KEY = os.environ.get('IDEAL_POSTCODES_API_KEY', '')
 
 # ── Supabase (optional) ────────────────────────────────────────────────────
 _SUPABASE_URL = os.environ.get('SUPABASE_URL', '').rstrip('/')
@@ -2476,6 +2506,17 @@ def extract_url():
                 extracted_data = None
 
         if extracted_data and _has_data(extracted_data):
+            # Always validate / fill postcode via Ideal Postcodes PAF lookup.
+            # Uses the scraped address string as the query so we get a confirmed
+            # Royal Mail postcode regardless of what the scraper pulled from the
+            # listing HTML (handles abbreviations, missing postcodes, etc.).
+            address_for_lookup = extracted_data.get('address') or ''
+            if address_for_lookup and address_for_lookup != 'Address not available':
+                resolved = resolve_postcode_from_address(address_for_lookup)
+                if resolved:
+                    extracted_data['postcode'] = resolved
+                    print(f"[extract-url] Postcode set to {resolved} via Ideal Postcodes")
+
             return jsonify({
                 'success': True,
                 'data': extracted_data,
