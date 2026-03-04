@@ -276,9 +276,11 @@ def scrape_with_jina(url: str) -> dict:
         # Helper: clean a candidate address string
         def _clean_addr(raw: str) -> str:
             raw = raw.strip().strip('*#').strip()
-            # Remove portal suffix
+            # Remove portal suffix (| Rightmove, - Zoopla, etc.)
             raw = re.sub(r'\s*[-|]\s*(Rightmove|Zoopla|OnTheMarket).*', '', raw, flags=re.IGNORECASE)
-            # If "for sale in / to rent in" is present, keep only the part after it
+            # Remove trailing sale/rent description: "- Property for Sale", "- For Sale"
+            raw = re.sub(r'\s*[-–]\s*(?:property\s+)?(?:for sale|to rent|to let)\s*$', '', raw, flags=re.IGNORECASE)
+            # If "for sale in / to rent in / to let at" is present, keep only the part after it
             m = re.search(r'\b(?:for sale|to rent|to let)\s+(?:in|at)\s+', raw, re.IGNORECASE)
             if m:
                 raw = raw[m.end():]
@@ -295,12 +297,12 @@ def scrape_with_jina(url: str) -> dict:
 
         def _looks_like_address(s: str) -> bool:
             """Reject navigation labels, map text, and very short/long strings."""
-            if not s or len(s) < 5 or len(s) > 120:
+            if not s or len(s) < 4 or len(s) > 120:
                 return False
             bad = ('open street', 'openstreetmap', 'contributors', 'mapbox',
                    'cookie', 'privacy', 'terms', 'sign in', 'log in', 'rightmove',
-                   'zoopla', 'onthemarket', 'back to', 'property for sale',
-                   'properties for sale', 'property to rent', '©')
+                   'zoopla', 'onthemarket', 'back to', 'for sale', 'to rent',
+                   'to let', 'property search', '©')
             sl = s.lower()
             return not any(b in sl for b in bad)
 
@@ -310,8 +312,9 @@ def scrape_with_jina(url: str) -> dict:
             candidate = _clean_addr(title_line.group(1))
             if _looks_like_address(candidate):
                 data['address'] = candidate
+                print(f"[Jina] Address from title: {candidate}")
 
-        # Strategy 2: First H1 heading (# ...) in Jina markdown — most reliable for Rightmove
+        # Strategy 2: First H1/H2 heading — Rightmove renders address as # Heading
         if not data['address']:
             for h1 in re.finditer(r'^#{1,2}\s+(.+)$', text, re.MULTILINE):
                 candidate = _clean_addr(h1.group(1))
@@ -320,18 +323,17 @@ def scrape_with_jina(url: str) -> dict:
                     print(f"[Jina] Address from H1: {candidate}")
                     break
 
-        # Strategy 3: Bold line "**Address**" near the top of the markdown
+        # Strategy 3: Bold "**text**" near the top — some portals bold the address
         if not data['address']:
-            for bold in re.finditer(r'\*\*([^*]{5,80})\*\*', text[:3000]):
+            for bold in re.finditer(r'\*\*([^*]{4,80})\*\*', text[:4000]):
                 candidate = _clean_addr(bold.group(1))
                 if _looks_like_address(candidate):
-                    # Must contain a comma or postcode-like pattern to be an address
                     if ',' in candidate or re.search(r'[A-Z]{1,2}\d', candidate):
                         data['address'] = candidate
                         print(f"[Jina] Address from bold: {candidate}")
                         break
 
-        # Strategy 4: "Address:" explicit label in text
+        # Strategy 4: Explicit "Address:" label
         if not data['address']:
             addr_label = re.search(r'(?:^|\n)Address:\s*(.+)', text, re.IGNORECASE)
             if addr_label:
@@ -339,7 +341,26 @@ def scrape_with_jina(url: str) -> dict:
                 if _looks_like_address(candidate):
                     data['address'] = candidate
 
-        # Strategy 5: Street-name pattern (Road, Avenue, Lane …) — OSM-safe
+        # Strategy 5: Text immediately before any valid UK postcode in the text.
+        # Rightmove often renders: "Prettywood, Heap Bridge\nBL9 7XT\n£210,000"
+        if not data['address']:
+            for pc_match in re.finditer(r'([A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})', text):
+                pc_candidate = pc_match.group(1).strip().upper()
+                if not pc_candidate.replace(' ', '') in text.replace(' ', ''):
+                    continue
+                # Grab up to 120 chars before the postcode
+                start = max(0, pc_match.start() - 120)
+                before = text[start:pc_match.start()].strip()
+                # Take the last non-empty line before the postcode
+                lines = [l.strip() for l in before.split('\n') if l.strip()]
+                if lines:
+                    candidate = _clean_addr(lines[-1])
+                    if _looks_like_address(candidate) and len(candidate) > 4:
+                        data['address'] = candidate
+                        print(f"[Jina] Address from text before postcode: {candidate}")
+                        break
+
+        # Strategy 6: Street-name pattern (Road, Avenue, Lane …) — OSM-safe
         if not data['address']:
             for m in re.finditer(
                 r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)?\s+'
