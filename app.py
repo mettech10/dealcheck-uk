@@ -280,6 +280,8 @@ def scrape_with_jina(url: str) -> dict:
             raw = re.sub(r'\s*[-|]\s*(Rightmove|Zoopla|OnTheMarket).*', '', raw, flags=re.IGNORECASE)
             # Remove trailing sale/rent description: "- Property for Sale", "- For Sale"
             raw = re.sub(r'\s*[-–]\s*(?:property\s+)?(?:for sale|to rent|to let)\s*$', '', raw, flags=re.IGNORECASE)
+            # Remove leading "To Let:", "For Sale:", "To Rent:" prefix
+            raw = re.sub(r'^(?:to let|for sale|to rent)\s*:\s*', '', raw, flags=re.IGNORECASE)
             # If "for sale in / to rent in / to let at" is present, keep only the part after it
             m = re.search(r'\b(?:for sale|to rent|to let)\s+(?:in|at)\s+', raw, re.IGNORECASE)
             if m:
