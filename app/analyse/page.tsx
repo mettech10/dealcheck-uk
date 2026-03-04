@@ -141,12 +141,13 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
   }
   
   // COMPARABLE SOLD PRICES TABLE
-  if (r.comparable_sales && r.comparable_sales.length > 0) {
+  if ((r.sold_comparables || r.comparable_sales)?.length > 0) {
+    const sales = r.sold_comparables || r.comparable_sales
     formatted += `📈 COMPARABLE SOLD PRICES\n`
     formatted += `─`.repeat(75) + `\n`
     formatted += `  ${'Address'.padEnd(25)} ${'Price'.padStart(12)} ${'Type'.padEnd(15)} ${'Date'.padStart(12)}\n`
     formatted += `  ${'─'.repeat(75)}\n`
-    r.comparable_sales.slice(0, 5).forEach((sale: any) => {
+    sales.slice(0, 5).forEach((sale: any) => {
       const addr = (sale.address || 'N/A').substring(0, 22).padEnd(25)
       const price = `£${(sale.price || 0).toLocaleString()}`.padStart(12)
       const type = (sale.type || 'N/A').padEnd(15)
@@ -155,16 +156,17 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
     })
     formatted += `\n`
   }
-  
+
   // COMPARABLE RENT PRICES TABLE
-  if (r.comparable_rents && r.comparable_rents.length > 0) {
+  if ((r.rent_comparables || r.comparable_rents)?.length > 0) {
+    const rents = r.rent_comparables || r.comparable_rents
     formatted += `🏠 COMPARABLE RENTAL PRICES\n`
     formatted += `─`.repeat(75) + `\n`
     formatted += `  ${'Address'.padEnd(25)} ${'Rent'.padStart(12)} ${'Type'.padEnd(15)} ${'Beds'.padStart(6)}\n`
     formatted += `  ${'─'.repeat(75)}\n`
-    r.comparable_rents.slice(0, 5).forEach((rent: any) => {
+    rents.slice(0, 5).forEach((rent: any) => {
       const addr = (rent.address || 'N/A').substring(0, 22).padEnd(25)
-      const price = `£${(rent.rent || 0).toLocaleString()}/mo`.padStart(12)
+      const price = `£${(rent.monthly_rent || rent.rent || 0).toLocaleString()}/mo`.padStart(12)
       const type = (rent.type || 'N/A').padEnd(15)
       const beds = (rent.bedrooms || 'N/A').toString().padStart(6)
       formatted += `  ${addr} ${price} ${type} ${beds}\n`
