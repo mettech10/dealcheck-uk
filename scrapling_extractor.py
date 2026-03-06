@@ -221,7 +221,22 @@ class PropertyExtractor:
             except Exception as e:
                 print(f"[Scraper] __NEXT_DATA__ parse error: {e}")
 
-        # 5b. meta itemprop="streetAddress" (schema.org — works on Rightmove & Zoopla)
+        # 5b. og:title meta tag — the most reliable heading-level address source.
+        # All portals (Rightmove, Zoopla, OnTheMarket) set og:title to
+        # something like "3 bed house for sale in Street, Town, PC | Portal"
+        if not data['address']:
+            og_title = re.search(
+                r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']'
+                r'|<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:title["\']',
+                html, re.IGNORECASE
+            )
+            if og_title:
+                addr = self._clean_title_to_address(og_title.group(1) or og_title.group(2) or '')
+                if addr and len(addr) > 3:
+                    data['address'] = addr
+                    print(f"[Scraper] Address from og:title: {data['address']}")
+
+        # 5c. meta itemprop="streetAddress" (schema.org — works on Rightmove & Zoopla)
         if not data['address']:
             meta_addr = re.search(
                 r'<meta[^>]+itemprop=["\']streetAddress["\'][^>]+content=["\']([^"\']+)["\']'
@@ -234,7 +249,7 @@ class PropertyExtractor:
                     data['address'] = addr
                     print(f"[Scraper] Address from meta itemprop: {data['address']}")
 
-        # 5c. JSON-LD structured data (<script type="application/ld+json">)
+        # 5d. JSON-LD structured data (<script type="application/ld+json">)
         if not data['address']:
             for ld_match in re.finditer(
                 r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
@@ -242,7 +257,6 @@ class PropertyExtractor:
             ):
                 try:
                     ld = json.loads(ld_match.group(1))
-                    # Handle both single object and array
                     items = ld if isinstance(ld, list) else [ld]
                     for item in items:
                         addr_obj = item.get('address', {})
@@ -255,7 +269,6 @@ class PropertyExtractor:
                                       or addr_obj.get('name'))
                             if street and len(street) > 3:
                                 data['address'] = street.strip()
-                                # Grab postalCode too
                                 if not data['postcode'] and addr_obj.get('postalCode'):
                                     data['postcode'] = addr_obj['postalCode'].upper()
                                 break
@@ -265,7 +278,21 @@ class PropertyExtractor:
                 except Exception:
                     continue
 
-        # 5d. CSS class selector — h1/h2 with 'address' in the class name
+        # 5e. First <h1> on the page — the primary heading under the gallery
+        # on Rightmove, OnTheMarket, Zoopla. This is the address the user sees.
+        if not data['address']:
+            h1_match = re.search(
+                r'<h1[^>]*>\s*(.*?)\s*</h1>',
+                html, re.IGNORECASE | re.DOTALL
+            )
+            if h1_match:
+                h1_text = re.sub(r'<[^>]+>', '', h1_match.group(1)).strip()
+                addr = self._clean_title_to_address(h1_text)
+                if addr and len(addr) > 3:
+                    data['address'] = addr
+                    print(f"[Scraper] Address from first <h1>: {data['address']}")
+
+        # 5f. CSS class selector — h1/h2/span/div with 'address' in the class name
         if not data['address']:
             css_addr = re.search(
                 r'<(?:h1|h2|span|p|div)[^>]+class=["\'][^"\']*address[^"\']*["\'][^>]*>\s*([^<]{5,120})\s*<',
@@ -277,27 +304,68 @@ class PropertyExtractor:
                     data['address'] = addr
                     print(f"[Scraper] Address from CSS class: {data['address']}")
 
-        # 5e. HTML <title> fallback — least reliable but catches remaining cases
+        # 5g. HTML <title> fallback
         if not data['address']:
             title_match = re.search(r'<title>(.*?)</title>', html, re.IGNORECASE)
             if title_match:
-                title = title_match.group(1)
-                title = re.sub(r'\s*[-|]\s*(Rightmove|Zoopla|OnTheMarket).*', '', title, flags=re.IGNORECASE)
-                title = re.sub(r'^(?:to let|for sale|to rent)\s*:\s*', '', title, flags=re.IGNORECASE)
-                sale_in = re.search(r'\b(?:for sale|to rent|to let)\s+(?:in|at)\s+', title, re.IGNORECASE)
-                if sale_in:
-                    data['address'] = title[sale_in.end():].strip()
-                else:
-                    clean = re.sub(
-                        r'^(?:\d+\s+)?(?:bed(?:room)?s?\s+)?'
-                        r'(?:(?:detached|semi[- ]detached|terraced|flat|apartment|bungalow|maisonette|studio)\s+)?'
-                        r'(?:house|property|home)?\s*',
-                        '', title, flags=re.IGNORECASE
-                    ).strip()
-                    if clean and len(clean) > 5:
-                        data['address'] = clean
+                addr = self._clean_title_to_address(title_match.group(1))
+                if addr and len(addr) > 5:
+                    data['address'] = addr
 
         return data
+
+    def _clean_title_to_address(self, title: str) -> Optional[str]:
+        """Extract the address portion from a page title or heading.
+
+        Handles common formats from Rightmove, Zoopla, OnTheMarket:
+          "3 bed semi for sale in Street, Town, PC | Rightmove"
+          "3 bedroom detached house for sale, Street, Town - OnTheMarket.com"
+          "Street, Town, PC - 3 bed house for sale | Zoopla"
+        """
+        if not title:
+            return None
+        title = title.strip()
+        # Strip portal suffix: "| Rightmove", "- Zoopla", "- OnTheMarket.com"
+        title = re.sub(
+            r'\s*[-|]\s*(?:Rightmove|Zoopla|OnTheMarket|onthemarket)(?:\.com)?.*$',
+            '', title, flags=re.IGNORECASE
+        ).strip()
+        # Strip leading "To Let: / For Sale: / To Rent:" prefix
+        title = re.sub(r'^(?:to let|for sale|to rent)\s*:\s*', '', title, flags=re.IGNORECASE)
+
+        # Pattern 1: "… for sale in/at Street, Town"
+        sale_in = re.search(
+            r'\b(?:for sale|to rent|to let)\s+(?:in|at)\s+',
+            title, re.IGNORECASE
+        )
+        if sale_in:
+            return title[sale_in.end():].strip(' ,-')
+
+        # Pattern 2: "… for sale, Street, Town" or "… for sale - Street, Town"
+        sale_comma = re.search(
+            r'\b(?:for sale|to rent|to let)\s*[,\-–]\s+',
+            title, re.IGNORECASE
+        )
+        if sale_comma:
+            return title[sale_comma.end():].strip(' ,-')
+
+        # Pattern 3: Strip bedroom/type prefix then any remaining "for sale"
+        clean = re.sub(
+            r'^(?:\d+\s+)?(?:bed(?:room)?s?\s+)?'
+            r'(?:(?:detached|semi[- ]?detached|terraced|end[- ]?terrace|'
+            r'flat|apartment|bungalow|maisonette|studio|cottage|townhouse)\s+)?'
+            r'(?:house|property|home)?\s*',
+            '', title, flags=re.IGNORECASE
+        ).strip()
+        # Strip leftover "for sale" / "to rent" + separator
+        clean = re.sub(
+            r'^[-–\s]*(?:for sale|to rent|to let)\s*[,:\-–\s]+',
+            '', clean, flags=re.IGNORECASE
+        ).strip(' ,-')
+
+        if clean and len(clean) > 3:
+            return clean
+        return None
 
 
 # Main function
