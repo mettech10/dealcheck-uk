@@ -1257,7 +1257,7 @@
                 renderResults(json.results);
                 if (data.postcode) loadCrimeData(data.postcode);
             } else if (json.code === 'subscription_required') {
-                showError('🔒 Subscription required — please upgrade your plan to run analyses.', 'upgrade');
+                showError('🔒 Subscription required — upgrade your plan or pay per deal.', 'upgrade');
             } else {
                 showError(json.message || 'Analysis failed. Please check your inputs and try again.');
             }
@@ -1442,11 +1442,35 @@
             el.style.cssText = 'margin:16px 0;padding:16px 20px;border-radius:12px;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;font-weight:500;font-size:0.95rem;display:flex;justify-content:space-between;align-items:center;gap:12px';
             document.getElementById('dealForm').after(el);
         }
-        const upgradeLink = code === 'upgrade'
-            ? ' <a href="https://metusaproperty.co.uk/pricing" style="color:#1B1F3B;font-weight:700;text-decoration:underline">View Plans →</a>' : '';
-        el.innerHTML = `<span>${esc(msg)}${upgradeLink}</span><button onclick="this.closest(\'#analysisError\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#991b1b">×</button>`;
+        const upgradeLinks = code === 'upgrade'
+            ? ` <a href="https://metusaproperty.co.uk/pricing" style="color:#1B1F3B;font-weight:700;text-decoration:underline">View Plans →</a>`
+              + ` <button onclick="payPerDeal()" style="margin-left:8px;padding:4px 12px;background:#1B1F3B;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:0.9rem">Pay per deal →</button>`
+            : '';
+        el.innerHTML = `<span>${esc(msg)}${upgradeLinks}</span><button onclick="this.closest(\'#analysisError\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#991b1b">×</button>`;
         el.style.display = 'flex';
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ── Pay Per Deal ────────────────────────────────────────────────────────
+    async function payPerDeal() {
+        try {
+            const resp = await fetch('/create-checkout-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    successUrl: window.location.origin + '/analyze?payment=success',
+                    cancelUrl:  window.location.href,
+                })
+            });
+            const json = await resp.json();
+            if (json.url) {
+                window.location.href = json.url;
+            } else {
+                showError(json.error || 'Could not start checkout. Please try again.');
+            }
+        } catch (err) {
+            showError('Network error — please check your connection and try again.');
+        }
     }
 
     // ── PDF Download ───────────────────────────────────────────────────────

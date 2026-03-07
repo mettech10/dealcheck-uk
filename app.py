@@ -3881,7 +3881,75 @@ def stripe_webhook():
                 'updated_at': datetime.utcnow().isoformat(),
             })
 
+    elif event_type == 'checkout.session.completed':
+        # Pay-per-deal: one-time payment completed — grant access for one analysis
+        session_id  = obj.get('id', '')
+        customer_id = obj.get('customer', '')
+        email       = (obj.get('customer_details') or {}).get('email', '') \
+                      or obj.get('customer_email', '') \
+                      or get_stripe_customer_email(customer_id)
+        if session_id and email:
+            supabase_upsert_subscription({
+                'id':              session_id,
+                'email':           email.lower().strip(),
+                'status':          'active',
+                'plan_id':         'pay_per_deal',
+                'stripe_customer': customer_id,
+                'updated_at':      datetime.utcnow().isoformat(),
+            })
+
     return jsonify({'received': True}), 200
+
+
+@app.route('/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    """
+    Create a Stripe Checkout Session for pay-per-deal (one-time payment).
+    Requires env vars:
+        STRIPE_SECRET_KEY            — Stripe secret key (sk_...)
+        STRIPE_PRICE_ID_PAY_PER_DEAL — Stripe price ID for the one-off deal report
+    Body JSON: { email?, successUrl?, cancelUrl? }
+    Returns: { url } — redirect the browser to this URL to complete payment
+    """
+    data        = request.get_json(silent=True) or {}
+    email       = str(data.get('email', '')).strip().lower()
+    success_url = str(data.get('successUrl', '')).strip() or (request.host_url.rstrip('/') + '/analyze?payment=success')
+    cancel_url  = str(data.get('cancelUrl',  '')).strip() or (request.host_url.rstrip('/') + '/analyze')
+
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY', '')
+    price_id   = os.environ.get('STRIPE_PRICE_ID_PAY_PER_DEAL', '')
+
+    if not stripe_key:
+        app.logger.error('[Stripe] STRIPE_SECRET_KEY not configured')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+    if not price_id:
+        app.logger.error('[Stripe] STRIPE_PRICE_ID_PAY_PER_DEAL not configured')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+
+    payload = {
+        'mode':                     'payment',
+        'line_items[0][price]':     price_id,
+        'line_items[0][quantity]':  '1',
+        'success_url':              success_url,
+        'cancel_url':               cancel_url,
+    }
+    if email:
+        payload['customer_email'] = email
+
+    try:
+        resp = requests.post(
+            'https://api.stripe.com/v1/checkout/sessions',
+            auth=(stripe_key, ''),
+            data=payload,
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return jsonify({'url': resp.json()['url']})
+        app.logger.error(f'[Stripe] Checkout session error {resp.status_code}: {resp.text}')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+    except Exception as e:
+        app.logger.error(f'[Stripe] Checkout session exception: {e}')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
 
 
 if __name__ == '__main__':
