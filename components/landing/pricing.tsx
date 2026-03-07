@@ -4,19 +4,19 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Check } from "lucide-react"
-import { openCheckout } from "@/lib/paddle"
+import { openCheckout } from "@/lib/stripe"
 
-// ── Configure your Paddle price IDs ────────────────────────────────────
-// Paddle Dashboard → Catalogue → Prices → copy the price ID (e.g. pri_xxx)
-// Add to .env.local:
-//   NEXT_PUBLIC_PADDLE_PRICE_PAY_PER_DEAL=pri_xxxxxxxxxxxxxxxx
-//   NEXT_PUBLIC_PADDLE_PRICE_PRO=pri_xxxxxxxxxxxxxxxx
-//   NEXT_PUBLIC_PADDLE_PRICE_UNLIMITED=pri_xxxxxxxxxxxxxxxx
+// ── Configure your Stripe price IDs ─────────────────────────────────────
+// Stripe Dashboard → Products → copy the price ID (e.g. price_xxx)
+// Add to Vercel environment variables:
+//   NEXT_PUBLIC_STRIPE_PRICE_PAY_PER_DEAL=price_xxxxxxxxxxxxxxxx
+//   NEXT_PUBLIC_STRIPE_PRICE_PRO=price_xxxxxxxxxxxxxxxx
+//   NEXT_PUBLIC_STRIPE_PRICE_UNLIMITED=price_xxxxxxxxxxxxxxxx
 
 const PRICE_IDS = {
-  payPerDeal: process.env.NEXT_PUBLIC_PADDLE_PRICE_PAY_PER_DEAL ?? "",
-  pro:        process.env.NEXT_PUBLIC_PADDLE_PRICE_PRO ?? "",
-  unlimited:  process.env.NEXT_PUBLIC_PADDLE_PRICE_UNLIMITED ?? "",
+  payPerDeal: process.env.NEXT_PUBLIC_STRIPE_PRICE_PAY_PER_DEAL ?? "",
+  pro:        process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO ?? "",
+  unlimited:  process.env.NEXT_PUBLIC_STRIPE_PRICE_UNLIMITED ?? "",
 }
 
 const plans = [
@@ -105,20 +105,16 @@ function PlanButton({ plan }: { plan: (typeof plans)[number] }) {
     )
   }
 
-  // Paid plan — open Paddle checkout overlay
+  // Paid plan — redirect to Stripe Checkout
   return (
     <Button
       variant={plan.highlighted ? "default" : "outline"}
       className="w-full"
       onClick={() => {
         if (!plan.priceId) {
-          console.warn(
-            `[Paddle] Price ID not yet configured for "${plan.name}". ` +
-            `Add it to .env.local as NEXT_PUBLIC_PADDLE_PRICE_XXX`
-          )
           alert(
             `Payment for "${plan.name}" is not yet activated.\n` +
-            `Add your Paddle price ID to .env.local to enable checkout.`
+            `Add your Stripe price ID to Vercel environment variables to enable checkout.`
           )
           return
         }
@@ -187,7 +183,7 @@ export function Pricing() {
 
         <p className="mt-8 text-center text-xs text-muted-foreground">
           Payments processed securely by{" "}
-          <span className="font-medium text-foreground">Paddle</span>. Cancel anytime.
+          <span className="font-medium text-foreground">Stripe</span>. Cancel anytime.
         </p>
       </div>
     </section>
