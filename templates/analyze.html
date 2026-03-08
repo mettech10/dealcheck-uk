@@ -724,7 +724,9 @@
 
                 <!-- Monthly Rent (renamed for R2SA) -->
                 <div class="form-group" id="monthlyRentGroup">
-                    <label for="monthlyRent" id="monthlyRentLabel">Expected Monthly Rent</label>
+                    <label for="monthlyRent" id="monthlyRentLabel">Expected Monthly Rent
+                        <span id="rentLookupStatus" style="font-size:0.78rem;font-weight:400;color:var(--text-light);margin-left:6px"></span>
+                    </label>
                     <div class="input-prefix">
                         <span>£</span>
                         <input type="number" id="monthlyRent" name="monthlyRent" placeholder="950">
@@ -1750,6 +1752,61 @@
             if (p.get('mr'))   document.getElementById('monthlyRent').value = p.get('mr');
             updateFormFields();
         }
+    });
+
+    // ── PropertyData Direct: Rent Lookup ───────────────────────────────────
+    let _rentLookupTimer = null;
+
+    async function lookupRentalValuation() {
+        const postcode = document.getElementById('postcode').value.trim().toUpperCase();
+        const bedrooms = parseInt(document.getElementById('bedrooms').value) || 3;
+        const rentInput = document.getElementById('monthlyRent');
+        const statusEl  = document.getElementById('rentLookupStatus');
+        const dealType  = document.getElementById('dealType').value;
+
+        // Only auto-fill for rental strategies, not FLIP
+        if (!postcode || postcode.length < 5 || dealType === 'FLIP') return;
+        // Don't overwrite a value the user has typed
+        if (rentInput.dataset.userEdited) return;
+
+        statusEl.textContent = 'Looking up rent…';
+        try {
+            const resp = await fetch('/api/propertydata/rental-valuation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ postcode, bedrooms })
+            });
+            if (!resp.ok) { statusEl.textContent = ''; return; }
+            const json = await resp.json();
+            if (!json.success) { statusEl.textContent = ''; return; }
+
+            // Support PropertyData shape (data.estimate.monthly) and Land Registry shape (data.estimated_monthly_rent)
+            const d = json.data || {};
+            const monthly = d.estimate?.monthly ?? d.estimated_monthly_rent ?? null;
+            if (monthly && !rentInput.dataset.userEdited) {
+                rentInput.value = Math.round(monthly);
+                statusEl.textContent = `(est. from ${json.source || 'market data'})`;
+            } else {
+                statusEl.textContent = '';
+            }
+        } catch (e) {
+            statusEl.textContent = '';
+        }
+    }
+
+    function scheduleRentLookup() {
+        clearTimeout(_rentLookupTimer);
+        _rentLookupTimer = setTimeout(lookupRentalValuation, 600);
+    }
+
+    // Trigger lookup when postcode or bedrooms change
+    document.getElementById('postcode').addEventListener('change', scheduleRentLookup);
+    document.getElementById('bedrooms').addEventListener('change', scheduleRentLookup);
+
+    // Mark rent as user-edited so we don't overwrite their input
+    document.getElementById('monthlyRent').addEventListener('input', function() {
+        this.dataset.userEdited = '1';
+        document.getElementById('rentLookupStatus').textContent = '';
     });
 
     // ── Crime Data ──────────────────────────────────────────────────────────
