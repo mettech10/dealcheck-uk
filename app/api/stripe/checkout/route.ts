@@ -1,52 +1,43 @@
+import Stripe from 'stripe'
+
 /**
- * Stripe Checkout Session Handler
+ * POST /api/stripe/checkout
+ * Creates a Stripe Checkout session and returns the hosted URL.
  *
- * Creates a Stripe-hosted checkout session and redirects the user.
- *
- * Required env vars (set in Vercel):
- *   STRIPE_SECRET_KEY  — from Stripe Dashboard → Developers → API keys
+ * Body: { priceId: string, mode: 'payment' | 'subscription', email?: string }
  */
+export async function POST(req: Request) {
+  const { priceId, mode, email } = await req.json()
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url)
-  const priceId = searchParams.get('priceId')
-  const email   = searchParams.get('email') ?? undefined
-
-  if (!priceId) {
-    return Response.json({ error: 'priceId is required' }, { status: 400 })
+  if (!priceId || !mode) {
+    return Response.json({ error: 'priceId and mode are required' }, { status: 400 })
   }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY
-  if (!stripeKey) {
-    return Response.json({ error: 'Stripe is not configured' }, { status: 500 })
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    console.error('[Stripe] STRIPE_SECRET_KEY is not set')
+    return Response.json({ error: 'Payment not configured' }, { status: 500 })
   }
 
-  const origin = req.headers.get('origin') ?? 'https://metalyzi.co.uk'
+  const stripe = new Stripe(secretKey)
 
-  const body = new URLSearchParams({
-    'mode': 'subscription',
-    'line_items[0][price]': priceId,
-    'line_items[0][quantity]': '1',
-    'success_url': `${origin}/analyse?payment=success`,
-    'cancel_url': `${origin}/#pricing`,
-  })
-  if (email) body.set('customer_email', email)
+  const origin =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (req.headers.get('origin') || 'http://localhost:3000')
 
-  const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${stripeKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  })
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode,
+      line_items: [{ price: priceId, quantity: 1 }],
+      ...(email ? { customer_email: email } : {}),
+      success_url: `${origin}/analyse?payment=success`,
+      cancel_url: `${origin}/#pricing`,
+      metadata: { source: 'dealcheck-uk' },
+    })
 
-  if (!res.ok) {
-    const err = await res.json()
-    console.error('[Stripe] Checkout session error:', err)
+    return Response.json({ url: session.url })
+  } catch (err) {
+    console.error('[Stripe] Failed to create checkout session:', err)
     return Response.json({ error: 'Failed to create checkout session' }, { status: 500 })
   }
-
-  const session = await res.json()
-  return Response.redirect(session.url, 303)
 }

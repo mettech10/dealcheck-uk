@@ -4,11 +4,11 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Check } from "lucide-react"
-import { openCheckout } from "@/lib/stripe"
+import { openStripeCheckout } from "@/lib/stripe"
 
-// ── Configure your Stripe price IDs ─────────────────────────────────────
-// Stripe Dashboard → Products → copy the price ID (e.g. price_xxx)
-// Add to Vercel environment variables:
+// ── Configure your Stripe price IDs ────────────────────────────────────
+// Stripe Dashboard → Products → copy the Price ID (e.g. price_xxx)
+// Add to .env.local / Vercel / Render:
 //   NEXT_PUBLIC_STRIPE_PRICE_PAY_PER_DEAL=price_xxxxxxxxxxxxxxxx
 //   NEXT_PUBLIC_STRIPE_PRICE_PRO=price_xxxxxxxxxxxxxxxx
 //   NEXT_PUBLIC_STRIPE_PRICE_UNLIMITED=price_xxxxxxxxxxxxxxxx
@@ -34,6 +34,7 @@ const plans = [
     cta: "Get Started Free",
     highlighted: false,
     priceId: null,
+    mode: null as 'payment' | 'subscription' | null,
     href: "/analyse",
   },
   {
@@ -48,9 +49,10 @@ const plans = [
       "Cash flow projections",
       "PDF report export",
     ],
-    cta: "Buy a Credit",
+    cta: "Pay per Deal →",
     highlighted: false,
     priceId: PRICE_IDS.payPerDeal,
+    mode: 'payment' as const,
     href: null,
   },
   {
@@ -69,6 +71,7 @@ const plans = [
     cta: "Go Pro",
     highlighted: true,
     priceId: PRICE_IDS.pro,
+    mode: 'subscription' as const,
     href: null,
   },
   {
@@ -87,6 +90,7 @@ const plans = [
     cta: "Go Unlimited",
     highlighted: false,
     priceId: PRICE_IDS.unlimited,
+    mode: 'subscription' as const,
     href: null,
   },
 ]
@@ -111,14 +115,18 @@ function PlanButton({ plan }: { plan: (typeof plans)[number] }) {
       variant={plan.highlighted ? "default" : "outline"}
       className="w-full"
       onClick={() => {
-        if (!plan.priceId) {
+        if (!plan.priceId || !plan.mode) {
+          console.warn(
+            `[Stripe] Price ID not yet configured for "${plan.name}". ` +
+            `Add it to .env as NEXT_PUBLIC_STRIPE_PRICE_XXX`
+          )
           alert(
             `Payment for "${plan.name}" is not yet activated.\n` +
-            `Add your Stripe price ID to Vercel environment variables to enable checkout.`
+            `Add your Stripe price ID to your environment variables.`
           )
           return
         }
-        openCheckout(plan.priceId)
+        openStripeCheckout(plan.priceId, plan.mode)
       }}
     >
       {plan.cta}
