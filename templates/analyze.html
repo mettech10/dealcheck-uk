@@ -542,12 +542,19 @@
 <nav class="navbar">
     <a href="/" class="logo">
         <div class="logo-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20">
-                <rect x="4"  y="4"  width="4" height="22" rx="0.5" fill="rgba(255,255,255,0.92)"/>
-                <rect x="9"  y="16" width="4" height="10" rx="0.5" fill="rgba(255,255,255,0.92)"/>
-                <rect x="14" y="8"  width="4" height="18" rx="0.5" fill="rgba(255,255,255,0.92)"/>
-                <rect x="19" y="16" width="4" height="10" rx="0.5" fill="rgba(255,255,255,0.92)"/>
-                <rect x="24" y="4"  width="4" height="22" rx="0.5" fill="rgba(255,255,255,0.92)"/>
+            <!-- Metusa skyline-arc logo (white on dark background) -->
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 56 52" width="24" height="22">
+                <!-- Small accent dash top-left -->
+                <line x1="3" y1="14" x2="10" y2="11" stroke="rgba(255,255,255,0.92)" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Building 1: hollow box left -->
+                <rect x="3" y="24" width="9" height="22" rx="0.8" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="2"/>
+                <!-- Building 2: tall outline centre-left -->
+                <rect x="15" y="10" width="5" height="36" rx="0.8" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="2"/>
+                <!-- Building 3: medium outline centre -->
+                <rect x="23" y="16" width="5" height="30" rx="0.8" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="2"/>
+                <!-- Building 4 + arc: D-shape right -->
+                <line x1="31" y1="8" x2="31" y2="46" stroke="rgba(255,255,255,0.92)" stroke-width="2" stroke-linecap="round"/>
+                <path d="M31 8 Q53 8 53 27 Q53 46 31 46" fill="none" stroke="rgba(255,255,255,0.92)" stroke-width="2" stroke-linecap="round"/>
             </svg>
         </div>
         Metusa
@@ -926,6 +933,49 @@
             </table>
         </div>
 
+        <!-- House Valuation -->
+        <div class="card" id="houseValuationCard" style="display:none">
+            <div class="card-title">🏠 House Valuation</div>
+            <div id="houseValuationContent"></div>
+        </div>
+
+        <!-- Sold Comparables -->
+        <div class="card" id="soldCompsCard" style="display:none">
+            <div class="card-title">🏷️ Sold Comparables <span id="soldCompsSource" style="font-size:0.75rem;font-weight:400;color:var(--text-light)"></span></div>
+            <div class="table-wrapper" style="overflow-x:auto">
+                <table class="projection-table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Price</th>
+                            <th>Type</th>
+                            <th>Beds</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="soldCompsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Rent Comparables -->
+        <div class="card" id="rentCompsCard" style="display:none">
+            <div class="card-title">🔑 Rent Comparables <span id="rentCompsSource" style="font-size:0.75rem;font-weight:400;color:var(--text-light)"></span></div>
+            <div class="table-wrapper" style="overflow-x:auto">
+                <table class="projection-table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Monthly Rent</th>
+                            <th>Distance</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rentCompsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Download + Save + Share -->
         <div class="pdf-btn-row">
             <button class="btn btn-outline" onclick="saveAnalysis()" id="saveBtn">💾 Save Analysis</button>
@@ -1257,7 +1307,7 @@
                 renderResults(json.results);
                 if (data.postcode) loadCrimeData(data.postcode);
             } else if (json.code === 'subscription_required') {
-                showError('🔒 Subscription required — please upgrade your plan to run analyses.', 'upgrade');
+                showError('🔒 Subscription required — upgrade your plan or pay per deal.', 'upgrade');
             } else {
                 showError(json.message || 'Analysis failed. Please check your inputs and try again.');
             }
@@ -1407,6 +1457,63 @@
                     <td>£${(y.equity || 0).toLocaleString()}</td>
                 </tr>`).join('');
         }
+
+        // House Valuation
+        const hv = r.house_valuation;
+        if (hv && hv.estimate) {
+            document.getElementById('houseValuationCard').style.display = 'block';
+            const confColor = hv.confidence === 'high' ? '#16a34a' : hv.confidence === 'medium' ? '#d97706' : '#6b7280';
+            document.getElementById('houseValuationContent').innerHTML = `
+                <div class="metrics-grid" style="margin-bottom:${hv.note ? '12px' : '0'}">
+                    <div class="metric-card">
+                        <div class="metric-label">Estimated Value</div>
+                        <div class="metric-value">£${Math.round(hv.estimate).toLocaleString()}</div>
+                    </div>
+                    ${hv.confidence ? `<div class="metric-card">
+                        <div class="metric-label">Confidence</div>
+                        <div class="metric-value" style="color:${confColor};text-transform:capitalize">${hv.confidence}</div>
+                    </div>` : ''}
+                    ${hv.range && hv.range.lower ? `<div class="metric-card">
+                        <div class="metric-label">Range</div>
+                        <div class="metric-value">£${Math.round(hv.range.lower).toLocaleString()} – £${Math.round(hv.range.upper).toLocaleString()}</div>
+                    </div>` : ''}
+                    ${hv.source ? `<div class="metric-card">
+                        <div class="metric-label">Source</div>
+                        <div class="metric-value" style="font-size:0.85rem">${esc(hv.source)}</div>
+                    </div>` : ''}
+                </div>
+                ${hv.note ? `<div style="font-size:0.82rem;color:var(--text-light);font-style:italic">${esc(hv.note)}</div>` : ''}`;
+        }
+
+        // Sold Comparables
+        const soldComps = r.sold_comparables || [];
+        if (soldComps.length > 0) {
+            document.getElementById('soldCompsCard').style.display = 'block';
+            const marketSrc = r.market_source ? `(${r.market_source})` : '';
+            document.getElementById('soldCompsSource').textContent = marketSrc;
+            document.getElementById('soldCompsBody').innerHTML = soldComps.map(s => `
+                <tr>
+                    <td>${esc(s.address || 'N/A')}</td>
+                    <td><strong>£${(s.price || 0).toLocaleString()}</strong></td>
+                    <td>${esc(s.type || 'N/A')}</td>
+                    <td>${s.bedrooms || '–'}</td>
+                    <td>${esc(s.date || 'N/A')}</td>
+                </tr>`).join('');
+        }
+
+        // Rent Comparables
+        const rentComps = r.rent_comparables || [];
+        if (rentComps.length > 0) {
+            document.getElementById('rentCompsCard').style.display = 'block';
+            document.getElementById('rentCompsSource').textContent = rentComps[0].source ? `(${rentComps[0].source})` : '';
+            document.getElementById('rentCompsBody').innerHTML = rentComps.map(rc => `
+                <tr>
+                    <td>${esc(rc.address || 'N/A')}</td>
+                    <td><strong>£${(rc.monthly_rent || 0).toLocaleString()}/mo</strong></td>
+                    <td>${rc.distance_miles != null ? rc.distance_miles + ' mi' : (rc.confidence ? 'Confidence: ' + rc.confidence : '–')}</td>
+                    <td>${esc(rc.date || 'N/A')}</td>
+                </tr>`).join('');
+        }
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
@@ -1442,11 +1549,35 @@
             el.style.cssText = 'margin:16px 0;padding:16px 20px;border-radius:12px;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;font-weight:500;font-size:0.95rem;display:flex;justify-content:space-between;align-items:center;gap:12px';
             document.getElementById('dealForm').after(el);
         }
-        const upgradeLink = code === 'upgrade'
-            ? ' <a href="https://metusaproperty.co.uk/pricing" style="color:#1B1F3B;font-weight:700;text-decoration:underline">View Plans →</a>' : '';
-        el.innerHTML = `<span>${esc(msg)}${upgradeLink}</span><button onclick="this.closest(\'#analysisError\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#991b1b">×</button>`;
+        const upgradeLinks = code === 'upgrade'
+            ? ` <a href="https://metusaproperty.co.uk/pricing" style="color:#1B1F3B;font-weight:700;text-decoration:underline">View Plans →</a>`
+              + ` <button onclick="payPerDeal()" style="margin-left:8px;padding:4px 12px;background:#1B1F3B;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:0.9rem">Pay per deal →</button>`
+            : '';
+        el.innerHTML = `<span>${esc(msg)}${upgradeLinks}</span><button onclick="this.closest(\'#analysisError\').remove()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:#991b1b">×</button>`;
         el.style.display = 'flex';
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ── Pay Per Deal ────────────────────────────────────────────────────────
+    async function payPerDeal() {
+        try {
+            const resp = await fetch('/create-checkout-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    successUrl: window.location.origin + '/analyze?payment=success',
+                    cancelUrl:  window.location.href,
+                })
+            });
+            const json = await resp.json();
+            if (json.url) {
+                window.location.href = json.url;
+            } else {
+                showError(json.error || 'Could not start checkout. Please try again.');
+            }
+        } catch (err) {
+            showError('Network error — please check your connection and try again.');
+        }
     }
 
     // ── PDF Download ───────────────────────────────────────────────────────

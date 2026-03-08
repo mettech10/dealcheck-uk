@@ -489,24 +489,27 @@ def check_subscription(email: str) -> bool:
         app.logger.warning(f'[Supabase] subscription check failed: {e}')
         return True  # Fail open — don't block users on infra error
 
-# ── Paddle HMAC verification ───────────────────────────────────────────────
-def verify_paddle_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+# ── Stripe HMAC verification ───────────────────────────────────────────────
+def verify_stripe_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
     """
-    Verify Paddle webhook signature.
-    Header format: ts=TIMESTAMP;h1=HMAC_SHA256_HEX
-    Signed string:  {ts}:{raw_body}
+    Verify Stripe webhook signature.
+    Header format: t=TIMESTAMP,v1=HMAC_SHA256_HEX,...
+    Signed string:  {timestamp}.{raw_body}
     """
     if not signature_header or not secret:
         return False
     try:
-        parts = dict(p.split('=', 1) for p in signature_header.split(';'))
-        ts  = parts.get('ts', '')
-        h1  = parts.get('h1', '')
-        if not ts or not h1:
+        parts: dict[str, list] = {}
+        for item in signature_header.split(','):
+            key, _, value = item.partition('=')
+            parts.setdefault(key.strip(), []).append(value.strip())
+        ts         = parts.get('t', [''])[0]
+        signatures = parts.get('v1', [])
+        if not ts or not signatures:
             return False
-        signed = f'{ts}:{raw_body.decode("utf-8")}'
+        signed   = f'{ts}.{raw_body.decode("utf-8")}'
         expected = hmac.new(secret.encode(), signed.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected, h1)
+        return any(hmac.compare_digest(expected, sig) for sig in signatures)
     except Exception:
         return False
 
@@ -3762,32 +3765,33 @@ def get_crime_data():
         return jsonify({'success': False, 'message': 'Error fetching crime data'}), 500
 
 
-@app.route('/webhook/paddle', methods=['POST'])
-def paddle_webhook():
+@app.route('/webhook/stripe', methods=['POST'])
+def stripe_webhook():
     """
-    Receive and verify Paddle billing webhooks.
-    Set PADDLE_WEBHOOK_SECRET env var to your Paddle webhook secret.
+    Receive and verify Stripe billing webhooks.
+    Set STRIPE_WEBHOOK_SECRET env var to your Stripe webhook signing secret (whsec_...).
+    Set STRIPE_SECRET_KEY env var to your Stripe secret key (sk_...) for customer email lookup.
     Writes subscription rows to Supabase subscriptions table.
 
     Expected Supabase schema:
         CREATE TABLE subscriptions (
-            id              TEXT PRIMARY KEY,  -- paddle subscription id
+            id              TEXT PRIMARY KEY,  -- stripe subscription id
             email           TEXT NOT NULL,
             status          TEXT NOT NULL,     -- 'active' | 'cancelled' | 'paused'
             plan_id         TEXT,
-            paddle_customer TEXT,
+            stripe_customer TEXT,
             created_at      TIMESTAMPTZ DEFAULT now(),
             updated_at      TIMESTAMPTZ DEFAULT now()
         );
     """
     raw_body = request.get_data()
-    secret   = os.environ.get('PADDLE_WEBHOOK_SECRET', '')
+    secret   = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
 
     # Verify signature (skip if secret not configured — dev/test only)
     if secret:
-        sig_header = request.headers.get('Paddle-Signature', '')
-        if not verify_paddle_signature(raw_body, sig_header, secret):
-            app.logger.warning('[Paddle] Invalid webhook signature')
+        sig_header = request.headers.get('Stripe-Signature', '')
+        if not verify_stripe_signature(raw_body, sig_header, secret):
+            app.logger.warning('[Stripe] Invalid webhook signature')
             return jsonify({'error': 'invalid signature'}), 400
 
     try:
@@ -3795,41 +3799,157 @@ def paddle_webhook():
     except Exception:
         return jsonify({'error': 'bad json'}), 400
 
-    event_type = event.get('event_type', '') or event.get('alert_name', '')
-    data       = event.get('data', event)  # Paddle v2 wraps payload in 'data'
+    event_type = event.get('type', '')
+    obj        = event.get('data', {}).get('object', {})
 
-    app.logger.info(f'[Paddle] Event: {event_type}')
+    app.logger.info(f'[Stripe] Event: {event_type}')
 
-    if event_type in ('subscription.created', 'subscription.activated',
-                      'subscription.updated', 'subscription_created', 'subscription_payment_succeeded'):
-        sub_id    = data.get('id') or data.get('subscription_id', '')
-        email     = (data.get('customer', {}) or {}).get('email') or data.get('email', '')
-        plan_id   = (data.get('items', [{}])[0] or {}).get('price', {}).get('id', '') if data.get('items') else data.get('plan_id', '')
-        customer  = data.get('customer_id') or data.get('customer', {}).get('id', '')
+    def get_stripe_customer_email(customer_id: str) -> str:
+        """Fetch customer email from Stripe API using STRIPE_SECRET_KEY."""
+        stripe_key = os.environ.get('STRIPE_SECRET_KEY', '')
+        if not stripe_key or not customer_id:
+            return ''
+        try:
+            resp = requests.get(
+                f'https://api.stripe.com/v1/customers/{customer_id}',
+                auth=(stripe_key, ''),
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                return resp.json().get('email', '')
+        except Exception as e:
+            app.logger.warning(f'[Stripe] Customer lookup failed: {e}')
+        return ''
+
+    if event_type in ('customer.subscription.created', 'customer.subscription.updated'):
+        sub_id      = obj.get('id', '')
+        customer_id = obj.get('customer', '')
+        status      = obj.get('status', '')
+        items_data  = obj.get('items', {}).get('data', [])
+        plan_id     = (items_data[0] if items_data else {}).get('price', {}).get('id', '')
+        email       = obj.get('metadata', {}).get('email', '') or get_stripe_customer_email(customer_id)
+        if status in ('active', 'trialing'):
+            mapped_status = 'active'
+        elif status in ('past_due', 'unpaid'):
+            mapped_status = 'paused'
+        else:
+            mapped_status = 'cancelled'
+        if sub_id and email:
+            supabase_upsert_subscription({
+                'id':              sub_id,
+                'email':           email.lower().strip(),
+                'status':          mapped_status,
+                'plan_id':         plan_id,
+                'stripe_customer': customer_id,
+                'updated_at':      datetime.utcnow().isoformat(),
+            })
+
+    elif event_type == 'customer.subscription.deleted':
+        sub_id      = obj.get('id', '')
+        customer_id = obj.get('customer', '')
+        email       = obj.get('metadata', {}).get('email', '') or get_stripe_customer_email(customer_id)
+        if sub_id and email:
+            supabase_upsert_subscription({
+                'id':         sub_id,
+                'email':      email.lower().strip(),
+                'status':     'cancelled',
+                'updated_at': datetime.utcnow().isoformat(),
+            })
+
+    elif event_type == 'invoice.payment_succeeded':
+        sub_id      = obj.get('subscription', '')
+        customer_id = obj.get('customer', '')
+        email       = obj.get('customer_email', '') or get_stripe_customer_email(customer_id)
         if sub_id and email:
             supabase_upsert_subscription({
                 'id':              sub_id,
                 'email':           email.lower().strip(),
                 'status':          'active',
-                'plan_id':         plan_id,
-                'paddle_customer': customer,
+                'stripe_customer': customer_id,
                 'updated_at':      datetime.utcnow().isoformat(),
             })
 
-    elif event_type in ('subscription.cancelled', 'subscription_cancelled',
-                        'subscription.paused', 'subscription_payment_failed'):
-        sub_id  = data.get('id') or data.get('subscription_id', '')
-        email   = (data.get('customer', {}) or {}).get('email') or data.get('email', '')
-        new_status = 'cancelled' if 'cancel' in event_type else 'paused'
+    elif event_type == 'invoice.payment_failed':
+        sub_id      = obj.get('subscription', '')
+        customer_id = obj.get('customer', '')
+        email       = obj.get('customer_email', '') or get_stripe_customer_email(customer_id)
         if sub_id and email:
             supabase_upsert_subscription({
                 'id':         sub_id,
                 'email':      email.lower().strip(),
-                'status':     new_status,
+                'status':     'paused',
                 'updated_at': datetime.utcnow().isoformat(),
             })
 
+    elif event_type == 'checkout.session.completed':
+        # Pay-per-deal: one-time payment completed — grant access for one analysis
+        session_id  = obj.get('id', '')
+        customer_id = obj.get('customer', '')
+        email       = (obj.get('customer_details') or {}).get('email', '') \
+                      or obj.get('customer_email', '') \
+                      or get_stripe_customer_email(customer_id)
+        if session_id and email:
+            supabase_upsert_subscription({
+                'id':              session_id,
+                'email':           email.lower().strip(),
+                'status':          'active',
+                'plan_id':         'pay_per_deal',
+                'stripe_customer': customer_id,
+                'updated_at':      datetime.utcnow().isoformat(),
+            })
+
     return jsonify({'received': True}), 200
+
+
+@app.route('/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    """
+    Create a Stripe Checkout Session for pay-per-deal (one-time payment).
+    Requires env vars:
+        STRIPE_SECRET_KEY            — Stripe secret key (sk_...)
+        STRIPE_PRICE_ID_PAY_PER_DEAL — Stripe price ID for the one-off deal report
+    Body JSON: { email?, successUrl?, cancelUrl? }
+    Returns: { url } — redirect the browser to this URL to complete payment
+    """
+    data        = request.get_json(silent=True) or {}
+    email       = str(data.get('email', '')).strip().lower()
+    success_url = str(data.get('successUrl', '')).strip() or (request.host_url.rstrip('/') + '/analyze?payment=success')
+    cancel_url  = str(data.get('cancelUrl',  '')).strip() or (request.host_url.rstrip('/') + '/analyze')
+
+    stripe_key = os.environ.get('STRIPE_SECRET_KEY', '')
+    price_id   = os.environ.get('STRIPE_PRICE_ID_PAY_PER_DEAL', '')
+
+    if not stripe_key:
+        app.logger.error('[Stripe] STRIPE_SECRET_KEY not configured')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+    if not price_id:
+        app.logger.error('[Stripe] STRIPE_PRICE_ID_PAY_PER_DEAL not configured')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+
+    payload = {
+        'mode':                     'payment',
+        'line_items[0][price]':     price_id,
+        'line_items[0][quantity]':  '1',
+        'success_url':              success_url,
+        'cancel_url':               cancel_url,
+    }
+    if email:
+        payload['customer_email'] = email
+
+    try:
+        resp = requests.post(
+            'https://api.stripe.com/v1/checkout/sessions',
+            auth=(stripe_key, ''),
+            data=payload,
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return jsonify({'url': resp.json()['url']})
+        app.logger.error(f'[Stripe] Checkout session error {resp.status_code}: {resp.text}')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
+    except Exception as e:
+        app.logger.error(f'[Stripe] Checkout session exception: {e}')
+        return jsonify({'error': 'Failed to create checkout session'}), 500
 
 
 if __name__ == '__main__':
