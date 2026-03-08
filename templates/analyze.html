@@ -933,6 +933,49 @@
             </table>
         </div>
 
+        <!-- House Valuation -->
+        <div class="card" id="houseValuationCard" style="display:none">
+            <div class="card-title">🏠 House Valuation</div>
+            <div id="houseValuationContent"></div>
+        </div>
+
+        <!-- Sold Comparables -->
+        <div class="card" id="soldCompsCard" style="display:none">
+            <div class="card-title">🏷️ Sold Comparables <span id="soldCompsSource" style="font-size:0.75rem;font-weight:400;color:var(--text-light)"></span></div>
+            <div class="table-wrapper" style="overflow-x:auto">
+                <table class="projection-table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Price</th>
+                            <th>Type</th>
+                            <th>Beds</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="soldCompsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Rent Comparables -->
+        <div class="card" id="rentCompsCard" style="display:none">
+            <div class="card-title">🔑 Rent Comparables <span id="rentCompsSource" style="font-size:0.75rem;font-weight:400;color:var(--text-light)"></span></div>
+            <div class="table-wrapper" style="overflow-x:auto">
+                <table class="projection-table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Monthly Rent</th>
+                            <th>Distance</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rentCompsBody"></tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Download + Save + Share -->
         <div class="pdf-btn-row">
             <button class="btn btn-outline" onclick="saveAnalysis()" id="saveBtn">💾 Save Analysis</button>
@@ -1412,6 +1455,63 @@
                     <td>£${(y.net_income || y.annual_net || 0).toLocaleString()}</td>
                     <td>£${(y.property_value || 0).toLocaleString()}</td>
                     <td>£${(y.equity || 0).toLocaleString()}</td>
+                </tr>`).join('');
+        }
+
+        // House Valuation
+        const hv = r.house_valuation;
+        if (hv && hv.estimate) {
+            document.getElementById('houseValuationCard').style.display = 'block';
+            const confColor = hv.confidence === 'high' ? '#16a34a' : hv.confidence === 'medium' ? '#d97706' : '#6b7280';
+            document.getElementById('houseValuationContent').innerHTML = `
+                <div class="metrics-grid" style="margin-bottom:${hv.note ? '12px' : '0'}">
+                    <div class="metric-card">
+                        <div class="metric-label">Estimated Value</div>
+                        <div class="metric-value">£${Math.round(hv.estimate).toLocaleString()}</div>
+                    </div>
+                    ${hv.confidence ? `<div class="metric-card">
+                        <div class="metric-label">Confidence</div>
+                        <div class="metric-value" style="color:${confColor};text-transform:capitalize">${hv.confidence}</div>
+                    </div>` : ''}
+                    ${hv.range && hv.range.lower ? `<div class="metric-card">
+                        <div class="metric-label">Range</div>
+                        <div class="metric-value">£${Math.round(hv.range.lower).toLocaleString()} – £${Math.round(hv.range.upper).toLocaleString()}</div>
+                    </div>` : ''}
+                    ${hv.source ? `<div class="metric-card">
+                        <div class="metric-label">Source</div>
+                        <div class="metric-value" style="font-size:0.85rem">${esc(hv.source)}</div>
+                    </div>` : ''}
+                </div>
+                ${hv.note ? `<div style="font-size:0.82rem;color:var(--text-light);font-style:italic">${esc(hv.note)}</div>` : ''}`;
+        }
+
+        // Sold Comparables
+        const soldComps = r.sold_comparables || [];
+        if (soldComps.length > 0) {
+            document.getElementById('soldCompsCard').style.display = 'block';
+            const marketSrc = r.market_source ? `(${r.market_source})` : '';
+            document.getElementById('soldCompsSource').textContent = marketSrc;
+            document.getElementById('soldCompsBody').innerHTML = soldComps.map(s => `
+                <tr>
+                    <td>${esc(s.address || 'N/A')}</td>
+                    <td><strong>£${(s.price || 0).toLocaleString()}</strong></td>
+                    <td>${esc(s.type || 'N/A')}</td>
+                    <td>${s.bedrooms || '–'}</td>
+                    <td>${esc(s.date || 'N/A')}</td>
+                </tr>`).join('');
+        }
+
+        // Rent Comparables
+        const rentComps = r.rent_comparables || [];
+        if (rentComps.length > 0) {
+            document.getElementById('rentCompsCard').style.display = 'block';
+            document.getElementById('rentCompsSource').textContent = rentComps[0].source ? `(${rentComps[0].source})` : '';
+            document.getElementById('rentCompsBody').innerHTML = rentComps.map(rc => `
+                <tr>
+                    <td>${esc(rc.address || 'N/A')}</td>
+                    <td><strong>£${(rc.monthly_rent || 0).toLocaleString()}/mo</strong></td>
+                    <td>${rc.distance_miles != null ? rc.distance_miles + ' mi' : (rc.confidence ? 'Confidence: ' + rc.confidence : '–')}</td>
+                    <td>${esc(rc.date || 'N/A')}</td>
                 </tr>`).join('');
         }
     }
