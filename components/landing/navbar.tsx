@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { BarChart3, Menu, X, User, LogOut } from "lucide-react"
+import { Menu, X, User, LogOut } from "lucide-react"
 import { signOut } from "@/app/auth/actions"
 
 interface NavbarProps {
@@ -17,9 +18,13 @@ export function Navbar({ user }: NavbarProps) {
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-            <BarChart3 className="size-4.5 text-primary-foreground" />
-          </div>
+          <Image
+            src="/logo.jpg"
+            alt="Metalyzi Logo"
+            width={32}
+            height={32}
+            className="rounded-lg object-contain"
+          />
           <span className="text-lg font-semibold tracking-tight text-foreground">
             Metalyzi
           </span>
