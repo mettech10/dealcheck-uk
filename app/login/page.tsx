@@ -92,7 +92,7 @@ function LoginForm() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <Image
-              src="/logo.jpg"
+              src="/logo.png"
               alt="Metalyzi Logo"
               width={28}
               height={28}
@@ -117,7 +117,7 @@ function LoginForm() {
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-primary/10">
               <Image
-                src="/logo.jpg"
+                src="/logo.png"
                 alt="Metalyzi Logo"
                 width={40}
                 height={40}
