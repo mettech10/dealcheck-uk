@@ -3952,14 +3952,19 @@ def create_checkout_session():
         return jsonify({'error': 'Failed to create checkout session'}), 500
 
     payload = {
-        'mode':                     'payment',
-        'line_items[0][price]':     price_id,
-        'line_items[0][quantity]':  '1',
-        'success_url':              success_url,
-        'cancel_url':               cancel_url,
+        'mode':                                  'payment',
+        'line_items[0][price]':                  price_id,
+        'line_items[0][quantity]':               '1',
+        'success_url':                           success_url,
+        'cancel_url':                            cancel_url,
+        # Always create a Stripe Customer so receipts are linkable
+        'customer_creation':                     'always',
     }
     if email:
-        payload['customer_email'] = email
+        payload['customer_email']                         = email
+        # Explicitly set receipt_email so Stripe sends the confirmation
+        # to the right address (requires receipt emails enabled in Dashboard)
+        payload['payment_intent_data[receipt_email]']     = email
 
     try:
         resp = requests.post(
