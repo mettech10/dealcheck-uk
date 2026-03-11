@@ -1,12 +1,16 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for, abort
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+from collections import defaultdict
+import threading
 import json
 import os
 import hmac
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 import pdfkit
 from jinja2 import Template
 import requests
@@ -416,6 +420,95 @@ app = Flask(__name__, template_folder='templates')
 
 # Security: Generate secret key from environment or random
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
+
+# Security: Session configuration
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
+
+# ── Admin Authentication Configuration ─────────────────────────────────────
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+_admin_raw_password = os.environ.get('ADMIN_PASSWORD', '')
+ADMIN_PASSWORD_HASH = generate_password_hash(_admin_raw_password) if _admin_raw_password else None
+ADMIN_SESSION_TIMEOUT_MINUTES = int(os.environ.get('ADMIN_SESSION_TIMEOUT', '30'))
+
+# ── Analytics & Error Tracking (in-memory, thread-safe) ────────────────────
+_analytics_lock = threading.Lock()
+_analytics = {
+    'total_visits': 0,
+    'page_counts': defaultdict(int),
+    'api_counts': defaultdict(int),
+    'daily_visits': defaultdict(int),
+    'hourly_visits': defaultdict(int),
+    'error_log': [],       # last 100 errors
+    'recent_requests': [], # last 50 requests
+    'start_time': datetime.utcnow().isoformat(),
+}
+
+def _record_visit(path, method, status_code=200, is_error=False, error_detail=None):
+    """Thread-safe visit/analytics recorder."""
+    now = datetime.utcnow()
+    date_str = now.strftime('%Y-%m-%d')
+    hour_str = now.strftime('%Y-%m-%d %H:00')
+    user_agent = request.headers.get('User-Agent', '')[:200]
+    ip = get_remote_address()
+
+    entry = {
+        'ts': now.isoformat(),
+        'path': path,
+        'method': method,
+        'status': status_code,
+        'ip': ip,
+        'ua': user_agent,
+    }
+
+    with _analytics_lock:
+        _analytics['total_visits'] += 1
+        _analytics['daily_visits'][date_str] += 1
+        _analytics['hourly_visits'][hour_str] += 1
+
+        if path.startswith('/api/') or path in ('/analyze', '/ai-analyze', '/extract-url',
+                                                  '/epc-lookup', '/download-pdf'):
+            _analytics['api_counts'][path] += 1
+        else:
+            _analytics['page_counts'][path] += 1
+
+        _analytics['recent_requests'].append(entry)
+        if len(_analytics['recent_requests']) > 50:
+            _analytics['recent_requests'] = _analytics['recent_requests'][-50:]
+
+        if is_error:
+            err_entry = {**entry, 'error': error_detail or 'Unknown error'}
+            _analytics['error_log'].append(err_entry)
+            if len(_analytics['error_log']) > 100:
+                _analytics['error_log'] = _analytics['error_log'][-100:]
+
+
+def admin_required(f):
+    """Decorator: require active admin session with inactivity timeout."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('admin_login'))
+        last_activity = session.get('admin_last_activity')
+        if last_activity:
+            last_dt = datetime.fromisoformat(last_activity)
+            if datetime.utcnow() - last_dt > timedelta(minutes=ADMIN_SESSION_TIMEOUT_MINUTES):
+                session.clear()
+                return redirect(url_for('admin_login') + '?timeout=1')
+        session['admin_last_activity'] = datetime.utcnow().isoformat()
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.before_request
+def track_analytics():
+    """Record every incoming request for analytics (skip static/admin)."""
+    path = request.path
+    if path.startswith('/admin') or path.startswith('/static'):
+        return
+    _record_visit(path, request.method)
 
 # Security: Configure CORS properly (restrict in production)
 _allowed_origins = ["https://metusaproperty.co.uk", "https://analyzer.metusaproperty.co.uk"]
@@ -2260,13 +2353,12 @@ def test_propertydata():
     env_key = os.environ.get('PROPERTY_DATA_API_KEY', '')
     module_key = property_data.api_key if hasattr(property_data, 'api_key') else 'N/A'
     
-    # Detailed diagnostics
+    # Detailed diagnostics (never expose full keys in responses)
     diagnostics = {
         'env_key_present': 'PROPERTY_DATA_API_KEY' in os.environ,
         'env_key_length': len(env_key),
-        'env_key_full': env_key,  # Show full key for debugging (remove in production)
+        'env_key_preview': (env_key[:4] + '...' + env_key[-4:]) if len(env_key) > 8 else ('set' if env_key else 'not set'),
         'module_key_length': len(module_key) if module_key else 0,
-        'module_key_full': module_key if module_key else 'N/A',
         'keys_match': env_key == module_key,
     }
     
@@ -2294,6 +2386,140 @@ def test_propertydata():
         'timestamp': datetime.now().isoformat()
     })
 
+# ── Admin Routes ──────────────────────────────────────────────────────────────
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    """Admin login page. Credentials set via ADMIN_USERNAME / ADMIN_PASSWORD env vars."""
+    if session.get('admin_logged_in'):
+        return redirect(url_for('admin_dashboard'))
+
+    error = None
+    timeout = request.args.get('timeout') == '1'
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        if not ADMIN_PASSWORD_HASH:
+            error = 'Admin not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD environment variables.'
+        elif username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session.clear()
+            session['admin_logged_in'] = True
+            session['admin_last_activity'] = datetime.utcnow().isoformat()
+            session.permanent = True
+            return redirect(url_for('admin_dashboard'))
+        else:
+            error = 'Invalid username or password.'
+
+    return render_template('admin_login.html', error=error, timeout=timeout,
+                           configured=bool(ADMIN_PASSWORD_HASH))
+
+
+@app.route('/admin/logout')
+def admin_logout():
+    """Clear admin session."""
+    session.clear()
+    return redirect(url_for('admin_login'))
+
+
+@app.route('/admin')
+@app.route('/admin/dashboard')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard — visit analytics, error log, system status."""
+    return render_template('admin_dashboard.html',
+                           username=ADMIN_USERNAME,
+                           timeout_minutes=ADMIN_SESSION_TIMEOUT_MINUTES)
+
+
+@app.route('/admin/api/stats')
+@admin_required
+def admin_stats():
+    """JSON stats endpoint for dashboard live refresh."""
+    now = datetime.utcnow()
+    today = now.strftime('%Y-%m-%d')
+    week_dates = [(now - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(6, -1, -1)]
+
+    with _analytics_lock:
+        daily = dict(_analytics['daily_visits'])
+        page_counts = dict(_analytics['page_counts'])
+        api_counts = dict(_analytics['api_counts'])
+        error_log = list(reversed(_analytics['error_log']))  # newest first
+        recent = list(reversed(_analytics['recent_requests']))  # newest first
+        total = _analytics['total_visits']
+        start_time = _analytics['start_time']
+
+    today_visits = daily.get(today, 0)
+    week_visits = sum(daily.get(d, 0) for d in week_dates)
+
+    # Chart data: last 7 days
+    chart_labels = week_dates
+    chart_data = [daily.get(d, 0) for d in week_dates]
+
+    # Top pages & endpoints
+    top_pages = sorted(page_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    top_apis = sorted(api_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    # System status
+    api_status = {
+        'Anthropic AI': bool(os.environ.get('ANTHROPIC_API_KEY')),
+        'PropertyData': bool(os.environ.get('PROPERTY_DATA_API_KEY')),
+        'Stripe': bool(os.environ.get('STRIPE_SECRET_KEY')),
+        'Supabase': bool(os.environ.get('SUPABASE_URL')),
+        'Ideal Postcodes': bool(os.environ.get('IDEAL_POSTCODES_API_KEY')),
+        'EPC API': bool(os.environ.get('EPC_API_EMAIL')),
+        'TfL API': True,  # has public defaults
+        'Land Registry': True,  # public API, no key needed
+    }
+
+    uptime_seconds = (now - datetime.fromisoformat(start_time)).total_seconds()
+    uptime_str = f"{int(uptime_seconds // 3600)}h {int((uptime_seconds % 3600) // 60)}m"
+
+    return jsonify({
+        'total_visits': total,
+        'today_visits': today_visits,
+        'week_visits': week_visits,
+        'chart_labels': chart_labels,
+        'chart_data': chart_data,
+        'top_pages': top_pages,
+        'top_apis': top_apis,
+        'error_log': error_log[:20],
+        'error_count': len(error_log),
+        'recent_requests': recent[:20],
+        'api_status': api_status,
+        'uptime': uptime_str,
+        'server_start': start_time,
+        'timestamp': now.isoformat(),
+    })
+
+
+@app.route('/admin/api/report-error', methods=['POST'])
+def report_client_error():
+    """Receive client-side error reports from the frontend."""
+    try:
+        data = request.get_json(silent=True) or {}
+        error_detail = {
+            'message': escape(str(data.get('message', 'Unknown error'))[:500]),
+            'source': escape(str(data.get('source', ''))[:200]),
+            'lineno': data.get('lineno'),
+            'colno': data.get('colno'),
+            'stack': escape(str(data.get('stack', ''))[:1000]),
+            'page': escape(str(data.get('page', request.referrer or ''))[:200]),
+            'type': 'client',
+        }
+        _record_visit(
+            path=data.get('page', '/unknown'),
+            method='CLIENT_ERROR',
+            status_code=0,
+            is_error=True,
+            error_detail=error_detail,
+        )
+        return jsonify({'ok': True}), 200
+    except Exception:
+        return jsonify({'ok': False}), 200  # Always 200 to client
+
+
 # Security: Error handlers
 @app.errorhandler(429)
 def ratelimit_handler(e):
@@ -2315,6 +2541,13 @@ def not_found_handler(e):
 def server_error_handler(e):
     """Handle 500 errors"""
     app.logger.error(f'Server error: {str(e)}')
+    _record_visit(
+        path=request.path,
+        method=request.method,
+        status_code=500,
+        is_error=True,
+        error_detail={'message': 'Internal server error', 'path': request.path, 'type': 'server'},
+    )
     return jsonify({
         'success': False,
         'message': 'Internal server error. Please try again later.'
