@@ -1,198 +1,69 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-// HubSpot API integration
-async function addToHubSpot(email: string) {
-  const hubspotApiKey = process.env.HUBSPOT_API_KEY
+// Brevo API integration
+const BREVO_API_KEY = process.env.BREVO_API_KEY
+const BREVO_LIST_ID = 3  // Metalyzi Waitlist list
+const BREVO_TEMPLATE_ID = 1  // Welcome email template
 
-  if (!hubspotApiKey) {
-    console.warn("HUBSPOT_API_KEY not configured, skipping HubSpot sync")
+async function addToBrevo(email: string, firstName: string = "") {
+  if (!BREVO_API_KEY) {
+    console.warn("BREVO_API_KEY not configured, skipping Brevo sync")
     return null
   }
 
-  console.log("[HubSpot] Starting sync for email:", email)
-  console.log("[HubSpot] API Key length:", hubspotApiKey.length)
+  console.log("[Brevo] Starting sync for email:", email)
 
   try {
-    // First, try creating with all custom properties
-    const response = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/contacts`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${hubspotApiKey}`,
+    // 1. Add contact to Brevo and waitlist
+    const contactRes = await fetch("https://api.brevo.com/v3/contacts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": BREVO_API_KEY,
+      },
+      body: JSON.stringify({
+        email: email,
+        attributes: {
+          FIRSTNAME: firstName || "Friend",
         },
-        body: JSON.stringify({
-          properties: {
-            email: email,
-            lifecyclestage: "lead",
-            lead_source: "Website Waitlist",
-            metalyzi_waitlist: "true",
-            metalyzi_waitlist_date: new Date().toISOString().split("T")[0], // Date format YYYY-MM-DD
-          },
-        }),
-      }
-    )
+        listIds: [BREVO_LIST_ID],
+        updateEnabled: true,
+      }),
+    })
 
-    console.log("[HubSpot] Create response status:", response.status)
-    const responseText = await response.text()
-    console.log("[HubSpot] Create response body:", responseText)
+    console.log("[Brevo] Contact response status:", contactRes.status)
 
-    if (response.ok) {
-      console.log("[HubSpot] ✓ Successfully created new contact")
+    if (!contactRes.ok && contactRes.status !== 204) {
+      const errorText = await contactRes.text()
+      console.error("[Brevo] Contact error:", errorText)
+    }
+
+    // 2. Send welcome email immediately
+    const emailRes = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": BREVO_API_KEY,
+      },
+      body: JSON.stringify({
+        to: [{ email: email }],
+        templateId: BREVO_TEMPLATE_ID,
+      }),
+    })
+
+    console.log("[Brevo] Email response status:", emailRes.status)
+
+    if (emailRes.ok) {
+      console.log("[Brevo] ✓ Welcome email sent successfully")
       return true
+    } else {
+      const errorText = await emailRes.text()
+      console.error("[Brevo] Email error:", errorText)
+      return false
     }
-
-    // Parse error to check if it's a duplicate
-    let errorData
-    try {
-      errorData = JSON.parse(responseText)
-    } catch {
-      errorData = { message: responseText }
-    }
-
-    const isDuplicate = response.status === 409 || 
-                       responseText.toLowerCase().includes("duplicate") ||
-                       responseText.toLowerCase().includes("already exists") ||
-                       errorData?.message?.toLowerCase().includes("already exists")
-
-    // Check if error is due to unknown properties
-    const isUnknownProperty = responseText.toLowerCase().includes("unknown property") ||
-                              errorData?.message?.toLowerCase().includes("does not exist")
-
-    if (isUnknownProperty) {
-      console.log("[HubSpot] ⚠️ Custom properties not found. Trying with basic fields only...")
-      
-      // Retry without custom properties
-      const retryResponse = await fetch(
-        `https://api.hubapi.com/crm/v3/objects/contacts`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${hubspotApiKey}`,
-          },
-          body: JSON.stringify({
-            properties: {
-              email: email,
-              lifecyclestage: "lead",
-            },
-          }),
-        }
-      )
-
-      const retryText = await retryResponse.text()
-      console.log("[HubSpot] Retry response status:", retryResponse.status)
-      console.log("[HubSpot] Retry response body:", retryText)
-
-      if (retryResponse.ok) {
-        console.log("[HubSpot] ✓ Contact created (without custom properties - you need to create them in HubSpot)")
-        console.log("[HubSpot] Missing properties: metalyzi_waitlist, metalyzi_waitlist_date, lead_source")
-        return true
-      }
-    }
-
-    if (isDuplicate) {
-      console.log("[HubSpot] Contact already exists, searching to update...")
-      
-      // Search for existing contact
-      const searchResponse = await fetch(
-        `https://api.hubapi.com/crm/v3/objects/contacts/search`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${hubspotApiKey}`,
-          },
-          body: JSON.stringify({
-            filterGroups: [
-              {
-                filters: [
-                  {
-                    propertyName: "email",
-                    operator: "EQ",
-                    value: email,
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      )
-
-      console.log("[HubSpot] Search response status:", searchResponse.status)
-      const searchText = await searchResponse.text()
-      console.log("[HubSpot] Search response body:", searchText)
-
-      if (searchResponse.ok) {
-        const searchData = JSON.parse(searchText)
-        if (searchData.results && searchData.results.length > 0) {
-          const contactId = searchData.results[0].id
-          console.log("[HubSpot] Found existing contact ID:", contactId)
-
-          // Try update with custom properties
-          const updateResponse = await fetch(
-            `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
-            {
-              method: "PATCH",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${hubspotApiKey}`,
-              },
-              body: JSON.stringify({
-                properties: {
-                  metalyzi_waitlist: "true",
-                  metalyzi_waitlist_date: new Date().toISOString().split("T")[0],
-                  lead_source: "Website Waitlist",
-                },
-              }),
-            }
-          )
-          
-          console.log("[HubSpot] Update response status:", updateResponse.status)
-          const updateText = await updateResponse.text()
-          console.log("[HubSpot] Update response body:", updateText)
-
-          if (updateResponse.ok) {
-            console.log("[HubSpot] ✓ Successfully updated existing contact")
-            return true
-          }
-          
-          // If update failed due to unknown properties, try basic update
-          if (updateText.toLowerCase().includes("unknown property")) {
-            console.log("[HubSpot] ⚠️ Custom properties not found on update. Skipping them...")
-            const basicUpdateResponse = await fetch(
-              `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
-              {
-                method: "PATCH",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${hubspotApiKey}`,
-                },
-                body: JSON.stringify({
-                  properties: {
-                    lifecyclestage: "lead",
-                  },
-                }),
-              }
-            )
-            
-            if (basicUpdateResponse.ok) {
-              console.log("[HubSpot] ✓ Updated existing contact (without custom properties)")
-              return true
-            }
-          }
-        } else {
-          console.log("[HubSpot] ⚠️ No existing contact found with that email")
-        }
-      }
-    }
-
-    console.error("[HubSpot] ✗ Failed:", response.status, errorData)
-    return false
   } catch (error) {
-    console.error("[HubSpot] Integration error:", error)
+    console.error("[Brevo] Integration error:", error)
     return false
   }
 }
@@ -238,19 +109,20 @@ export async function POST(request: Request) {
       )
     }
 
-    // Add to HubSpot and capture result for better feedback
-    let hubspotResult = null
+    // Add to Brevo and send welcome email
+    let brevoResult = null
     try {
-      hubspotResult = await addToHubSpot(email)
-      console.log("[HubSpot] Final result:", hubspotResult)
+      brevoResult = await addToBrevo(email)
+      console.log("[Brevo] Final result:", brevoResult)
     } catch (err) {
-      console.error("[HubSpot] Sync failed:", err)
+      console.error("[Brevo] Sync failed:", err)
     }
 
     return NextResponse.json(
       { 
         message: "Successfully joined waitlist",
-        hubspot: hubspotResult === true ? "synced" : hubspotResult === false ? "failed" : "skipped"
+        brevo: brevoResult === true ? "synced" : brevoResult === false ? "failed" : "skipped",
+        emailSent: brevoResult === true
       },
       { status: 201 }
     )
