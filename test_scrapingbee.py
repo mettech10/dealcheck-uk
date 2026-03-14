@@ -10,8 +10,8 @@ TEST_URLS = [
     "https://www.rightmove.co.uk/property-for-sale/Manchester/3-bed-houses.html",
 ]
 
-# Get API key from env or use the hardcoded one
-SCRAPINGBEE_API_KEY = os.environ.get('SCRAPINGBEE_API_KEY') or 'FLJ5HUFLWZTW46GNZDDXRD93VM3ONK6BO3YYEKRR9L77O1NA5BYNUVFTYXV3J9BJ056ZWF50ZRY1DNDA'
+# Get API key from environment variable only
+SCRAPINGBEE_API_KEY = os.environ.get('SCRAPINGBEE_API_KEY', '')
 
 def test_scrapingbee(url):
     """Test ScrapingBee with a URL"""
