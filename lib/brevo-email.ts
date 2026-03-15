@@ -96,28 +96,45 @@ function baseTemplate(content: string): string {
 function waitlistEmailHtml(): string {
   return baseTemplate(`
     <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#ffffff;line-height:1.3;">
-      You're on the waitlist! 🎉
+      Welcome to the future of property analysis
     </h1>
     <p style="margin:0 0 24px;font-size:15px;color:#9ca3af;line-height:1.6;">
-      Thanks for joining the Metalyzi waitlist. We'll let you know as soon as early access opens up.
+      Thanks for joining the Metalyzi waitlist. You're now part of a community that's transforming how property deals are analysed in the UK.
     </p>
 
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#111;border:1px solid #2a2a2a;border-radius:8px;margin-bottom:28px;">
       <tr>
         <td style="padding:20px 24px;">
-          <p style="margin:0 0 14px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">What's coming</p>
+          <p style="margin:0 0 14px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">What Metalyzi does</p>
           <ul style="margin:0;padding:0 0 0 18px;color:#d1d5db;font-size:14px;line-height:2;">
-            <li>AI-powered property deal analysis</li>
-            <li>Instant cashflow &amp; yield calculations</li>
-            <li>Comparable sales &amp; rental data</li>
-            <li>Smart deal scoring system</li>
+            <li>Analyse any UK property deal in seconds</li>
+            <li>Instant SDLT, mortgage & cashflow calculations</li>
+            <li>AI-powered investment recommendations</li>
+            <li>Comparable sales & rental data</li>
+            <li>Smart deal scoring & risk assessment</li>
           </ul>
         </td>
       </tr>
     </table>
 
-    <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.6;">
-      We'll be in touch soon. In the meantime, feel free to reply to this email if you have any questions.
+    <p style="margin:0 0 20px;font-size:14px;color:#9ca3af;line-height:1.6;">
+      No more spreadsheets. No more guesswork. Just clear, data-driven insights that help you make confident investment decisions.
+    </p>
+
+    <p style="margin:0 0 20px;font-size:14px;color:#9ca3af;line-height:1.6;">
+      <strong style="color:#ffffff;">Timeline:</strong><br />
+      Q2 2026 — Private beta access<br />
+      Q3 2026 — Public launch
+    </p>
+
+    <p style="margin:0;font-size:14px;color:#9ca3af;line-height:1.6;">
+      We'll be in touch soon with your early access invitation.
+    </p>
+
+    <p style="margin:24px 0 0;font-size:14px;color:#9ca3af;line-height:1.6;">
+      Best regards,<br />
+      <strong style="color:#ffffff;">Uche</strong><br />
+      Founder, Metalyzi
     </p>
   `)
 }
