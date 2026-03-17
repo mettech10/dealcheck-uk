@@ -2,12 +2,13 @@
 
 import { useState, useTransition, Suspense } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { BarChart3, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react"
+import { ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react"
 import {
   signInWithEmail,
   signUpWithEmail,
@@ -90,9 +91,13 @@ function LoginForm() {
       <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary">
-              <BarChart3 className="size-3.5 text-primary-foreground" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Metalyzi Logo"
+              width={28}
+              height={28}
+              className="rounded-lg object-contain"
+            />
             <span className="text-sm font-semibold text-foreground">
               Metalyzi
             </span>
@@ -111,7 +116,13 @@ function LoginForm() {
           {/* Header */}
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-              <BarChart3 className="size-6 text-primary" />
+              <Image
+                src="/logo.png"
+                alt="Metalyzi Logo"
+                width={40}
+                height={40}
+                className="rounded-lg object-contain"
+              />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               {mode === "login" ? "Welcome back" : "Create your account"}
