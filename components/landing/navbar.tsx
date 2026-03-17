@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Menu, X, User, LogOut } from "lucide-react"
 import { signOut } from "@/app/auth/actions"
@@ -17,21 +18,13 @@ export function Navbar({ user }: NavbarProps) {
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-            <svg viewBox="0 0 56 52" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {/* Accent dash */}
-              <line x1="3" y1="14" x2="10" y2="11" strokeWidth="2.5"/>
-              {/* Building 1: hollow box */}
-              <rect x="3" y="24" width="9" height="22" rx="0.8"/>
-              {/* Building 2: tall */}
-              <rect x="15" y="10" width="5" height="36" rx="0.8"/>
-              {/* Building 3: medium */}
-              <rect x="23" y="16" width="5" height="30" rx="0.8"/>
-              {/* D-arc right */}
-              <line x1="31" y1="8" x2="31" y2="46"/>
-              <path d="M31 8 Q53 8 53 27 Q53 46 31 46"/>
-            </svg>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Metalyzi Logo"
+            width={32}
+            height={32}
+            className="rounded-lg object-contain"
+          />
           <span className="text-lg font-semibold tracking-tight text-foreground">
             Metalyzi
           </span>

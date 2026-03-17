@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { BarChart3, ArrowLeft, Loader2, CheckCircle, Mail } from "lucide-react"
+import { ArrowLeft, Loader2, CheckCircle, Mail } from "lucide-react"
 
 export default function WaitlistPage() {
   const [email, setEmail] = useState("")
@@ -49,9 +50,13 @@ export default function WaitlistPage() {
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary">
-              <BarChart3 className="size-3.5 text-primary-foreground" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt="Metalyzi Logo"
+              width={28}
+              height={28}
+              className="rounded-lg object-contain"
+            />
             <span className="text-sm font-semibold text-foreground">
               Metalyzi
             </span>

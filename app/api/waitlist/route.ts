@@ -3,7 +3,9 @@ import { NextResponse } from "next/server"
 import { sendWaitlistWelcomeEmail } from "@/lib/brevo-email"
 
 // Brevo API integration
-async function addToBrevo(email: string) {
+const BREVO_LIST_ID = 3  // Metalyzi Waitlist list
+
+async function addToBrevo(email: string, firstName: string = "") {
   const brevoApiKey = process.env.BREVO_API_KEY
 
   if (!brevoApiKey) {
@@ -14,7 +16,8 @@ async function addToBrevo(email: string) {
   console.log("[Brevo] Starting sync for email:", email)
 
   try {
-    const response = await fetch("https://api.brevo.com/v3/contacts", {
+    // Add contact to Brevo and assign to waitlist list
+    const contactRes = await fetch("https://api.brevo.com/v3/contacts", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -22,24 +25,26 @@ async function addToBrevo(email: string) {
       },
       body: JSON.stringify({
         email,
-        updateEnabled: true,
         attributes: {
+          FIRSTNAME: firstName || "Friend",
           WAITLIST: true,
           WAITLIST_DATE: new Date().toISOString().split("T")[0],
           LEAD_SOURCE: "Website Waitlist",
         },
+        listIds: [BREVO_LIST_ID],
+        updateEnabled: true,
       }),
     })
 
-    console.log("[Brevo] Response status:", response.status)
+    console.log("[Brevo] Contact response status:", contactRes.status)
 
-    if (response.status === 201 || response.status === 204) {
+    if (contactRes.status === 201 || contactRes.status === 204) {
       console.log("[Brevo] ✓ Contact created/updated successfully")
       return true
     }
 
-    const body = await response.text()
-    console.error("[Brevo] ✗ Failed:", response.status, body)
+    const errorText = await contactRes.text()
+    console.error("[Brevo] ✗ Failed:", contactRes.status, errorText)
     return false
   } catch (error) {
     console.error("[Brevo] Integration error:", error)
@@ -91,7 +96,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Add to Brevo contacts
+    // Add to Brevo contacts and send welcome email (fire-and-forget)
     let brevoResult = null
     try {
       brevoResult = await addToBrevo(email)
@@ -111,6 +116,7 @@ export async function POST(request: Request) {
       {
         message: "Successfully joined waitlist",
         brevo: brevoResult === true ? "synced" : brevoResult === false ? "failed" : "skipped",
+        emailSent: brevoResult === true,
       },
       { status: 201 }
     )
