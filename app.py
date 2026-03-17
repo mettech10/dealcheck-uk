@@ -33,9 +33,10 @@ from national_rail import national_rail, get_national_rail_context  # UK-wide
 from scrapling_extractor import extract_property_from_url  # For most sites
 
 def scrape_with_jina(url: str) -> dict:
-    """Scrape property using Jina Reader API (free, no API key required).
+    """Scrape property using Jina Reader API.
     Prepends https://r.jina.ai/ to the target URL and gets back clean markdown.
     Works for Rightmove, Zoopla, OnTheMarket and other JS-heavy sites.
+    Set JINA_API_KEY env var for higher rate limits (free key from jina.ai).
     """
     jina_url = f'https://r.jina.ai/{url}'
     headers = {
@@ -44,6 +45,8 @@ def scrape_with_jina(url: str) -> dict:
         'X-Return-Format': 'markdown',
         'X-Remove-Selector': 'nav,footer,header,[class*="cookie"],[class*="banner"],[class*="popup"]',
     }
+    if JINA_API_KEY:
+        headers['Authorization'] = f'Bearer {JINA_API_KEY}'
 
     try:
         response = requests.get(jina_url, headers=headers, timeout=22)
@@ -531,6 +534,9 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"]
 )
+
+# ── Jina Reader API (URL-to-markdown scraping) ───────────────────────────────
+JINA_API_KEY = os.environ.get('JINA_API_KEY', '')
 
 # ── Ideal Postcodes (address → postcode lookup) ─────────────────────────────
 IDEAL_POSTCODES_API_KEY = os.environ.get('IDEAL_POSTCODES_API_KEY', '')
@@ -3049,6 +3055,7 @@ def admin_stats():
         'PropertyData': bool(os.environ.get('PROPERTY_DATA_API_KEY')),
         'Stripe': bool(os.environ.get('STRIPE_SECRET_KEY')),
         'Supabase': bool(os.environ.get('SUPABASE_URL')),
+        'Jina Reader': bool(os.environ.get('JINA_API_KEY')),
         'Ideal Postcodes': bool(os.environ.get('IDEAL_POSTCODES_API_KEY')),
         'EPC API': bool(os.environ.get('EPC_API_EMAIL')),
         'TfL API': True,  # has public defaults

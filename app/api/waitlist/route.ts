@@ -96,27 +96,29 @@ export async function POST(request: Request) {
       )
     }
 
-    // Add to Brevo contacts and send welcome email (fire-and-forget)
-    let brevoResult = null
+    // Add to Brevo contacts and send welcome email
+    let brevoResult = false
+    let emailSent = false
+    
     try {
       brevoResult = await addToBrevo(email)
-      console.log("[Brevo] Final result:", brevoResult)
+      console.log("[Brevo] Contact result:", brevoResult)
+      
+      // Send welcome email
+      if (brevoResult) {
+        console.log("[Brevo] Sending welcome email...")
+        emailSent = await sendWaitlistWelcomeEmail(email)
+        console.log("[Brevo] Email result:", emailSent)
+      }
     } catch (err) {
-      console.error("[Brevo] Sync failed:", err)
+      console.error("[Brevo] Error:", err)
     }
-
-    // Send welcome email and log the outcome
-    const emailSent = await sendWaitlistWelcomeEmail(email).catch((err) => {
-      console.error("[Waitlist] Welcome email failed:", err)
-      return false
-    })
-    console.log("[Waitlist] Welcome email sent:", emailSent)
 
     return NextResponse.json(
       {
         message: "Successfully joined waitlist",
-        brevo: brevoResult === true ? "synced" : brevoResult === false ? "failed" : "skipped",
-        emailSent: brevoResult === true,
+        brevo: brevoResult ? "synced" : "failed",
+        emailSent: emailSent,
       },
       { status: 201 }
     )
