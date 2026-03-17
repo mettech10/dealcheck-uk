@@ -73,6 +73,9 @@ export async function POST(request: Request) {
       .single()
 
     if (existing) {
+      // Email already in waitlist — resend the welcome email in case it was missed
+      const emailSent = await sendWaitlistWelcomeEmail(email)
+      console.log("[Waitlist] Resent welcome email to existing subscriber:", email, "sent:", emailSent)
       return NextResponse.json(
         { message: "Already on waitlist" },
         { status: 200 }
