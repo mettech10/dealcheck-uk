@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import {
   Card,
   CardContent,
@@ -48,6 +49,10 @@ import {
   Hammer,
   Building2,
   Users,
+  Activity,
+  Gauge,
+  SlidersHorizontal,
+  Target,
 } from "lucide-react"
 
 interface AnalysisResultsProps {
@@ -899,6 +904,21 @@ export function AnalysisResults({
         />
       </div>
 
+      {/* ── Regional Benchmark ─────────────────────────────────────── */}
+      {backendData?.regional_benchmark && (
+        <RegionalBenchmarkCard
+          benchmark={backendData.regional_benchmark}
+          actualYield={results.grossYield}
+          actualCashflow={results.monthlyCashFlow}
+        />
+      )}
+
+      {/* ── Risk Flags Dashboard ───────────────────────────────────── */}
+      <RiskFlagsDashboard flags={backendData?.risk_flags} />
+
+      {/* ── Sensitivity Analysis ───────────────────────────────────── */}
+      <SensitivityAnalysisPanel data={data} backendData={backendData} />
+
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}
 
@@ -1416,3 +1436,403 @@ export function AnalysisResults({
     </div>
   )
 }
+
+// ── Regional Benchmark Card ────────────────────────────────────────────────
+function RegionalBenchmarkCard({
+  benchmark,
+  actualYield,
+  actualCashflow,
+}: {
+  benchmark?: BackendResults["regional_benchmark"]
+  actualYield: number
+  actualCashflow: number
+}) {
+  if (!benchmark) return null
+
+  const { area, deal_type, btl_median_yield, hmo_median_yield, median_cashflow } = benchmark
+  const medianYield = deal_type === "HMO" ? hmo_median_yield : btl_median_yield
+
+  const yieldDiff = actualYield - medianYield
+  const cashflowDiff = actualCashflow - median_cashflow
+
+  const yieldBetter = yieldDiff > 0
+  const cashflowBetter = cashflowDiff > 0
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Target className="size-4 text-primary" />
+          <CardTitle className="text-sm">Regional Benchmark: {area}</CardTitle>
+        </div>
+        <CardDescription className="text-xs">
+          How this deal compares to {deal_type} averages in your area
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Yield Comparison */}
+          <div className="rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Gross Yield</span>
+              <Badge
+                variant="outline"
+                className={
+                  yieldBetter
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                }
+              >
+                {yieldBetter ? "+" : ""}
+                {yieldDiff.toFixed(1)}%
+              </Badge>
+            </div>
+            <div className="mt-2 flex items-end gap-2">
+              <span className="text-2xl font-bold">{actualYield.toFixed(1)}%</span>
+              <span className="text-xs text-muted-foreground">vs {medianYield}% avg</span>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {yieldBetter
+                ? "✓ Above regional average"
+                : "⚠ Below regional average"}
+            </div>
+          </div>
+
+          {/* Cashflow Comparison */}
+          <div className="rounded-lg bg-muted/50 p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Monthly Cashflow</span>
+              <Badge
+                variant="outline"
+                className={
+                  cashflowBetter
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                }
+              >
+                {cashflowBetter ? "+" : ""}£{cashflowDiff.toFixed(0)}
+              </Badge>
+            </div>
+            <div className="mt-2 flex items-end gap-2">
+              <span className="text-2xl font-bold">£{actualCashflow.toFixed(0)}</span>
+              <span className="text-xs text-muted-foreground">vs £{median_cashflow} avg</span>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {cashflowBetter
+                ? "✓ Better than typical deals"
+                : "⚠ Lower than typical deals"}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Risk Flags Dashboard ───────────────────────────────────────────────────
+function RiskFlagsDashboard({
+  flags,
+}: {
+  flags?: Array<{
+    id: string
+    name: string
+    severity: "HIGH" | "MEDIUM" | "LOW"
+    color: string
+    icon: string
+    description: string
+    mitigation: string
+  }>
+}) {
+  if (!flags || flags.length === 0) {
+    return (
+      <Card className="border-success/30 bg-success/5">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-success" />
+            <CardTitle className="text-sm text-success">Risk Assessment</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            ✓ No significant risks detected. This deal passes our automated risk screening.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const highRisks = flags.filter((f) => f.severity === "HIGH")
+  const mediumRisks = flags.filter((f) => f.severity === "MEDIUM")
+
+  return (
+    <Card className={highRisks.length > 0 ? "border-destructive/30" : "border-warning/30"}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Activity className="size-4 text-primary" />
+            <CardTitle className="text-sm">Risk Assessment</CardTitle>
+          </div>
+          <div className="flex gap-2">
+            {highRisks.length > 0 && (
+              <Badge variant="destructive">{highRisks.length} High</Badge>
+            )}
+            {mediumRisks.length > 0 && (
+              <Badge variant="default" className="bg-warning text-warning-foreground">
+                {mediumRisks.length} Medium
+              </Badge>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-3">
+          {flags.map((flag) => (
+            <div
+              key={flag.id}
+              className={`rounded-lg border p-3 ${
+                flag.severity === "HIGH"
+                  ? "border-destructive/30 bg-destructive/5"
+                  : flag.severity === "MEDIUM"
+                  ? "border-warning/30 bg-warning/5"
+                  : "border-border bg-muted/20"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${
+                    flag.severity === "HIGH"
+                      ? "bg-destructive/10"
+                      : flag.severity === "MEDIUM"
+                      ? "bg-warning/10"
+                      : "bg-muted"
+                  }`}
+                >
+                  {flag.severity === "HIGH" ? (
+                    <ShieldAlert className="size-4 text-destructive" />
+                  ) : flag.severity === "MEDIUM" ? (
+                    <AlertTriangle className="size-4 text-warning" />
+                  ) : (
+                    <ShieldCheck className="size-4 text-success" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{flag.name}</span>
+                    <Badge
+                      variant="outline"
+                      className={
+                        flag.severity === "HIGH"
+                          ? "border-destructive/30 text-destructive"
+                          : flag.severity === "MEDIUM"
+                          ? "border-warning/30 text-warning"
+                          : "border-success/30 text-success"
+                      }
+                    >
+                      {flag.severity}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{flag.description}</p>
+                  <div className="mt-2 rounded bg-muted/50 p-2">
+                    <p className="text-xs text-foreground">
+                      <span className="font-medium">Mitigation:</span> {flag.mitigation}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Sensitivity Analysis Panel ─────────────────────────────────────────────
+function SensitivityAnalysisPanel({
+  data,
+  backendData,
+}: {
+  data: PropertyFormData
+  backendData?: BackendResults | null
+}) {
+  const [loading, setLoading] = useState(false)
+  const [scenario, setScenario] = useState({
+    mortgageRate: data.interestRate,
+    monthlyRent: data.monthlyRent,
+    vacancyRate: 4.2,
+  })
+  const [results, setResults] = useState<any>(null)
+
+  const runSensitivity = async (updates: Partial<typeof scenario>) => {
+    const newScenario = { ...scenario, ...updates }
+    setScenario(newScenario)
+    setLoading(true)
+
+    try {
+      const res = await fetch("/api/sensitivity-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          override_mortgage_rate: newScenario.mortgageRate,
+          override_monthly_rent: newScenario.monthlyRent,
+          override_vacancy_rate: newScenario.vacancyRate,
+        }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setResults(data)
+      }
+    } catch (e) {
+      console.error("Sensitivity analysis failed:", e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    runSensitivity({})
+  }, [])
+
+  const currentResults = results?.metrics || backendData
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="size-4 text-primary" />
+          <CardTitle className="text-sm">Sensitivity Analysis</CardTitle>
+        </div>
+        <CardDescription className="text-xs">
+          Adjust key variables to see how they impact your deal
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col gap-4">
+          {/* Sliders */}
+          <div className="grid gap-4 sm:grid-cols-3">
+            {/* Mortgage Rate Slider */}
+            <div className="rounded-lg bg-muted/30 p-3">
+              <label className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Mortgage Rate</span>
+                <span className="font-semibold">{scenario.mortgageRate.toFixed(1)}%</span>
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="10"
+                step="0.25"
+                value={scenario.mortgageRate}
+                onChange={(e) => runSensitivity({ mortgageRate: parseFloat(e.target.value) })}
+                className="mt-2 h-2 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              />
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>0.5%</span>
+                <span>10%</span>
+              </div>
+            </div>
+
+            {/* Monthly Rent Slider */}
+            <div className="rounded-lg bg-muted/30 p-3">
+              <label className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Monthly Rent</span>
+                <span className="font-semibold">£{scenario.monthlyRent.toFixed(0)}</span>
+              </label>
+              <input
+                type="range"
+                min="500"
+                max={Math.max(data.monthlyRent * 2, 3000)}
+                step="50"
+                value={scenario.monthlyRent}
+                onChange={(e) => runSensitivity({ monthlyRent: parseFloat(e.target.value) })}
+                className="mt-2 h-2 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              />
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>£500</span>
+                <span>£{Math.max(data.monthlyRent * 2, 3000)}</span>
+              </div>
+            </div>
+
+            {/* Vacancy Rate Slider */}
+            <div className="rounded-lg bg-muted/30 p-3">
+              <label className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Vacancy Rate</span>
+                <span className="font-semibold">{scenario.vacancyRate.toFixed(1)}%</span>
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="20"
+                step="0.5"
+                value={scenario.vacancyRate}
+                onChange={(e) => runSensitivity({ vacancyRate: parseFloat(e.target.value) })}
+                className="mt-2 h-2 w-full cursor-pointer appearance-none rounded-lg bg-muted accent-primary"
+              />
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>0%</span>
+                <span>20%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Results */}
+          {currentResults && (
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-border bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Deal Score</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    (currentResults.deal_score || currentResults.dealScore || 0) >= 75
+                      ? "text-success"
+                      : (currentResults.deal_score || currentResults.dealScore || 0) >= 50
+                      ? "text-warning"
+                      : "text-destructive"
+                  }`}
+                >
+                  {currentResults.deal_score || currentResults.dealScore || 0}
+                </p>
+                <p className="text-[10px] text-muted-foreground">/ 100</p>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Monthly Cashflow</p>
+                <p
+                  className={`text-2xl font-bold ${
+                    (currentResults.monthly_cashflow || currentResults.monthlyCashflow || 0) >= 200
+                      ? "text-success"
+                      : (currentResults.monthly_cashflow || currentResults.monthlyCashflow || 0) >= 0
+                      ? "text-warning"
+                      : "text-destructive"
+                  }`}
+                >
+                  £{(currentResults.monthly_cashflow || currentResults.monthlyCashflow || 0).toFixed(0)}
+                </p>
+                <p className="text-[10px] text-muted-foreground">per month</p>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Net Yield</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {(currentResults.net_yield || currentResults.netYield || 0).toFixed(1)}%
+                </p>
+                <p className="text-[10px] text-muted-foreground">annual</p>
+              </div>
+
+              <div className="rounded-lg border border-border bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Verdict</p>
+                <p
+                  className={`text-lg font-bold ${
+                    (currentResults.verdict || "REVIEW") === "PROCEED"
+                      ? "text-success"
+                      : (currentResults.verdict || "REVIEW") === "AVOID"
+                      ? "text-destructive"
+                      : "text-warning"
+                  }`}
+                >
+                  {currentResults.verdict || "REVIEW"}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {currentResults.risk_level || currentResults.riskLevel || "MEDIUM"} risk
+                </p>
+              </div
