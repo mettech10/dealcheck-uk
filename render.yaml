@@ -1,36 +1,24 @@
 services:
-  # Next.js frontend (Metalyzi UI + Brevo transactional emails)
+  # Python Flask backend (AI analysis, scraping, Land Registry, transport APIs)
   - type: web
-    name: metusa-deal-analyzer-web
-    runtime: node
+    name: metusa-deal-analyzer
+    runtime: python
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
     healthCheckPath: /api/health
     envVars:
-      - key: NODE_VERSION
-        value: "20"
-      - key: BREVO_SENDER_EMAIL
-        value: noreply@metalyzi.co.uk
-      - key: BREVO_API_KEY
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PROPERTY_DATA_API_KEY
+        sync: false
+      - key: SCRAPINGBEE_API_KEY
+        sync: false
+      - key: JINA_API_KEY
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-        sync: false
-      - key: SCRAPINGBEE_API_KEY
-        sync: false
-      - key: BACKEND_API_URL
-        value: https://metusa-deal-analyzer.onrender.com
-      - key: NEXT_PUBLIC_PADDLE_ENV
-        value: production
-      - key: NEXT_PUBLIC_PADDLE_CLIENT_TOKEN
-        sync: false
-      - key: NEXT_PUBLIC_PADDLE_PRICE_PAY_PER_DEAL
-        sync: false
-      - key: NEXT_PUBLIC_PADDLE_PRICE_PRO
-        sync: false
-      - key: NEXT_PUBLIC_PADDLE_PRICE_UNLIMITED
-        sync: false
-      - key: PADDLE_WEBHOOK_SECRET
         sync: false
