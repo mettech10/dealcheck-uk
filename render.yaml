@@ -14,9 +14,9 @@ services:
         sync: false
       - key: PROPERTY_DATA_API_KEY
         sync: false
-      - key: SCRAPINGBEE_API_KEY
-        sync: false
       - key: JINA_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
