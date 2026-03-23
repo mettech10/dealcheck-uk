@@ -9,17 +9,19 @@ import { CTA } from "@/components/landing/cta"
 import { Footer } from "@/components/landing/footer"
 
 export default async function HomePage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const navUser = user
-    ? {
-        email: user.email ?? undefined,
-        name: (user.user_metadata?.full_name as string) ?? undefined,
-      }
-    : null
+  let navUser = null
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    navUser = user
+      ? {
+          email: user.email ?? undefined,
+          name: (user.user_metadata?.full_name as string) ?? undefined,
+        }
+      : null
+  } catch {
+    // Supabase unavailable — render the landing page without session info
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
