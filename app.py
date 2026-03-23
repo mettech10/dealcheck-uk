@@ -514,8 +514,15 @@ def track_analytics():
     _record_visit(path, request.method)
 
 # Security: Configure CORS properly (restrict in production)
-_allowed_origins = ["https://metusaproperty.co.uk", "https://analyzer.metusaproperty.co.uk"]
-# Allow additional origins via env var (comma-separated) - use for Vercel deployment URL
+_allowed_origins = [
+    "https://metusaproperty.co.uk",
+    "https://analyzer.metusaproperty.co.uk",
+    # dealcheck-uk / Metalyzi frontend
+    "https://metalyzi.co.uk",
+    "https://www.metalyzi.co.uk",
+    "https://dealcheck-uk.vercel.app",
+]
+# Allow additional origins via env var (comma-separated) - use for Vercel preview URLs
 _extra_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if _extra_origins:
     _allowed_origins.extend([o.strip() for o in _extra_origins.split(',') if o.strip()])
