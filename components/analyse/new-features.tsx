@@ -1,3 +1,8 @@
+"use client"
+
+import { useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
 // Regional Benchmark Card Component
 function RegionalBenchmarkCard({
   benchmark,
@@ -192,3 +197,4 @@ function SensitivityAnalysisPanel({ data, backendData }: { data: any, backendDat
     </Card>
   )
 }
+export { RegionalBenchmarkCard, RiskFlagsDashboard, SensitivityAnalysisPanel }
