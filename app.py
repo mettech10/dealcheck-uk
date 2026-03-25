@@ -32,6 +32,242 @@ from national_rail import national_rail, get_national_rail_context  # UK-wide
 # Import Web Scrapers
 from scrapling_extractor import extract_property_from_url  # For most sites
 
+def _parse_property_markdown(text: str, source: str = 'scraper') -> dict:
+    """Parse property details from markdown/plain text returned by a scraper.
+    Shared by scrape_with_jina() and scrape_with_firecrawl().
+    """
+    data = {
+        'address': None,
+        'postcode': None,
+        'price': None,
+        'property_type': None,
+        'bedrooms': None,
+        'description': None,
+        'sqm': None,
+    }
+
+    # --- Price ---
+    price_patterns = [
+        r'£([\d,]+)',
+        r'price[":\s]*£?([\d,]+)',
+    ]
+    for pattern in price_patterns:
+        price_match = re.search(pattern, text, re.IGNORECASE)
+        if price_match:
+            try:
+                val = int(price_match.group(1).replace(',', ''))
+                if val > 10000:
+                    data['price'] = val
+                    break
+            except Exception:
+                pass
+
+    # --- Bedrooms ---
+    bed_candidates = []
+
+    bed_near_type = re.search(
+        r'(\d+)\s*bed(?:room)?s?\s+(?:semi-detached|detached|terraced|flat|house|bungalow|apartment)',
+        text, re.IGNORECASE
+    )
+    if bed_near_type:
+        val = int(bed_near_type.group(1))
+        if 1 <= val <= 20:
+            bed_candidates.append(('near_type', val, 90))
+
+    title_bed = re.search(r'^Title:.*?(\d+)\s*bed', text[:500], re.IGNORECASE | re.MULTILINE)
+    if title_bed:
+        val = int(title_bed.group(1))
+        if 1 <= val <= 20:
+            bed_candidates.append(('title', val, 80))
+
+    plain_bed = re.search(r'(\d+)\s*bed(?:room)?s?', text, re.IGNORECASE)
+    if plain_bed:
+        val = int(plain_bed.group(1))
+        if 1 <= val <= 20:
+            bed_candidates.append(('plain', val, 50))
+
+    if bed_candidates:
+        bed_candidates.sort(key=lambda x: x[2], reverse=True)
+        data['bedrooms'] = bed_candidates[0][1]
+        print(f"[{source}] Bedroom candidates: {bed_candidates}")
+    else:
+        data['bedrooms'] = None
+
+    # --- Property type ---
+    property_types = ['semi-detached', 'detached', 'semi', 'terraced', 'flat', 'bungalow', 'apartment']
+    for ptype in property_types:
+        if re.search(r'\b' + ptype + r'\b', text, re.IGNORECASE):
+            data['property_type'] = 'Semi-Detached' if ptype.lower() == 'semi' else ptype.title()
+            break
+
+    # --- Floor area (sqm) ---
+    sqm_val = None
+    sqm_patterns_list = [
+        (r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*m|m²|m2|sqm)\b', False),
+        (r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*ft|ft²|sqft)\b', True),
+    ]
+    for pat, is_sqft in sqm_patterns_list:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            val = float(m.group(1))
+            if is_sqft:
+                val = val / 10.764
+            if 10 <= val <= 2000:
+                sqm_val = round(val, 1)
+                break
+    data['sqm'] = sqm_val
+    print(f"[{source}] Floor area: {sqm_val} sqm")
+
+    # --- Postcode ---
+    VALID_AREAS = {
+        'AB', 'AL', 'B', 'BA', 'BB', 'BD', 'BH', 'BL', 'BN', 'BR', 'BS', 'BT',
+        'CA', 'CB', 'CF', 'CH', 'CM', 'CO', 'CR', 'CT', 'CV', 'CW', 'DA', 'DD',
+        'DE', 'DG', 'DH', 'DL', 'DN', 'DT', 'DY', 'E', 'EC', 'EH', 'EN', 'EX',
+        'FK', 'FY', 'G', 'GL', 'GU', 'HA', 'HD', 'HG', 'HP', 'HR', 'HS', 'HU',
+        'HX', 'IG', 'IP', 'IV', 'KA', 'KT', 'KW', 'KY', 'L', 'LA', 'LD', 'LE',
+        'LL', 'LN', 'LS', 'LU', 'M', 'ME', 'MK', 'ML', 'N', 'NE', 'NG', 'NN',
+        'NP', 'NR', 'NW', 'OL', 'OX', 'PA', 'PE', 'PH', 'PL', 'PO', 'PR', 'RG',
+        'RH', 'RM', 'S', 'SA', 'SE', 'SG', 'SK', 'SL', 'SM', 'SN', 'SO', 'SP',
+        'SR', 'SS', 'ST', 'SW', 'SY', 'TA', 'TD', 'TF', 'TN', 'TQ', 'TR', 'TS',
+        'TW', 'UB', 'W', 'WA', 'WC', 'WD', 'WF', 'WN', 'WR', 'WS', 'WV', 'YO', 'ZE'
+    }
+
+    postcode_pattern = r'[A-Z]{1,2}\d[A-Z\d]?(?:\s)?\d[A-Z]{2}'
+    all_postcodes = re.findall(postcode_pattern, text.upper())
+
+    def format_postcode(pc):
+        pc = pc.strip()
+        if ' ' not in pc:
+            pc = pc[:-3] + ' ' + pc[-3:]
+        return pc
+
+    def is_valid_area(pc):
+        area = pc.split()[0]
+        area_letters = ''.join(c for c in area if c.isalpha())
+        return area_letters in VALID_AREAS
+
+    def valid_pc(fp):
+        return (re.match(r'^[A-Z]{1,2}\d[A-Z\d]?\s\d[A-Z]{2}$', fp)
+                and is_valid_area(fp))
+
+    found_postcode = None
+
+    # Strategy 0: scan the first 1200 chars (title/URL are at the top)
+    header_pcs = re.findall(postcode_pattern, text[:1200].upper())
+    for pc in header_pcs:
+        fp = format_postcode(pc)
+        if valid_pc(fp):
+            found_postcode = fp
+            print(f"[{source}] Postcode from header scan: {fp}")
+            break
+
+    # Strategy 1: parse the "Title:" line
+    if not found_postcode:
+        title_search = re.search(r'Title:\s*(.+)', text, re.IGNORECASE)
+        if title_search:
+            title_text = title_search.group(1)
+            title_pcs = re.findall(postcode_pattern, title_text.upper())
+            for pc in title_pcs:
+                fp = format_postcode(pc)
+                if valid_pc(fp):
+                    found_postcode = fp
+                    print(f"[{source}] Postcode from title line: {fp}")
+                    break
+
+    # Strategy 2: explicit label — "Postcode: OL1 3LA"
+    if not found_postcode:
+        explicit = re.search(
+            r'postcode[:\s]+([A-Z]{1,2}\d[A-Z\d]?(?:\s)?\d[A-Z]{2})',
+            text, re.IGNORECASE
+        )
+        if explicit:
+            fp = format_postcode(explicit.group(1).upper())
+            if valid_pc(fp):
+                found_postcode = fp
+                print(f"[{source}] Postcode from explicit label: {fp}")
+
+    # Strategy 3: score every candidate; penalise agent/footer context
+    if not found_postcode:
+        postcode_scores = {}
+        for pc in all_postcodes:
+            formatted_pc = format_postcode(pc)
+            if formatted_pc in postcode_scores:
+                continue
+            if not valid_pc(formatted_pc):
+                continue
+
+            best_score = 0
+            for match in re.finditer(re.escape(pc), text.upper()):
+                idx = match.start()
+                context = text[max(0, idx - 300):idx + 300].lower()
+                score = 0
+
+                if idx < 3000:
+                    score += 60
+
+                if any(w in context for w in ['price', '£', 'for sale', 'asking']):
+                    score += 80
+                if any(w in context for w in ['bedroom', 'bed', 'house', 'flat', 'property']):
+                    score += 60
+                if any(w in context for w in ['road', 'street', 'avenue', 'lane', 'drive', 'close']):
+                    score += 50
+                if 'address' in context or 'postcode' in context:
+                    score += 40
+
+                if any(w in context for w in ['estate agent', 'branch', 'contact us',
+                                               'tel:', 'phone', 'call us', 'our office']):
+                    score -= 200
+                if any(w in context for w in ['agent address', 'agent postcode',
+                                               'branch address', 'office address']):
+                    score -= 100
+                if any(w in context for w in ['vat', 'registration', 'company number']):
+                    score -= 200
+
+                best_score = max(best_score, score)
+            postcode_scores[formatted_pc] = best_score
+
+        if postcode_scores:
+            sorted_pcs = sorted(postcode_scores.items(), key=lambda x: x[1], reverse=True)
+            print(f"[{source}] Postcode candidates: {sorted_pcs[:5]}")
+            best_postcode = sorted_pcs[0][0] if sorted_pcs[0][1] >= 0 else None
+            found_postcode = best_postcode
+            print(f"[{source}] Selected postcode (scored): {best_postcode}")
+        else:
+            print(f"[{source}] No valid postcodes found")
+
+    data['postcode'] = found_postcode
+
+    # --- Address ---
+    title_line = re.search(r'^Title:\s*(.+)$', text, re.MULTILINE | re.IGNORECASE)
+    if title_line:
+        title = title_line.group(1).strip()
+        title = re.sub(
+            r'\s*[-|]\s*(Rightmove|Zoopla|OnTheMarket|Property|For Sale).*',
+            '', title, flags=re.IGNORECASE
+        )
+        title = title.strip()
+        if title and len(title) > 5:
+            if data['postcode'] and data['postcode'] not in title:
+                title = f"{title}, {data['postcode']}"
+            data['address'] = title
+
+    if not data['address']:
+        addr_pattern = re.search(
+            r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)?\s+(?:Road|Street|Avenue|Lane|Drive|Way|Close|Crescent|Gardens))'
+            r'[,\s]+([^,\n]{5,50})',
+            text
+        )
+        if addr_pattern:
+            data['address'] = f"{addr_pattern.group(1)}, {addr_pattern.group(2).strip()}"
+
+    if not data['address']:
+        data['address'] = "Address not available"
+
+    print(f"[{source}] Extracted: price={data['price']}, beds={data['bedrooms']}, "
+          f"sqm={data['sqm']}, postcode={data['postcode']}, address={str(data['address'])[:60]}")
+    return data
+
+
 def scrape_with_jina(url: str) -> dict:
     """Scrape property using Jina Reader API.
     Prepends https://r.jina.ai/ to the target URL and gets back clean markdown.
@@ -43,6 +279,7 @@ def scrape_with_jina(url: str) -> dict:
         'Accept': 'text/plain',
         'X-Timeout': '20',
         'X-Return-Format': 'markdown',
+        'X-No-Cache': 'true',
         'X-Remove-Selector': 'nav,footer,header,[class*="cookie"],[class*="banner"],[class*="popup"]',
     }
     if JINA_API_KEY:
@@ -54,10 +291,100 @@ def scrape_with_jina(url: str) -> dict:
             print(f"[Jina] Error: status {response.status_code}")
             return None
 
-        # Jina returns clean markdown/plain text - not raw HTML
         text = response.text
-        
-        # Jina returns clean markdown/text - parse it directly
+        return _parse_property_markdown(text, source='Jina')
+
+    except Exception as e:
+        print(f"[Jina] Exception: {e}")
+        return None
+
+
+def scrape_with_firecrawl(url: str) -> dict:
+    """Scrape property using Firecrawl API (firecrawl.dev).
+    Returns clean markdown — same format as Jina but with better JS rendering.
+    Free tier: 500 pages/month. Set FIRECRAWL_API_KEY env var.
+    """
+    if not FIRECRAWL_API_KEY:
+        print("[Firecrawl] No API key configured, skipping")
+        return None
+
+    try:
+        headers = {
+            'Authorization': f'Bearer {FIRECRAWL_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+        payload = {
+            'url': url,
+            'formats': ['markdown'],
+            'onlyMainContent': True,
+            'timeout': 20000,
+        }
+        response = requests.post(
+            'https://api.firecrawl.dev/v1/scrape',
+            headers=headers,
+            json=payload,
+            timeout=25,
+        )
+        if response.status_code != 200:
+            print(f"[Firecrawl] Error: status {response.status_code}")
+            return None
+
+        body = response.json()
+        if not body.get('success'):
+            print("[Firecrawl] API returned success=false")
+            return None
+
+        text = body.get('data', {}).get('markdown', '')
+        if not text or len(text) < 200:
+            print("[Firecrawl] Empty or very short response")
+            return None
+
+        return _parse_property_markdown(text, source='Firecrawl')
+
+    except Exception as e:
+        print(f"[Firecrawl] Exception: {e}")
+        return None
+
+def scrape_with_scrapingbee(url: str) -> dict:
+    """Scrape property using ScrapingBee API with JS rendering and premium UK proxies.
+    Used as a fallback when Jina and direct scraping fail (e.g. Rightmove/Zoopla block).
+    Requires SCRAPINGBEE_API_KEY env var.
+    """
+    if not SCRAPINGBEE_API_KEY:
+        print("[ScrapingBee] No API key configured, skipping")
+        return None
+
+    try:
+        params = {
+            'api_key': SCRAPINGBEE_API_KEY,
+            'url': url,
+            'render_js': 'true',
+            'premium_proxy': 'true',
+            'country_code': 'gb',
+            'wait': '2000',
+        }
+        response = requests.get(
+            'https://app.scrapingbee.com/api/v1/',
+            params=params,
+            timeout=55,
+        )
+
+        if response.status_code != 200:
+            print(f"[ScrapingBee] Error: status {response.status_code}")
+            return None
+
+        html = response.text
+        if not html or len(html) < 500:
+            print("[ScrapingBee] Empty or very short response")
+            return None
+
+        # Use the existing PropertyExtractor to parse the raw HTML
+        from scrapling_extractor import PropertyExtractor
+        extractor = PropertyExtractor()
+        # Bypass the fetch() method — we already have the HTML
+        text = re.sub(r'<[^>]+>', ' ', html)
+        text = re.sub(r'\s+', ' ', text)
+
         data = {
             'address': None,
             'postcode': None,
@@ -68,244 +395,69 @@ def scrape_with_jina(url: str) -> dict:
             'sqm': None,
         }
 
-        # --- Price ---
-        price_patterns = [
-            r'£([\d,]+)',
-            r'price[":\s]*£?([\d,]+)',
-        ]
-        for pattern in price_patterns:
-            price_match = re.search(pattern, text, re.IGNORECASE)
-            if price_match:
-                try:
-                    val = int(price_match.group(1).replace(',', ''))
-                    if val > 10000:  # Must be a plausible property price
-                        data['price'] = val
-                        break
-                except Exception:
-                    pass
+        # Price
+        price_match = re.search(r'£([\d,]+)', html)
+        if price_match:
+            try:
+                val = int(price_match.group(1).replace(',', ''))
+                if val > 10000:
+                    data['price'] = val
+            except Exception:
+                pass
 
-        # --- Bedrooms ---
-        bed_candidates = []
+        # Postcode
+        data['postcode'] = extractor._extract_postcode(html, text, url)
 
-        # Pattern 1: "X bed(room) [type]" - most reliable in clean text
-        bed_near_type = re.search(
-            r'(\d+)\s*bed(?:room)?s?\s+(?:semi-detached|detached|terraced|flat|house|bungalow|apartment)',
-            text, re.IGNORECASE
-        )
-        if bed_near_type:
-            val = int(bed_near_type.group(1))
+        # Bedrooms
+        bed_match = re.search(r'(\d+)\s*bed(?:room)?s?', text, re.IGNORECASE)
+        if bed_match:
+            val = int(bed_match.group(1))
             if 1 <= val <= 20:
-                bed_candidates.append(('near_type', val, 90))
+                data['bedrooms'] = val
 
-        # Pattern 2: Title line from Jina ("Title: 3 bed...")
-        title_bed = re.search(r'^Title:.*?(\d+)\s*bed', text[:500], re.IGNORECASE | re.MULTILINE)
-        if title_bed:
-            val = int(title_bed.group(1))
-            if 1 <= val <= 20:
-                bed_candidates.append(('title', val, 80))
-
-        # Pattern 3: General "X bed" anywhere
-        plain_bed = re.search(r'(\d+)\s*bed(?:room)?s?', text, re.IGNORECASE)
-        if plain_bed:
-            val = int(plain_bed.group(1))
-            if 1 <= val <= 20:
-                bed_candidates.append(('plain', val, 50))
-
-        if bed_candidates:
-            bed_candidates.sort(key=lambda x: x[2], reverse=True)
-            data['bedrooms'] = bed_candidates[0][1]
-            print(f"[Jina] Bedroom candidates: {bed_candidates}")
-        else:
-            data['bedrooms'] = None
-
-        # --- Property type ---
-        property_types = ['semi-detached', 'detached', 'semi', 'terraced', 'flat', 'bungalow', 'apartment']
-        for ptype in property_types:
+        # Property type
+        for ptype in ['semi-detached', 'detached', 'terraced', 'flat', 'bungalow', 'apartment']:
             if re.search(r'\b' + ptype + r'\b', text, re.IGNORECASE):
-                data['property_type'] = 'Semi-Detached' if ptype.lower() == 'semi' else ptype.title()
+                data['property_type'] = 'Semi-Detached' if 'semi' in ptype.lower() else ptype.title()
                 break
 
-        # --- Floor area (sqm) ---
-        # Rightmove/Zoopla show size as "85 sq m", "85m²", "915 sq ft", etc.
-        sqm_val = None
-        sqm_patterns_list = [
-            (r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*m|m²|m2|sqm)\b', False),   # Already metres
-            (r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*ft|ft²|sqft)\b', True),     # Feet → convert
+        # Floor area
+        sqm_patterns = [
+            (r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*m|m²|m2|sqm)\b', False),
+            (r'(\d+(?:\.\d+)?)\s*(?:sq\.?\s*ft|ft²|sqft)\b', True),
         ]
-        for pat, is_sqft in sqm_patterns_list:
+        for pat, is_sqft in sqm_patterns:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
                 val = float(m.group(1))
                 if is_sqft:
-                    val = val / 10.764  # sq ft → sq m
-                if 10 <= val <= 2000:   # Sanity check
-                    sqm_val = round(val, 1)
+                    val = val / 10.764
+                if 10 <= val <= 2000:
+                    data['sqm'] = round(val, 1)
                     break
-        data['sqm'] = sqm_val
-        print(f"[Jina] Floor area: {sqm_val} sqm")
 
-        # --- Postcode ---
-        VALID_AREAS = {
-            'AB', 'AL', 'B', 'BA', 'BB', 'BD', 'BH', 'BL', 'BN', 'BR', 'BS', 'BT',
-            'CA', 'CB', 'CF', 'CH', 'CM', 'CO', 'CR', 'CT', 'CV', 'CW', 'DA', 'DD',
-            'DE', 'DG', 'DH', 'DL', 'DN', 'DT', 'DY', 'E', 'EC', 'EH', 'EN', 'EX',
-            'FK', 'FY', 'G', 'GL', 'GU', 'HA', 'HD', 'HG', 'HP', 'HR', 'HS', 'HU',
-            'HX', 'IG', 'IP', 'IV', 'KA', 'KT', 'KW', 'KY', 'L', 'LA', 'LD', 'LE',
-            'LL', 'LN', 'LS', 'LU', 'M', 'ME', 'MK', 'ML', 'N', 'NE', 'NG', 'NN',
-            'NP', 'NR', 'NW', 'OL', 'OX', 'PA', 'PE', 'PH', 'PL', 'PO', 'PR', 'RG',
-            'RH', 'RM', 'S', 'SA', 'SE', 'SG', 'SK', 'SL', 'SM', 'SN', 'SO', 'SP',
-            'SR', 'SS', 'ST', 'SW', 'SY', 'TA', 'TD', 'TF', 'TN', 'TQ', 'TR', 'TS',
-            'TW', 'UB', 'W', 'WA', 'WC', 'WD', 'WF', 'WN', 'WR', 'WS', 'WV', 'YO', 'ZE'
-        }
-
-        postcode_pattern = r'[A-Z]{1,2}\d[A-Z\d]?(?:\s)?\d[A-Z]{2}'
-        all_postcodes = re.findall(postcode_pattern, text.upper())
-
-        def format_postcode(pc):
-            pc = pc.strip()
-            if ' ' not in pc:
-                pc = pc[:-3] + ' ' + pc[-3:]
-            return pc
-
-        def is_valid_area(pc):
-            area = pc.split()[0]
-            area_letters = ''.join(c for c in area if c.isalpha())
-            return area_letters in VALID_AREAS
-
-        # --- Postcode extraction: four strategies in priority order ---
-
-        def valid_pc(fp):
-            """Return True if fp looks like a real UK postcode."""
-            return (re.match(r'^[A-Z]{1,2}\d[A-Z\d]?\s\d[A-Z]{2}$', fp)
-                    and is_valid_area(fp))
-
-        found_postcode = None
-
-        # Strategy 0: scan the first 1 200 chars (Jina always puts Title / URL
-        # Source at the top).  This catches postcodes in the page title even if
-        # the "Title:" line regex doesn't match due to line-ending quirks.
-        header_pcs = re.findall(postcode_pattern, text[:1200].upper())
-        for pc in header_pcs:
-            fp = format_postcode(pc)
-            if valid_pc(fp):
-                found_postcode = fp
-                print(f"[Jina] Postcode from header scan: {fp}")
-                break
-
-        # Strategy 1: parse the "Title:" line that Jina emits.
-        # Rightmove/Zoopla titles look like:
-        #   "3 bed semi for sale - Orme Avenue, Alkrington, Manchester M24 1JZ | Rightmove"
-        if not found_postcode:
-            title_search = re.search(r'Title:\s*(.+)', text, re.IGNORECASE)
-            if title_search:
-                title_text = title_search.group(1)
-                title_pcs = re.findall(postcode_pattern, title_text.upper())
-                for pc in title_pcs:
-                    fp = format_postcode(pc)
-                    if valid_pc(fp):
-                        found_postcode = fp
-                        print(f"[Jina] Postcode from title line: {fp}")
-                        break
-
-        # Strategy 2: explicit label — "Postcode: OL1 3LA" anywhere in page.
-        if not found_postcode:
-            explicit = re.search(
-                r'postcode[:\s]+([A-Z]{1,2}\d[A-Z\d]?(?:\s)?\d[A-Z]{2})',
-                text, re.IGNORECASE
-            )
-            if explicit:
-                fp = format_postcode(explicit.group(1).upper())
-                if valid_pc(fp):
-                    found_postcode = fp
-                    print(f"[Jina] Postcode from explicit label: {fp}")
-
-        # Strategy 3: score every candidate; heavily penalise agent/footer context.
-        if not found_postcode:
-            postcode_scores = {}
-            for pc in all_postcodes:
-                formatted_pc = format_postcode(pc)
-                if formatted_pc in postcode_scores:
-                    continue
-                if not valid_pc(formatted_pc):
-                    continue
-
-                best_score = 0
-                for match in re.finditer(re.escape(pc), text.upper()):
-                    idx = match.start()
-                    context = text[max(0, idx - 300):idx + 300].lower()
-                    score = 0
-
-                    # Reward proximity to start (listing data comes first in Jina output)
-                    if idx < 3000:
-                        score += 60
-
-                    if any(w in context for w in ['price', '£', 'for sale', 'asking']):
-                        score += 80
-                    if any(w in context for w in ['bedroom', 'bed', 'house', 'flat', 'property']):
-                        score += 60
-                    if any(w in context for w in ['road', 'street', 'avenue', 'lane', 'drive', 'close']):
-                        score += 50
-                    if 'address' in context or 'postcode' in context:
-                        score += 40
-
-                    # Strongly penalise agent/branch/contact sections
-                    if any(w in context for w in ['estate agent', 'branch', 'contact us',
-                                                   'tel:', 'phone', 'call us', 'our office']):
-                        score -= 200
-                    if any(w in context for w in ['agent address', 'agent postcode',
-                                                   'branch address', 'office address']):
-                        score -= 100
-                    if any(w in context for w in ['vat', 'registration', 'company number']):
-                        score -= 200
-
-                    best_score = max(best_score, score)
-                postcode_scores[formatted_pc] = best_score
-
-            if postcode_scores:
-                sorted_pcs = sorted(postcode_scores.items(), key=lambda x: x[1], reverse=True)
-                print(f"[Jina] Postcode candidates: {sorted_pcs[:5]}")
-                best_postcode = sorted_pcs[0][0] if sorted_pcs[0][1] >= 0 else None
-                found_postcode = best_postcode
-                print(f"[Jina] Selected postcode (scored): {best_postcode}")
-            else:
-                print("[Jina] No valid postcodes found")
-
-        data['postcode'] = found_postcode
-
-        # --- Address ---
-        # Jina typically starts its output with "Title: <page title>"
-        title_line = re.search(r'^Title:\s*(.+)$', text, re.MULTILINE | re.IGNORECASE)
-        if title_line:
-            title = title_line.group(1).strip()
-            title = re.sub(
-                r'\s*[-|]\s*(Rightmove|Zoopla|OnTheMarket|Property|For Sale).*',
-                '', title, flags=re.IGNORECASE
-            )
-            title = title.strip()
+        # Address from page title
+        title_match = re.search(r'<title>(.*?)</title>', html, re.IGNORECASE)
+        if title_match:
+            title = title_match.group(1)
+            title = re.sub(r'\s*[-|]\s*(Rightmove|Zoopla|OnTheMarket|Property|For Sale).*',
+                           '', title, flags=re.IGNORECASE).strip()
             if title and len(title) > 5:
                 if data['postcode'] and data['postcode'] not in title:
                     title = f"{title}, {data['postcode']}"
                 data['address'] = title
 
         if not data['address']:
-            addr_pattern = re.search(
-                r'([A-Z][a-z]+(?:\s[A-Z][a-z]+)?\s+(?:Road|Street|Avenue|Lane|Drive|Way|Close|Crescent|Gardens))'
-                r'[,\s]+([^,\n]{5,50})',
-                text
-            )
-            if addr_pattern:
-                data['address'] = f"{addr_pattern.group(1)}, {addr_pattern.group(2).strip()}"
-
-        if not data['address']:
             data['address'] = "Address not available"
 
-        print(f"[Jina] Extracted: price={data['price']}, beds={data['bedrooms']}, "
-              f"sqm={data['sqm']}, postcode={data['postcode']}, address={str(data['address'])[:60]}")
+        print(f"[ScrapingBee] Extracted: price={data['price']}, beds={data['bedrooms']}, "
+              f"postcode={data['postcode']}, address={str(data['address'])[:60]}")
         return data
 
     except Exception as e:
-        print(f"[Jina] Exception: {e}")
+        print(f"[ScrapingBee] Exception: {e}")
         return None
+
 
 def validate_postcode_str(postcode):
     """Quick validation of UK postcode format"""
@@ -514,8 +666,15 @@ def track_analytics():
     _record_visit(path, request.method)
 
 # Security: Configure CORS properly (restrict in production)
-_allowed_origins = ["https://metusaproperty.co.uk", "https://analyzer.metusaproperty.co.uk"]
-# Allow additional origins via env var (comma-separated) - use for Vercel deployment URL
+_allowed_origins = [
+    "https://metusaproperty.co.uk",
+    "https://analyzer.metusaproperty.co.uk",
+    # dealcheck-uk / Metalyzi frontend
+    "https://metalyzi.co.uk",
+    "https://www.metalyzi.co.uk",
+    "https://dealcheck-uk.vercel.app",
+]
+# Allow additional origins via env var (comma-separated) - use for Vercel preview URLs
 _extra_origins = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if _extra_origins:
     _allowed_origins.extend([o.strip() for o in _extra_origins.split(',') if o.strip()])
@@ -535,8 +694,22 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"]
 )
 
+# Security: Add hardening headers to every response
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
 # ── Jina Reader API (URL-to-markdown scraping) ───────────────────────────────
 JINA_API_KEY = os.environ.get('JINA_API_KEY', '')
+
+# ── Firecrawl API (URL-to-markdown, runs in parallel with Jina) ──────────────
+FIRECRAWL_API_KEY = os.environ.get('FIRECRAWL_API_KEY', '')
+
+# ── ScrapingBee (legacy, no longer used) ─────────────────────────────────────
+SCRAPINGBEE_API_KEY = os.environ.get('SCRAPINGBEE_API_KEY', '')
 
 # ── Ideal Postcodes (address → postcode lookup) ─────────────────────────────
 IDEAL_POSTCODES_API_KEY = os.environ.get('IDEAL_POSTCODES_API_KEY', '')
@@ -921,12 +1094,62 @@ def check_article_4(postcode):
     """
     Check if area is under Article 4 direction for HMO conversions (C3→C4).
 
-    Data based on publicly available UK council planning records.
-    'known' = True means the area is in our database; False means verify with council.
+    Uses Claude AI as the primary source to research Article 4 status for any postcode.
+    Falls back to the built-in UK-wide database when AI is unavailable.
     Returns dict with article_4 status and details.
     """
+    postcode_clean = postcode.strip().upper()
+    area_code = postcode_clean.split()[0] if ' ' in postcode_clean else postcode_clean
+
     # ------------------------------------------------------------------ #
-    # UK-WIDE Article 4 Direction Database                                #
+    # AI-powered Article 4 research (primary source)                      #
+    # Claude researches current planning policy for the given postcode.   #
+    # ------------------------------------------------------------------ #
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+    if api_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            model_id = os.environ.get('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001')
+            prompt = (
+                f'You are a UK property and planning expert. Determine the Article 4 Direction status '
+                f'for HMO (House in Multiple Occupation C3\u2192C4) conversions at UK postcode: {postcode_clean}\n\n'
+                'Article 4 Directions remove permitted development rights and require full planning permission '
+                'for C3\u2192C4 HMO conversions. Many UK councils have introduced these, especially in '
+                'high-density rental or student areas.\n\n'
+                'Based on your knowledge of UK local authority planning policy, return ONLY valid JSON:\n'
+                '{\n'
+                '  "is_article_4": true or false,\n'
+                '  "known": true if you are reasonably confident, false if uncertain,\n'
+                '  "council": "Full official council name",\n'
+                '  "note": "Brief factual note about Article 4 status for this postcode area",\n'
+                '  "advice": "One sentence of planning advice for an investor considering HMO here"\n'
+                '}'
+            )
+            message = client.messages.create(
+                model=model_id,
+                max_tokens=300,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            raw = message.content[0].text.strip()
+            if raw.startswith('```'):
+                raw = re.sub(r'^```[a-z]*\n?', '', raw)
+                raw = re.sub(r'\n?```$', '', raw)
+            ai_data = json.loads(raw)
+            return {
+                'is_article_4': bool(ai_data.get('is_article_4', False)),
+                'known': bool(ai_data.get('known', True)),
+                'council': ai_data.get('council', 'Local Council'),
+                'note': ai_data.get('note', ''),
+                'area_code': area_code,
+                'advice': ai_data.get('advice', ''),
+                'source': 'ai'
+            }
+        except Exception as e:
+            app.logger.error(f'[AI] Article 4 check error for {postcode}: {e}')
+
+    # ------------------------------------------------------------------ #
+    # Fallback: UK-WIDE Article 4 Direction Database                      #
     # Sources: Council planning portals, gov.uk planning records          #
     # Last updated: 2025. Always verify with local council for changes.   #
     # ------------------------------------------------------------------ #
@@ -1276,8 +1499,7 @@ def check_article_4(postcode):
     # ------------------------------------------------------------------ #
     # Extract outward code from postcode (e.g., 'M14' from 'M14 7EH')    #
     # ------------------------------------------------------------------ #
-    postcode = postcode.strip().upper()
-    area_code = postcode.split()[0] if ' ' in postcode else postcode
+    # (postcode_clean and area_code already set above)
 
     # Try progressively shorter matches (e.g. SW11 → SW1 → SW)
     # to handle outward codes of different lengths
@@ -1312,10 +1534,74 @@ def check_article_4(postcode):
     }
 
 
+def get_location_from_ai(postcode):
+    """
+    Use Claude AI + postcodes.io to get accurate location info (country, region, council).
+    AI resolves the full official council name and metropolitan area from the postcode.
+    Falls back to postcodes.io admin_district + static mapping if AI unavailable.
+    """
+    admin_district = None
+    api_region = None
+    try:
+        resp = requests.get(
+            f'https://api.postcodes.io/postcodes/{postcode.replace(" ", "")}',
+            timeout=8
+        )
+        if resp.status_code == 200:
+            geo = resp.json().get('result', {})
+            admin_district = geo.get('admin_district', '')
+            api_region = geo.get('region', '')
+    except Exception:
+        pass
+
+    api_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+    if api_key:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            model_id = os.environ.get('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001')
+            context = f' (postcodes.io admin_district: "{admin_district}")' if admin_district else ''
+            prompt = (
+                f'Given the UK postcode "{postcode}"{context}, provide the following in JSON:\n'
+                '- country: England, Wales, Scotland, or Northern Ireland\n'
+                '- region: The metropolitan county or well-known area name (e.g. "Greater Manchester", '
+                '"West Yorkshire", "Greater London", "West Midlands", "Merseyside")\n'
+                '- council: The full official local authority name '
+                '(e.g. "Bury Metropolitan Borough Council", "Leeds City Council", '
+                '"London Borough of Hackney")\n\n'
+                'Return ONLY valid JSON, no markdown or explanation:\n'
+                '{"country": "...", "region": "...", "council": "..."}'
+            )
+            message = client.messages.create(
+                model=model_id,
+                max_tokens=150,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            raw = message.content[0].text.strip()
+            if raw.startswith('```'):
+                raw = re.sub(r'^```[a-z]*\n?', '', raw)
+                raw = re.sub(r'\n?```$', '', raw)
+            loc = json.loads(raw)
+            return {
+                'country': loc.get('country', 'England'),
+                'region': loc.get('region') or get_region_from_postcode(postcode),
+                'council': loc.get('council') or admin_district or 'Local Council'
+            }
+        except Exception as e:
+            app.logger.error(f'[AI] Location lookup error for {postcode}: {e}')
+
+    # Fallback: postcodes.io + static region mapping
+    return {
+        'country': 'England',
+        'region': get_region_from_postcode(postcode),
+        'council': admin_district or 'Local Council'
+    }
+
+
 def get_refurb_estimate(postcode, property_type, bedrooms, internal_area=1000):
     """
     Get refurbishment cost estimate per square meter
-    
+
     Based on typical UK refurbishment costs
     """
     # Base costs per sq ft (converted from sq m)
@@ -1650,8 +1936,11 @@ def analyze_deal(data):
         cash_invested, interest_rate, capital_growth_pct
     )
     
-    # Get Article 4 info
+    # Get Article 4 info (AI-powered research as primary source)
     article_4_info = check_article_4(postcode)
+
+    # Get accurate location info (AI-powered: country, region, full council name)
+    location_info = get_location_from_ai(postcode)
 
     # Add deal-type-specific Article 4 guidance
     _a4_active = article_4_info.get('is_article_4', False)
@@ -1800,9 +2089,9 @@ def analyze_deal(data):
         'address': address,
         'postcode': postcode,
         'location': {
-            'country': 'England',
-            'region': get_region_from_postcode(postcode),
-            'council': article_4_info['council']
+            'country': location_info.get('country', 'England'),
+            'region': location_info.get('region', get_region_from_postcode(postcode)),
+            'council': location_info.get('council', article_4_info.get('council', 'Local Council'))
         },
         'purchase_price': f"{purchase_price:,.0f}",
         'stamp_duty': f"{stamp_duty:,.0f}",
@@ -2960,12 +3249,13 @@ def download_pdf():
 
 @app.route('/api/health')
 def health_check():
-    """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+    """Health check endpoint — kept public for uptime monitoring, returns minimal info only."""
+    return jsonify({'status': 'ok'})
 
 @app.route('/api/test-jina')
+@admin_required
 def test_jina():
-    """Test Jina Reader connectivity (no API key required)"""
+    """Test Jina Reader connectivity (admin only)."""
     try:
         resp = requests.get('https://r.jina.ai/', timeout=10)
         reachable = resp.status_code < 500
@@ -2979,8 +3269,9 @@ def test_jina():
     })
 
 @app.route('/api/test-propertydata')
+@admin_required
 def test_propertydata():
-    """Test PropertyData API configuration"""
+    """Test PropertyData API configuration (admin only)."""
     env_key = os.environ.get('PROPERTY_DATA_API_KEY', '')
     module_key = property_data.api_key if hasattr(property_data, 'api_key') else 'N/A'
     
@@ -3099,6 +3390,7 @@ def admin_stats():
         'Stripe': bool(os.environ.get('STRIPE_SECRET_KEY')),
         'Supabase': bool(os.environ.get('SUPABASE_URL')),
         'Jina Reader': bool(os.environ.get('JINA_API_KEY')),
+        'ScrapingBee': bool(os.environ.get('SCRAPINGBEE_API_KEY')),
         'Ideal Postcodes': bool(os.environ.get('IDEAL_POSTCODES_API_KEY')),
         'EPC API': bool(os.environ.get('EPC_API_EMAIL')),
         'TfL API': True,  # has public defaults
@@ -3420,9 +3712,8 @@ def extract_url():
         if not url.startswith(('http://', 'https://')):
             return jsonify({'success': False, 'message': 'Invalid URL format'}), 400
         
-        # Run Jina Reader and basic scraper in parallel to stay well under
-        # Gunicorn's 30s worker timeout (Jina alone can take 15-20s).
-        print("[extract-url] Running Jina Reader + basic scraper in parallel...")
+        # Run Jina, Firecrawl, and basic scraper in parallel.
+        print("[extract-url] Running Jina + Firecrawl + basic scraper in parallel...")
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def _has_data(d):
@@ -3431,35 +3722,42 @@ def extract_url():
             addr = d.get('address')
             return bool(d.get('price') or (addr and addr != 'Address not available'))
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            jina_future = pool.submit(scrape_with_jina, url)
-            basic_future = pool.submit(extract_property_from_url, url)
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            jina_future      = pool.submit(scrape_with_jina, url)
+            firecrawl_future = pool.submit(scrape_with_firecrawl, url)
+            basic_future     = pool.submit(extract_property_from_url, url)
 
-            jina_result  = None
-            basic_result = None
+            jina_result      = None
+            firecrawl_result = None
+            basic_result     = None
             try:
-                for future in as_completed([jina_future, basic_future], timeout=25):
+                for future in as_completed([jina_future, firecrawl_future, basic_future], timeout=27):
                     result = future.result()
                     if future is jina_future:
                         jina_result = result
                         print(f"[extract-url] Jina finished, has_data={_has_data(result)}")
+                    elif future is firecrawl_future:
+                        firecrawl_result = result
+                        print(f"[extract-url] Firecrawl finished, has_data={_has_data(result)}")
                     else:
                         basic_result = result
                         print(f"[extract-url] Basic scraper finished, has_data={_has_data(result)}")
             except Exception:
                 pass
 
-            # Merge: start with whichever has data, then overlay Jina fields
-            # because Jina's postcode/address logic is more accurate.
-            if _has_data(jina_result) and _has_data(basic_result):
-                # Both succeeded — use basic as base, override with Jina's values
-                extracted_data = {**basic_result, **{
-                    k: v for k, v in jina_result.items() if v not in (None, '', 'Address not available')
+            # Priority: Jina > Firecrawl > basic scraper.
+            # API scraper fields take precedence over basic HTML parse.
+            def _merge(api_result, base_result):
+                return {**base_result, **{
+                    k: v for k, v in api_result.items() if v not in (None, '', 'Address not available')
                 }}
-                print("[extract-url] Merged both scrapers (Jina fields take precedence)")
-            elif _has_data(jina_result):
-                extracted_data = jina_result
-                print("[extract-url] Using Jina result only")
+
+            if _has_data(jina_result):
+                extracted_data = _merge(jina_result, basic_result) if _has_data(basic_result) else jina_result
+                print("[extract-url] Using Jina result" + (" (merged with basic)" if _has_data(basic_result) else ""))
+            elif _has_data(firecrawl_result):
+                extracted_data = _merge(firecrawl_result, basic_result) if _has_data(basic_result) else firecrawl_result
+                print("[extract-url] Using Firecrawl result" + (" (merged with basic)" if _has_data(basic_result) else ""))
             elif _has_data(basic_result):
                 extracted_data = basic_result
                 print("[extract-url] Using basic scraper result only")
@@ -4149,16 +4447,16 @@ def ai_analyze():
 
         # Always attach the purchase price for vs-valuation comparison
         if house_valuation is not None:
-            house_valuation['purchase_price'] = purchase_price
+            house_valuation['purchase_price'] = float(data.get('purchasePrice', 0))
 
         # Combine results
         results = {
             **calculated_metrics,
-            'ai_verdict': ai_insights['verdict'],
-            'ai_strengths': ai_insights['strengths'],
-            'ai_risks': ai_insights['risks'],
-            'ai_area': ai_insights['area'],
-            'ai_next_steps': ai_insights['next_steps'],
+            'ai_verdict': ai_insights.get('verdict', ''),
+            'ai_strengths': ai_insights.get('strengths', []),
+            'ai_risks': ai_insights.get('risks', []),
+            'ai_area': ai_insights.get('area', ''),
+            'ai_next_steps': ai_insights.get('next_steps', []),
             'sold_comparables': sold_comparables,
             'rent_comparables': rent_comparables,
             'house_valuation': house_valuation,
@@ -4883,11 +5181,20 @@ def sensitivity_analysis():
             return jsonify({'success': False, 'message': 'purchasePrice is required'}), 400
 
         # ── Extract slider overrides ──────────────────────────────────────────
-        override_rate     = data.get('override_mortgage_rate')
-        override_rent     = data.get('override_monthly_rent')
-        override_vacancy  = data.get('override_vacancy_rate')  # percent, e.g. 8.0
+        override_rate          = data.get('override_mortgage_rate')
+        override_rent          = data.get('override_monthly_rent')
+        override_vacancy       = data.get('override_vacancy_rate')  # percent, e.g. 8.0
+        override_purchase_price = data.get('override_purchase_price')
 
         # Validate overrides if supplied
+        if override_purchase_price is not None:
+            try:
+                override_purchase_price = float(override_purchase_price)
+                if not (1000 <= override_purchase_price <= 50_000_000):
+                    return jsonify({'success': False, 'message': 'override_purchase_price must be between 1000 and 50000000'}), 400
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'message': 'override_purchase_price must be a number'}), 400
+
         if override_rate is not None:
             try:
                 override_rate = float(override_rate)
@@ -4915,6 +5222,9 @@ def sensitivity_analysis():
         # ── Apply overrides to the form data copy ─────────────────────────────
         import copy
         scenario_data = copy.deepcopy(data)
+
+        if override_purchase_price is not None:
+            scenario_data['purchasePrice'] = override_purchase_price
 
         if override_rate is not None:
             scenario_data['interestRate'] = override_rate
@@ -4959,9 +5269,10 @@ def sensitivity_analysis():
         response = {
             'success': True,
             'scenario': {
-                'mortgage_rate':   float(scenario_data.get('interestRate', data.get('interestRate', 5.5))),
-                'monthly_rent':    float(scenario_data.get('monthlyRent', 0)),
-                'vacancy_rate':    effective_vacancy_rate,
+                'mortgage_rate':    float(scenario_data.get('interestRate', data.get('interestRate', 5.5))),
+                'monthly_rent':     float(scenario_data.get('monthlyRent', 0)),
+                'vacancy_rate':     effective_vacancy_rate,
+                'purchase_price':   float(scenario_data.get('purchasePrice', data.get('purchasePrice', 0))),
             },
             'metrics': {
                 'deal_score':          metrics.get('deal_score', 0),

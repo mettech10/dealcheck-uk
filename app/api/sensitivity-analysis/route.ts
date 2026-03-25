@@ -1,24 +1,26 @@
 import { NextResponse } from "next/server"
 
-const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
+const BACKEND_URL = (
+  process.env.BACKEND_API_URL || "http://localhost:5000"
+).replace(/\/$/, "")
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json()
+    const body = await request.json()
 
-    const response = await fetch(`${BACKEND_API_URL}/api/sensitivity-analysis`, {
+    const backendRes = await fetch(`${BACKEND_URL}/api/sensitivity-analysis`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(30_000),
     })
 
-    const data = await response.json()
+    const data = await backendRes.json().catch(() => null)
 
-    if (!response.ok) {
+    if (!backendRes.ok) {
       return NextResponse.json(
-        { success: false, message: data.message || "Sensitivity analysis failed" },
-        { status: response.status }
+        { success: false, message: data?.message || "Sensitivity analysis failed" },
+        { status: backendRes.status }
       )
     }
 
