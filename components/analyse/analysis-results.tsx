@@ -1676,9 +1676,6 @@ export function AnalysisResults({
     hasBenchmark ||
     hasRiskFlags
   )
-  const hasRiskFlags = (backendData?.risk_flags?.length ?? 0) > 0
-  const hasBenchmark = !!backendData?.regional_benchmark
-
   return (
     <div className="flex flex-col gap-6">
 
