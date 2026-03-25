@@ -201,6 +201,13 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
     formatted += `\n`
   }
 
+  // AREA ANALYSIS
+  if (r.ai_area) {
+    formatted += `🗺️  AREA ANALYSIS\n`
+    formatted += `─`.repeat(55) + `\n`
+    formatted += `  ${r.ai_area.trim().substring(0, 400)}\n\n`
+  }
+
   // NEXT STEPS — ai_next_steps is now an array; also check legacy next_steps
   const nextSteps: string[] = Array.isArray(r.ai_next_steps)
     ? r.ai_next_steps
