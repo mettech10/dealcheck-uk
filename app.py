@@ -4103,6 +4103,98 @@ def get_comparables():
         return jsonify({'success': False, 'message': 'Error fetching comparables'}), 500
 
 
+@app.route('/api/hmo-analysis', methods=['POST'])
+@limiter.limit("5 per minute")
+def hmo_analysis():
+    """Run AI analysis on SpareRoom listing data and return HMO area verdict.
+    Expects: { postcode: str, listings: [...SpareRoom listing dicts] }
+    Returns: { success, analysis: { demand, rentRange, roomTypes, patterns, verdict } }
+    """
+    try:
+        if not request.is_json:
+            return jsonify({'success': False, 'message': 'Content-Type must be application/json'}), 400
+
+        data = request.get_json(silent=True) or {}
+        postcode = (data.get('postcode') or '').strip()
+        listings = data.get('listings') or []
+
+        if not postcode:
+            return jsonify({'success': False, 'message': 'postcode is required'}), 400
+
+        if not listings:
+            return jsonify({'success': False, 'message': 'listings array is required'}), 400
+
+        # Build a concise summary of the listings for the AI prompt
+        summary_lines = []
+        for i, lst in enumerate(listings[:15], 1):
+            rent = f"£{lst.get('monthly_rent', '?')}/mo" if lst.get('monthly_rent') else "rent unknown"
+            bills = f"bills {'included' if lst.get('bills_included') == 'Yes' else 'not included'}"
+            room_type = lst.get('room_type') or 'unknown type'
+            summary_lines.append(f"{i}. {room_type} room — {rent} ({bills})")
+
+        listings_text = '\n'.join(summary_lines)
+
+        prompt = f"""You are a UK property investment analyst. Analyse the following SpareRoom listings
+near postcode {postcode} and provide a clear HMO demand assessment.
+
+SPAREROOM LISTINGS:
+{listings_text}
+
+Respond with a JSON object (no markdown, raw JSON only) with exactly these fields:
+{{
+  "demand": "strong" | "moderate" | "weak",
+  "rentRange": "e.g. £450-£650 pcm",
+  "roomTypes": "e.g. mostly double rooms, some singles",
+  "patterns": "1-2 sentences on patterns worth noting for investors",
+  "verdict": "2-3 sentence overall verdict on HMO viability for this postcode"
+}}"""
+
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '').strip()
+        if not api_key:
+            # Rule-based fallback if no AI key
+            rents = [lst.get('monthly_rent') for lst in listings if lst.get('monthly_rent')]
+            if rents:
+                lo, hi = min(rents), max(rents)
+                rent_range = f"£{lo}–£{hi} pcm"
+            else:
+                rent_range = "Unknown"
+            bills_included_count = sum(1 for lst in listings if lst.get('bills_included') == 'Yes')
+            room_types_raw = [lst.get('room_type', '') for lst in listings if lst.get('room_type')]
+            analysis = {
+                'demand':    'moderate',
+                'rentRange': rent_range,
+                'roomTypes': ', '.join(set(room_types_raw)) if room_types_raw else 'Mixed',
+                'patterns':  f"{bills_included_count}/{len(listings)} listings include bills. {len(listings)} active listings found near {postcode}.",
+                'verdict':   f"Based on {len(listings)} live SpareRoom listings near {postcode} with rents {rent_range}, this area shows activity for HMO investment. Further research recommended.",
+            }
+            return jsonify({'success': True, 'analysis': analysis})
+
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        model_id = os.environ.get('ANTHROPIC_MODEL', 'claude-haiku-4-5-20251001')
+
+        message = client.messages.create(
+            model=model_id,
+            max_tokens=512,
+            messages=[{'role': 'user', 'content': prompt}],
+        )
+        raw_text = message.content[0].text.strip()
+        # Strip markdown code fences if present
+        if raw_text.startswith('```'):
+            raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+
+        analysis = json.loads(raw_text)
+        return jsonify({'success': True, 'analysis': analysis})
+
+    except json.JSONDecodeError as e:
+        app.logger.error(f'HMO analysis JSON parse error: {e}')
+        return jsonify({'success': False, 'message': 'AI returned unexpected format'}), 500
+    except Exception as e:
+        app.logger.error(f'HMO analysis error: {e}')
+        return jsonify({'success': False, 'message': 'Error running HMO analysis'}), 500
+
+
 @app.route('/epc-lookup', methods=['POST'])
 @limiter.limit("20 per minute")
 def epc_lookup():
