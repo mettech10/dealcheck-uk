@@ -1,13 +1,6 @@
 import { NextResponse } from "next/server"
 
-/**
- * GET /api/health
- * Public health check endpoint - returns minimal status only
- */
+// Public endpoint for uptime monitoring — returns minimal info only.
 export async function GET() {
-  // Return minimal public info only
-  return NextResponse.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-  })
+  return NextResponse.json({ status: "ok" })
 }

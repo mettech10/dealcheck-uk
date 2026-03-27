@@ -1,114 +1,101 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 
-const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
+const BACKEND_URL = (
+  process.env.BACKEND_API_URL || "http://localhost:5000"
+).replace(/\/$/, "")
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json()
-    const { mode } = body
+    const body = await request.json()
+    const { mode, url, propertyData, calculationResults, userEmail } = body
 
     // ── Scrape-only mode: extract property data from a listing URL ──────────
     if (mode === "scrape-only") {
-      const { url } = body
       if (!url) {
-        return NextResponse.json({ error: "URL is required" }, { status: 400 })
+        return NextResponse.json(
+          { error: "URL is required" },
+          { status: 400 }
+        )
       }
 
-      const response = await fetch(`${BACKEND_API_URL}/extract-url`, {
+      const flaskRes = await fetch(`${BACKEND_URL}/extract-url`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(90_000),
       })
 
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
+      if (!flaskRes.ok) {
+        const errData = await flaskRes.json().catch(() => null)
         return NextResponse.json(
-          { error: data.message || "Failed to scrape listing" },
-          { status: response.ok ? 400 : response.status }
+          { error: errData?.message || "Failed to scrape the listing." },
+          { status: flaskRes.status }
         )
       }
 
-      // Scrapers return snake_case fields; remap to the camelCase shape
-      // that page.tsx expects under `propertyData`.
-      const raw = data.data || {}
+      const flaskData = await flaskRes.json()
+      const d = flaskData.data || {}
+
+      // Convert sqm → sqft (1 sqm ≈ 10.764 sqft)
+      const sqft = d.sqm ? Math.round(d.sqm * 10.764) : undefined
+
       return NextResponse.json({
         success: true,
         propertyData: {
-          address: raw.address || "",
-          postcode: raw.postcode || "",
-          purchasePrice: Number(raw.price || raw.purchasePrice) || 0,
-          propertyType: raw.propertyType || raw.property_type || "house",
-          bedrooms: Number(raw.bedrooms) || 3,
-          ...(raw.sqft ? { sqft: Number(raw.sqft) } : {}),
+          address: d.address || "",
+          postcode: d.postcode || "",
+          purchasePrice: d.price || 0,
+          propertyType: d.property_type || "house",
+          bedrooms: d.bedrooms || 3,
+          ...(sqft ? { sqft } : {}),
         },
       })
     }
 
-    // ── Manual mode: run AI analysis on submitted property data ─────────────
+    // ── Manual mode: run AI analysis on user-entered property data ──────────
     if (mode === "manual") {
-      const { propertyData, calculationResults } = body
-
-      if (!propertyData?.purchasePrice) {
+      if (!propertyData) {
         return NextResponse.json(
-          { error: "purchasePrice is required" },
+          { error: "propertyData is required" },
           { status: 400 }
         )
       }
 
-      // Get the authenticated user's email for the subscription gate
-      const supabase = await createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      const userEmail = user?.email || ""
-
-      // Flask /ai-analyze expects flat camelCase property fields directly in
-      // the request body, not nested under propertyData.
-      const response = await fetch(`${BACKEND_API_URL}/ai-analyze`, {
+      const flaskRes = await fetch(`${BACKEND_URL}/ai-analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Passed as header so Flask can gate without touching the body
-          "X-User-Email": userEmail,
+          ...(userEmail ? { "X-User-Email": userEmail } : {}),
         },
-        body: JSON.stringify({
-          ...propertyData,
-          userEmail,
-        }),
+        body: JSON.stringify({ ...propertyData, calculationResults }),
+        signal: AbortSignal.timeout(60_000),
       })
 
-      const data = await response.json()
+      const flaskData = await flaskRes.json().catch(() => null)
 
-      if (!response.ok) {
-        // Preserve the subscription_required code so page.tsx can show the
-        // correct upgrade prompt.
-        if (data.code === "subscription_required") {
-          return NextResponse.json(data, { status: 403 })
+      if (!flaskRes.ok) {
+        if (flaskData?.code === "subscription_required") {
+          return NextResponse.json(
+            { error: flaskData.message, code: "subscription_required" },
+            { status: 403 }
+          )
         }
         return NextResponse.json(
-          { error: data.message || "Analysis failed" },
-          { status: response.status }
+          { error: flaskData?.message || "Analysis failed." },
+          { status: flaskRes.status }
         )
       }
 
-      if (!data.success) {
-        return NextResponse.json(
-          { error: data.message || "Analysis failed" },
-          { status: 400 }
-        )
-      }
-
-      // Flask returns { success: true, results: { ...metrics, ai_verdict, ... } }
-      // page.tsx expects { structured: { ... } } and calls formatAnalysisResults()
-      // on the structured object to render the text view.
-      return NextResponse.json({ structured: data.results })
+      return NextResponse.json({
+        success: true,
+        structured: flaskData.results || null,
+      })
     }
 
     return NextResponse.json({ error: "Invalid mode" }, { status: 400 })
-  } catch (error) {
-    console.error("[API] /api/analyse error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unexpected error"
+    console.error("[api/analyse]", msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
