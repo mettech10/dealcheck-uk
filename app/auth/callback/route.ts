@@ -22,7 +22,15 @@ export async function GET(request: Request) {
           sendWelcomeEmail(user.email).catch(console.error)
         }
       }
-
+      
+      // Check if email needs verification (for email/password signups)
+      // Google users are pre-verified by Google
+      if (provider === "email" && !data.session.user.email_confirmed_at) {
+        // Email not verified yet - redirect to verification page
+        return NextResponse.redirect(`${origin}/verify-email`)
+      }
+      
+      // Google users or verified email users - go straight to app
       return NextResponse.redirect(`${origin}${next}`)
     }
   }
