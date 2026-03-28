@@ -13,7 +13,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScore } from "./deal-score"
 import { PropertyComparables } from "./property-comparables"
-import { HmoComparables } from "./hmo-comparables"
 import {
   BarChart,
   Bar,
@@ -420,55 +419,45 @@ function HouseValuationCard({
         </div>
       </CardHeader>
       <CardContent>
-        {estimate ? (
-          <>
-            <div className="flex items-end gap-8">
-              <div>
-                <p className="text-xs text-muted-foreground">Estimated Value</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {formatCurrency(estimate)}
-                </p>
-                {valuation.confidence && (
-                  <p className={`text-xs font-medium ${confidenceColor}`}>
-                    {valuation.confidence} confidence
-                  </p>
-                )}
-              </div>
-              {diff !== null && pct !== null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">vs Purchase Price</p>
-                  <p
-                    className={`text-lg font-semibold ${
-                      isUnder
-                        ? "text-success"
-                        : isOver
-                          ? "text-destructive"
-                          : "text-foreground"
-                    }`}
-                  >
-                    {diff > 0 ? "+" : ""}
-                    {formatCurrency(diff)} ({pct > 0 ? "+" : ""}
-                    {pct.toFixed(1)}%)
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {isUnder
-                      ? "Below market — potential uplift"
-                      : isOver
-                        ? "Above market estimate"
-                        : "At market value"}
-                  </p>
-                </div>
-              )}
-            </div>
-            {valuation.note && (
-              <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
-                {valuation.note}
+        <div className="flex items-end gap-8">
+          <div>
+            <p className="text-xs text-muted-foreground">Estimated Value</p>
+            <p className="text-2xl font-bold text-foreground">
+              {formatCurrency(estimate)}
+            </p>
+            <p className={`text-xs font-medium ${confidenceColor}`}>
+              {valuation.confidence} confidence
+            </p>
+          </div>
+          {diff !== null && pct !== null && (
+            <div>
+              <p className="text-xs text-muted-foreground">vs Purchase Price</p>
+              <p
+                className={`text-lg font-semibold ${
+                  isUnder
+                    ? "text-success"
+                    : isOver
+                      ? "text-destructive"
+                      : "text-foreground"
+                }`}
+              >
+                {diff > 0 ? "+" : ""}
+                {formatCurrency(diff)} ({pct > 0 ? "+" : ""}
+                {pct.toFixed(1)}%)
               </p>
-            )}
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {valuation.note || "No external valuation available. Commission a RICS survey for an accurate figure."}
+              <p className="text-xs text-muted-foreground">
+                {isUnder
+                  ? "Below market — potential uplift"
+                  : isOver
+                    ? "Above market estimate"
+                    : "At market value"}
+              </p>
+            </div>
+          )}
+        </div>
+        {valuation.note && (
+          <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
+            {valuation.note}
           </p>
         )}
       </CardContent>
@@ -928,6 +917,10 @@ function RegionalBenchmarkPanel({ benchmark }: { benchmark?: RegionalBenchmark }
 }
 
 // ── Sensitivity Analysis Panel ──────────────────────────────────────────────
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_API_URL ||
+  "https://metusa-deal-analyzer.onrender.com"
+
 function SensitivityAnalysisPanel({
   baseFormData,
   baseResults,
@@ -949,7 +942,7 @@ function SensitivityAnalysisPanel({
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/sensitivity-analysis`, {
+        const res = await fetch(`${BACKEND_URL}/api/sensitivity-analysis`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1260,13 +1253,13 @@ export function AnalysisResults({
       <Tabs defaultValue="cashflow" className="w-full">
         <TabsList
           className={`w-full grid ${
-            data.postcode ? "grid-cols-4" : "grid-cols-3"
+            hasSoldComparables || hasRentComparables ? "grid-cols-4" : "grid-cols-3"
           }`}
         >
           <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
           <TabsTrigger value="projection">5-Year</TabsTrigger>
-          {data.postcode && (
+          {(hasSoldComparables || hasRentComparables) && (
             <TabsTrigger value="comparables">Comparables</TabsTrigger>
           )}
         </TabsList>
@@ -1445,7 +1438,7 @@ export function AnalysisResults({
           </Card>
         </TabsContent>
 
-        {data.postcode && (
+        {(hasSoldComparables || hasRentComparables) && (
           <TabsContent value="comparables" className="mt-4">
             <PropertyComparables
               postcode={data.postcode}
@@ -1699,11 +1692,6 @@ export function AnalysisResults({
         <RentComparablesTable comparables={backendData?.rent_comparables} />
       )}
 
-      {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
-      {data.investmentType === "hmo" && data.postcode && (
-        <HmoComparables postcode={data.postcode} />
-      )}
-
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
       {hasRefurb && <RefurbEstimatesCard estimates={backendData?.refurb_estimates} />}
 
@@ -1713,42 +1701,15 @@ export function AnalysisResults({
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
 
-      {/* ── AI Verdict + Area Analysis (combined) ───────────────────── */}
-      {(backendData?.ai_verdict || backendData?.ai_area) && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <MapPin className="size-4 text-primary" />
-              <CardTitle className="text-sm">AI Area Verdict</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {backendData?.ai_verdict && (
-              <p className="text-sm leading-relaxed text-foreground">{backendData.ai_verdict}</p>
-            )}
-            {backendData?.ai_area && (
-              <>
-                {backendData?.ai_verdict && (
-                  <div className="border-t border-border/40 pt-3">
-                    <p className="mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wide">Area Analysis</p>
-                  </div>
-                )}
-                <p className="text-sm leading-relaxed text-muted-foreground">{backendData.ai_area}</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── Sensitivity Analysis ────────────────────────────────────── */}
       <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
 
-      {/* ── AI Insights (Strengths / Risks / Next Steps) ─────────────── */}
+      {/* ── AI Insights (Strengths / Risks / Area / Next Steps) ─────── */}
       {hasAIInsights ? (
         <AIInsightsCard
           strengths={backendData?.ai_strengths}
           risks={backendData?.ai_risks}
-          area={undefined}
+          area={backendData?.ai_area}
           nextSteps={backendData?.ai_next_steps}
         />
       ) : (

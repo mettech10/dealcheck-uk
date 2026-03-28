@@ -1,14 +1,4 @@
 export type PropertyType = "house" | "flat" | "commercial"
-export type PropertyTypeDetail =
-  | "terraced"
-  | "semi-detached"
-  | "detached"
-  | "end-of-terrace"
-  | "flat-apartment"
-  | "bungalow"
-  | "maisonette"
-  | "other"
-export type TenureType = "freehold" | "leasehold"
 export type InvestmentType = "btl" | "brr" | "hmo" | "flip" | "r2sa" | "development"
 export type PropertyCondition = "excellent" | "good" | "fair" | "needs-work"
 export type PurchaseType = "mortgage" | "bridging-loan" | "cash"
@@ -19,9 +9,6 @@ export interface PropertyFormData {
   postcode: string
   purchasePrice: number
   propertyType: PropertyType
-  propertyTypeDetail?: PropertyTypeDetail  // granular type (terraced, semi, etc.)
-  tenureType?: TenureType                  // freehold or leasehold
-  leaseYears?: number                      // years remaining on lease (leasehold only)
   investmentType: InvestmentType
   sqft?: number
   bedrooms: number
@@ -236,10 +223,8 @@ export interface BackendResults {
     monthly_rent: number
     bedrooms?: number
     type?: string
-    tenure?: string
     source?: string
     confidence?: string
-    distance_miles?: number
   }>
   house_valuation?: {
     estimate: number
@@ -250,29 +235,52 @@ export interface BackendResults {
   }
   avg_sold_price?: number
   market_source?: string
-  risk_flags?: Array<{
-    id: string
-    name: string
-    severity: "HIGH" | "MEDIUM" | "LOW"
-    color: "red" | "amber" | "green"
-    icon?: string
-    description: string
-    mitigation: string
-  }>
-  regional_benchmark?: {
-    region_name?: string
-    postcode_area?: string
-    data_source?: string
-    regional_median_yield?: number
-    your_yield?: number
-    yield_difference?: number
-    yield_vs_median_label?: string
-    yield_percentile?: number
-    regional_avg_cashflow?: number
-    your_cashflow?: number
-    cashflow_difference?: number
-    cashflow_vs_avg_label?: string
-    cashflow_percentile?: number
-    summary?: string
+  risk_flags?: RiskFlag[]
+  regional_benchmark?: RegionalBenchmark
+}
+
+export interface RiskFlag {
+  id: string
+  name: string
+  severity: "HIGH" | "MEDIUM" | "LOW"
+  color: "red" | "amber" | "green"
+  icon?: string
+  description: string
+  mitigation: string
+}
+
+export interface RegionalBenchmark {
+  region_name: string
+  postcode_area: string
+  data_source: string
+  regional_median_yield: number
+  your_yield: number
+  yield_difference: number
+  yield_vs_median_label: string
+  yield_percentile: number
+  regional_avg_cashflow: number
+  your_cashflow: number
+  cashflow_difference: number
+  cashflow_vs_avg_label: string
+  cashflow_percentile: number
+  summary: string
+}
+
+export interface SensitivityResult {
+  // applied slider values
+  applied: {
+    mortgage_rate: number
+    monthly_rent: number
+    vacancy_rate: number
   }
+  // deal metrics
+  deal_score: number
+  monthly_cashflow: number
+  gross_yield: number
+  net_yield: number
+  cash_on_cash: number
+  verdict: "PROCEED" | "REVIEW" | "AVOID"
+  risk_level: string
+  risk_flags: RiskFlag[]
+  regional_benchmark: RegionalBenchmark
 }

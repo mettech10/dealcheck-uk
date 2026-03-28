@@ -304,7 +304,7 @@ export function sendVerificationEmail(email: string, verificationUrl: string): P
 
 /** Section 3 — Welcome email: sent once after email is confirmed */
 export function sendWelcomeEmail(email: string): Promise<boolean> {
-  return sendBrevoEmail(email, "Welcome to Metalyzi 🏠", welcomeEmailHtml())
+  return sendBrevoEmail(email, "Welcome to Metalyzi", welcomeEmailHtml())
 }
 
 /** Waitlist welcome — DO NOT MODIFY (used by /api/waitlist) */
