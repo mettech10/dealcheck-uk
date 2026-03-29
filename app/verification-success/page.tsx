@@ -79,6 +79,13 @@ export default function VerificationSuccessPage() {
           <Button asChild size="lg" className="w-full">
             <Link href="/login">Log In</Link>
           </Button>
+
+          <Button asChild variant="outline" size="lg" className="w-full mt-3">
+            <Link href="/">
+              <ArrowLeft className="mr-2 size-4" />
+              Go Back
+            </Link>
+          </Button>
         </div>
       </main>
     </div>
