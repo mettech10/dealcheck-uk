@@ -45,7 +45,7 @@ export async function proxy(request: NextRequest) {
     "/api/waitlist",
     "/api/auth",
     "/auth/callback",
-    "/verification-success",
+    "/auth/verified",
     "/login",
     "/_next",
     "/favicon.ico",
