@@ -2,54 +2,85 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendWelcomeEmail } from "@/lib/brevo-email"
+import type { EmailOtpType } from "@supabase/supabase-js"
+
+async function handleVerifiedUser(
+  user: { id: string; email?: string | null; email_confirmed_at?: string | null; user_metadata?: Record<string, any> } | null,
+) {
+  if (!user) return
+
+  const isFirstVerification =
+    user.email && user.email_confirmed_at && !user.user_metadata?.welcome_email_sent
+
+  if (isFirstVerification) {
+    console.log(`[Auth Callback] Sending welcome email to ${user.email}`)
+    const sent = await sendWelcomeEmail(user.email!).catch((err) => {
+      console.error(`[Auth Callback] Welcome email error:`, err)
+      return false
+    })
+    if (sent) {
+      const adminClient = createAdminClient()
+      await adminClient.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...user.user_metadata, welcome_email_sent: true },
+      })
+    } else {
+      console.error(`[Auth Callback] Welcome email failed to send to ${user.email}`)
+    }
+  } else {
+    console.log(
+      `[Auth Callback] Skipping welcome email for ${user?.email} (already sent or email not confirmed)`
+    )
+  }
+}
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
+  const token_hash = searchParams.get("token_hash")
   const type = searchParams.get("type")
+  const source = searchParams.get("source")
   const next = searchParams.get("next") ?? "/analyse"
 
+  const supabase = await createClient()
+  let sessionData: Awaited<ReturnType<typeof supabase.auth.exchangeCodeForSession>>["data"] | null = null
+  let authError: unknown = null
+
   if (code) {
-    const supabase = await createClient()
-    const { data: sessionData, error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      // Password reset flow — send user to the reset password page
-      if (type === "recovery") {
-        return NextResponse.redirect(`${origin}/reset-password`)
-      }
+    // OAuth / PKCE auth code flow
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    sessionData = data
+    authError = error
+  } else if (token_hash && type) {
+    // Email OTP / magic-link verification flow (generateLink redirects here)
+    const { data, error } = await supabase.auth.verifyOtp({
+      type: type as EmailOtpType,
+      token_hash,
+    })
+    sessionData = data
+    authError = error
+  }
 
-      // Use the user returned directly from the exchange — calling getUser()
-      // after exchangeCodeForSession reads from request cookies which don't
-      // yet contain the newly-set session, so it would return null.
-      const user = sessionData.user
-
-      // Email verification (signup confirmation) — always show success page
-      if (type === "signup" || (user?.email_confirmed_at && next === "/analyse")) {
-        const isFirstVerification = user?.email && user.email_confirmed_at && !user.user_metadata?.welcome_email_sent
-        if (isFirstVerification) {
-          console.log(`[Auth Callback] Sending welcome email to ${user.email}`)
-          const sent = await sendWelcomeEmail(user.email!).catch((err) => {
-            console.error(`[Auth Callback] Welcome email error:`, err)
-            return false
-          })
-          if (sent) {
-            // Mark welcome email as sent to prevent duplicates on future logins
-            const adminClient = createAdminClient()
-            await adminClient.auth.admin.updateUserById(user!.id, {
-              user_metadata: { ...user!.user_metadata, welcome_email_sent: true },
-            })
-          } else {
-            console.error(`[Auth Callback] Welcome email failed to send to ${user!.email}`)
-          }
-        } else {
-          console.log(`[Auth Callback] Skipping welcome email for ${user?.email} (already sent or email not confirmed)`)
-        }
-        // Always redirect to success page for email verification
-        return NextResponse.redirect(`${origin}/verification-success`)
-      }
-
-      return NextResponse.redirect(`${origin}${next}`)
+  if (sessionData && !authError) {
+    // Password reset flow — send user to the reset password page
+    if (type === "recovery") {
+      return NextResponse.redirect(`${origin}/reset-password`)
     }
+
+    const user = sessionData.user
+
+    // Email verification (signup confirmation) — always show success page
+    if (type === "signup" || type === "email" || source === "email_verify") {
+      await handleVerifiedUser(user)
+      return NextResponse.redirect(`${origin}/auth/verified`)
+    }
+
+    return NextResponse.redirect(`${origin}${next}`)
+  }
+
+  // Verification failed — redirect to dedicated failure page for email flows
+  if (type === "signup" || type === "email" || token_hash || source === "email_verify") {
+    console.error(`[Auth Callback] Verification failed:`, authError)
+    return NextResponse.redirect(`${origin}/verification-failed`)
   }
 
   // Auth error — redirect to login with error param
