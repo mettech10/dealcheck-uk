@@ -477,10 +477,11 @@ export function calculateDealScore(cashOnCashReturn: number): number {
  * Rates are per sq metre, adjusted for London postcodes and property type.
  *
  * Condition → mid-tier cost/sqft (2024-25 UK benchmarks, Checkatrade / BRRR):
- *   excellent  →  £0     (move-in ready, no refurb)
- *   good       →  £18    (light: redecoration, some flooring/fixtures)
- *   fair       →  £35    (medium: new kitchen + bathroom, full redecoration)
- *   needs-work →  £60    (full: kitchen, bathroom, rewire, replumb, damp, windows)
+ *   excellent    →  £0      (move-in ready, no refurb)
+ *   good         →  £12.50  (minor cosmetic touches only)
+ *   cosmetic     →  £25     (new kitchen/bathroom, redecoration)
+ *   full-refurb  →  £50     (complete renovation throughout)
+ *   structural   →  £87.50  (extensions, underpinning, rewiring, major works)
  */
 export function estimateRefurbCost(
   sqft: number,
@@ -490,12 +491,13 @@ export function estimateRefurbCost(
 ): number {
   if (!sqft || sqft <= 0) return 0
 
-  // Mid-tier cost per sqft aligned with backend get_refurb_estimate tiers
+  // Cost per sqft by condition tier — UK benchmarks
   const costPerSqft: Record<string, number> = {
     excellent: 0,
-    good: 18,
-    fair: 35,
-    "needs-work": 60,
+    good: 12.5,
+    cosmetic: 25,
+    "full-refurb": 50,
+    structural: 87.5,
   }
 
   const base = costPerSqft[condition] ?? 35
