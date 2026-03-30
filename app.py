@@ -278,8 +278,10 @@ def _apify_run_actor(actor_id: str, input_payload: dict, timeout_secs: int = 60)
               "Set APIFY_API_TOKEN in environment variables.")
         return []
 
+    # Apify API requires username~actorName format (tilde, not slash) in URLs
+    api_actor_id = actor_id.replace('/', '~')
     api_url = (
-        f'https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items'
+        f'https://api.apify.com/v2/acts/{api_actor_id}/run-sync-get-dataset-items'
         f'?token={APIFY_API_TOKEN}&timeout={timeout_secs}&memory=512'
     )
     print(f"[Apify/{actor_id}] Starting run — timeout={timeout_secs}s, memory=512MB")
@@ -293,20 +295,18 @@ def _apify_run_actor(actor_id: str, input_payload: dict, timeout_secs: int = 60)
         print(f"[Apify/{actor_id}] HTTP {response.status_code} — "
               f"Content-Length: {len(response.content)} bytes")
 
-        if response.status_code == 402:
-            print(f"[Apify/{actor_id}] PAYMENT REQUIRED — free plan credit may be exhausted "
-                  "or actor requires paid subscription. Check https://console.apify.com/billing")
-            return []
-        if response.status_code == 404:
-            print(f"[Apify/{actor_id}] ACTOR NOT FOUND — the actor ID may be incorrect or "
-                  "the actor has been removed from Apify Store")
-            return []
-        if response.status_code == 401:
-            print(f"[Apify/{actor_id}] UNAUTHORIZED — APIFY_API_TOKEN is invalid or expired. "
-                  "Generate a new token at https://console.apify.com/settings/integrations")
-            return []
-        if response.status_code != 200:
-            print(f"[Apify/{actor_id}] ERROR: HTTP {response.status_code} — {response.text[:500]}")
+        if response.status_code not in (200, 201):
+            if response.status_code == 402:
+                print(f"[Apify/{actor_id}] PAYMENT REQUIRED — free plan credit may be exhausted "
+                      "or actor requires paid subscription. Check https://console.apify.com/billing")
+            elif response.status_code == 404:
+                print(f"[Apify/{actor_id}] ACTOR NOT FOUND — the actor ID may be incorrect or "
+                      "the actor has been removed from Apify Store")
+            elif response.status_code == 401:
+                print(f"[Apify/{actor_id}] UNAUTHORIZED — APIFY_API_TOKEN is invalid or expired. "
+                      "Generate a new token at https://console.apify.com/settings/integrations")
+            else:
+                print(f"[Apify/{actor_id}] ERROR: HTTP {response.status_code} — {response.text[:500]}")
             return []
 
         items = response.json()
@@ -363,7 +363,7 @@ def scrape_rightmove_with_apify(url: str) -> dict:
     print(f"[Apify/Rightmove] Scraping {url}")
     items = _apify_run_actor(
         APIFY_RIGHTMOVE_ACTOR_ID,
-        {'startUrls': [{'url': url}], 'maxItems': 1},
+        {'propertyUrls': [{'url': url}], 'maxProperties': 1},
         timeout_secs=55,
     )
     if not items:
@@ -393,8 +393,12 @@ def scrape_rightmove_with_apify(url: str) -> dict:
         floorplan_urls = []
 
     # ── Agent ────────────────────────────────────────────────────────────────
-    agent = item.get('agent') or item.get('contactInfo') or {}
-    if not isinstance(agent, dict):
+    agent_raw = item.get('agent') or item.get('contactInfo') or {}
+    if isinstance(agent_raw, str):
+        agent = {'name': agent_raw}
+    elif isinstance(agent_raw, dict):
+        agent = agent_raw
+    else:
         agent = {}
 
     # ── Key features ────────────────────────────────────────────────────────
@@ -422,16 +426,21 @@ def scrape_rightmove_with_apify(url: str) -> dict:
         sqm = round(sqft / 10.764, 1)
     sqm = round(float(sqm), 1) if sqm else None
 
+    # ── Postcode (from outcode + incode if not direct) ──────────────────────
+    postcode = item.get('postcode') or item.get('propertyPostcode')
+    if not postcode and item.get('outcode') and item.get('incode'):
+        postcode = f"{item['outcode']} {item['incode']}"
+
     data = {
-        # Core fields (backward-compatible with the rest of the pipeline)
-        'address':        item.get('address') or item.get('propertyAddress') or 'Address not available',
-        'postcode':       item.get('postcode') or item.get('propertyPostcode') or None,
+        # Core fields — maps both old and new actor output field names
+        'address':        item.get('displayAddress') or item.get('address') or item.get('propertyAddress') or 'Address not available',
+        'postcode':       postcode,
         'price':          _parse_price(item.get('price') or item.get('priceAmount')),
         'property_type':  item.get('propertyType') or item.get('type') or None,
         'bedrooms':       _parse_int(item.get('bedrooms') or item.get('beds')),
         'description':    item.get('description') or item.get('summary') or None,
         'sqm':            sqm,
-        # Extended fields (Section 2)
+        # Extended fields
         'sqft':           sqft,
         'bathrooms':      _parse_int(item.get('bathrooms') or item.get('baths')),
         'tenure_type':    tenure_type or None,
@@ -439,11 +448,12 @@ def scrape_rightmove_with_apify(url: str) -> dict:
         'key_features':   features,
         'images':         image_urls,
         'floorplans':     floorplan_urls,
-        'agent_name':     agent.get('name') or agent.get('agentName') or item.get('agentName') or None,
+        'agent_name':     agent.get('name') or agent.get('agentName') or item.get('agentName') or item.get('agent') or None,
         'agent_phone':    agent.get('telephone') or agent.get('phone') or item.get('agentPhone') or None,
-        'agent_address':  agent.get('address') or agent.get('branchAddress') or None,
+        'agent_address':  agent.get('address') or agent.get('branchAddress') or item.get('agentDisplayAddress') or None,
         'listing_url':    url,
         'source':         'rightmove',
+        'council_tax_band': item.get('councilTaxBand') or None,
     }
     print(f"[Apify/Rightmove] Extracted: price={data['price']}, beds={data['bedrooms']}, "
           f"postcode={data['postcode']}, images={len(image_urls)}")
@@ -457,7 +467,7 @@ def scrape_onthemarket_with_apify(url: str) -> dict:
     print(f"[Apify/OnTheMarket] Scraping {url}")
     items = _apify_run_actor(
         APIFY_ONTHEMARKET_ACTOR_ID,
-        {'startUrls': [{'url': url}], 'maxItems': 1},
+        {'startUrls': [{'url': url}], 'limit': 1},
         timeout_secs=55,
     )
     if not items:
@@ -555,7 +565,7 @@ def scrape_spareroom_with_apify(postcode: str, max_results: int = 10) -> list:
     )
     items = _apify_run_actor(
         APIFY_SPAREROOM_ACTOR_ID,
-        {'startUrls': [{'url': search_url}], 'maxItems': max_results},
+        {'startUrls': [search_url], 'maxItems': max_results},
         timeout_secs=60,
     )
     results = []
@@ -996,7 +1006,7 @@ APIFY_API_TOKEN = os.environ.get('APIFY_API_TOKEN', '')
 
 # Verified actor IDs from Apify Store (2026-03-30)
 APIFY_RIGHTMOVE_ACTOR_ID    = 'dhrumil/rightmove-scraper'
-APIFY_ONTHEMARKET_ACTOR_ID  = 'shahidirfan/onthemarket-property-scraper'
+APIFY_ONTHEMARKET_ACTOR_ID  = 'fatihtahta/onthemarket-scraper'
 APIFY_SPAREROOM_ACTOR_ID    = 'memo23/spareroom-scraper'
 
 # ── Firecrawl API (URL-to-markdown, runs in parallel with Apify) ─────────────
