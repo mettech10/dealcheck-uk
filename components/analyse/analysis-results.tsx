@@ -11,7 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import { DealScore } from "./deal-score"
+import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
 import { PropertyComparables } from "./property-comparables"
 import { HmoComparables } from "./hmo-comparables"
 import {
@@ -29,8 +29,8 @@ import {
   LineChart,
   Line,
 } from "recharts"
-import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark, SensitivityResult } from "@/lib/types"
-import { formatCurrency, formatPercent, calculateDealScore } from "@/lib/calculations"
+import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark } from "@/lib/types"
+import { formatCurrency, formatPercent, calculateDealScore, calculateAll } from "@/lib/calculations"
 import {
   TrendingUp,
   TrendingDown,
@@ -150,63 +150,68 @@ function VerdictBanner({
   score?: number
   label?: string
 }) {
-  if (!verdict) return null
+  if (!verdict && score === undefined) return null
 
   const config =
-    {
-      PROCEED: {
-        bg: "bg-success/10 border-success/30",
-        text: "text-success",
-        badge: "bg-success/20 text-success border-success/30",
-        icon: <CheckCircle2 className="size-5" />,
-        title: "Proceed",
-        desc: "This deal meets investment targets. Strong fundamentals.",
-      },
-      REVIEW: {
-        bg: "bg-warning/10 border-warning/30",
-        text: "text-warning",
-        badge: "bg-warning/20 text-warning border-warning/30",
-        icon: <AlertTriangle className="size-5" />,
-        title: "Review",
-        desc: "Borderline deal. Investigate further before committing.",
-      },
-      AVOID: {
-        bg: "bg-destructive/10 border-destructive/30",
-        text: "text-destructive",
-        badge: "bg-destructive/20 text-destructive border-destructive/30",
-        icon: <ShieldAlert className="size-5" />,
-        title: "Avoid",
-        desc: "Numbers don't stack up. High risk or poor returns.",
-      },
-    }[verdict] ?? {
-      bg: "bg-muted/40 border-border/50",
-      text: "text-foreground",
-      badge: "bg-muted text-foreground border-border",
-      icon: null,
-      title: verdict,
-      desc: "",
-    }
+    verdict
+      ? ({
+          PROCEED: {
+            bg: "bg-success/10 border-success/30",
+            text: "text-success",
+            icon: <CheckCircle2 className="size-5" />,
+            title: "Proceed",
+            desc: "This deal meets investment targets. Strong fundamentals.",
+          },
+          REVIEW: {
+            bg: "bg-warning/10 border-warning/30",
+            text: "text-warning",
+            icon: <AlertTriangle className="size-5" />,
+            title: "Review",
+            desc: "Borderline deal. Investigate further before committing.",
+          },
+          AVOID: {
+            bg: "bg-destructive/10 border-destructive/30",
+            text: "text-destructive",
+            icon: <ShieldAlert className="size-5" />,
+            title: "Avoid",
+            desc: "Numbers don't stack up. High risk or poor returns.",
+          },
+        }[verdict] ?? {
+          bg: "bg-muted/40 border-border/50",
+          text: "text-foreground",
+          icon: null,
+          title: verdict,
+          desc: "",
+        })
+      : {
+          bg: "bg-muted/40 border-border/50",
+          text: "text-foreground",
+          icon: null,
+          title: "",
+          desc: "",
+        }
+
+  const displayScore = score ?? 0
+  const scoreColor = getScoreColor(displayScore)
+  const displayLabel = label || getScoreLabel(displayScore)
 
   return (
-    <div className={`flex items-center gap-4 rounded-xl border px-5 py-4 ${config.bg}`}>
-      <div className={config.text}>{config.icon}</div>
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <span className={`text-lg font-bold ${config.text}`}>{config.title}</span>
-          {label && (
-            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${config.badge}`}>
-              {label}
+    <div className={`flex flex-col items-center gap-4 rounded-xl border px-6 py-6 ${config.bg}`}>
+      {/* Circular dial + verdict side by side */}
+      <div className="flex items-center gap-6">
+        <DealScore score={displayScore} label={displayLabel} />
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            {config.icon && <span className={config.text}>{config.icon}</span>}
+            <span className="text-xl font-bold" style={{ color: scoreColor }}>
+              {displayLabel}
             </span>
+          </div>
+          {config.desc && (
+            <p className="max-w-xs text-sm text-muted-foreground">{config.desc}</p>
           )}
         </div>
-        <p className="text-sm text-muted-foreground">{config.desc}</p>
       </div>
-      {score !== undefined && (
-        <div className="text-right">
-          <div className={`text-3xl font-bold ${config.text}`}>{score}</div>
-          <div className="text-xs text-muted-foreground">/ 100</div>
-        </div>
-      )}
     </div>
   )
 }
@@ -918,9 +923,6 @@ function RegionalBenchmarkPanel({ benchmark }: { benchmark?: RegionalBenchmark }
 }
 
 // ── Sensitivity Analysis Panel ──────────────────────────────────────────────
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_API_URL ||
-  "https://metusa-deal-analyzer.onrender.com"
 
 function SensitivityAnalysisPanel({
   baseFormData,
@@ -929,63 +931,41 @@ function SensitivityAnalysisPanel({
   baseFormData: PropertyFormData
   baseResults: CalculationResults
 }) {
+  const basePurchasePrice = baseFormData.purchasePrice ?? 0
+  const [purchasePrice, setPurchasePrice] = useState<number>(basePurchasePrice)
   const [mortgageRate, setMortgageRate] = useState<number>(baseFormData.interestRate ?? 3.75)
   const [monthlyRent, setMonthlyRent] = useState<number>(baseFormData.monthlyRent ?? 0)
   const [vacancyRate, setVacancyRate] = useState<number>(
     baseFormData.voidWeeks ? Math.round((baseFormData.voidWeeks / 52) * 100 * 10) / 10 : 4.2
   )
-  const [sensitivityResult, setSensitivityResult] = useState<SensitivityResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [scenarioResults, setScenarioResults] = useState<CalculationResults | null>(null)
+
+  const priceMin = Math.round(basePurchasePrice * 0.8 / 1000) * 1000
+  const priceMax = Math.round(basePurchasePrice * 1.2 / 1000) * 1000
 
   const runSensitivity = useCallback(
-    async (rate: number, rent: number, vacancy: number) => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`${BACKEND_URL}/api/sensitivity-analysis`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...baseFormData,
-            override_mortgage_rate: rate,
-            override_monthly_rent: rent,
-            override_vacancy_rate: vacancy,
-          }),
-        })
-        if (!res.ok) {
-          const err = await res.json().catch(() => null)
-          throw new Error(err?.message || "Sensitivity analysis failed")
-        }
-        const data = await res.json()
-        if (data.success) {
-          setSensitivityResult({
-            applied: data.scenario,
-            deal_score: data.metrics?.deal_score ?? 0,
-            monthly_cashflow: data.metrics?.monthly_cashflow ?? 0,
-            gross_yield: data.metrics?.gross_yield ?? 0,
-            net_yield: data.metrics?.net_yield ?? 0,
-            cash_on_cash: data.metrics?.cash_on_cash ?? 0,
-            verdict: data.metrics?.verdict ?? "REVIEW",
-            risk_level: data.metrics?.risk_level ?? "MEDIUM",
-            risk_flags: data.risk_flags ?? [],
-            regional_benchmark: data.regional_benchmark ?? null,
-          })
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Request failed")
-      } finally {
-        setLoading(false)
+    (price: number, rate: number, rent: number, vacancy: number) => {
+      const voidWeeks = Math.round((vacancy / 100) * 52 * 10) / 10
+      const scenarioData: PropertyFormData = {
+        ...baseFormData,
+        purchasePrice: price,
+        interestRate: rate,
+        monthlyRent: rent,
+        voidWeeks,
       }
+      const newResults = calculateAll(scenarioData)
+      setScenarioResults(newResults)
     },
     [baseFormData]
   )
 
-  const scenario = sensitivityResult
-  const cashflow = scenario?.monthly_cashflow ?? baseResults.monthlyCashFlow
-  const yield_ = scenario?.gross_yield ?? baseResults.grossYield
-  const coc = scenario?.cash_on_cash ?? baseResults.cashOnCashReturn
-  const verdict = scenario?.verdict
+  const active = scenarioResults ?? baseResults
+  const cashflow = active.monthlyCashFlow
+  const yield_ = active.grossYield
+  const coc = active.cashOnCashReturn
+  const totalCapital = active.totalCapitalRequired
+  const score = calculateDealScore(coc)
+  const verdict = score >= 75 ? "PROCEED" : score >= 50 ? "REVIEW" : "AVOID"
 
   const verdictColor = verdict === "PROCEED" ? "text-success" : verdict === "AVOID" ? "text-destructive" : "text-warning"
 
@@ -1002,6 +982,25 @@ function SensitivityAnalysisPanel({
         <div className="flex flex-col gap-5">
           {/* ── Sliders ── */}
           <div className="flex flex-col gap-4">
+            {/* Purchase Price */}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-medium text-foreground">Purchase Price</label>
+                <span className="text-xs font-semibold text-primary">£{purchasePrice.toLocaleString()}</span>
+              </div>
+              <input
+                type="range"
+                min={priceMin}
+                max={priceMax}
+                step={1000}
+                value={purchasePrice}
+                onChange={(e) => setPurchasePrice(parseFloat(e.target.value))}
+                className="w-full accent-primary"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground"><span>£{priceMin.toLocaleString()}</span><span>£{priceMax.toLocaleString()}</span></div>
+              <p className="mt-1 text-[10px] text-muted-foreground">Adjust to model negotiation scenarios or stress-test at different price points</p>
+            </div>
+
             {/* Mortgage Rate */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -1059,64 +1058,40 @@ function SensitivityAnalysisPanel({
 
           {/* ── Run Button ── */}
           <button
-            onClick={() => runSensitivity(mortgageRate, monthlyRent, vacancyRate)}
-            disabled={loading}
-            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+            onClick={() => runSensitivity(purchasePrice, mortgageRate, monthlyRent, vacancyRate)}
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
           >
-            {loading ? <Loader2 className="size-4 animate-spin" /> : <SlidersHorizontal className="size-4" />}
-            {loading ? "Calculating..." : "Run Scenario"}
+            <SlidersHorizontal className="size-4" />
+            Run Scenario
           </button>
 
-          {error && (
-            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
-          )}
-
           {/* ── Scenario Results ── */}
-          {(scenario || !loading) && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Monthly Cashflow</p>
-                <p className={`mt-1 text-base font-bold ${cashflow >= 0 ? "text-success" : "text-destructive"}`}>
-                  {cashflow >= 0 ? "+" : ""}£{Math.round(cashflow).toLocaleString()}
-                </p>
-              </div>
-              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Gross Yield</p>
-                <p className="mt-1 text-base font-bold text-foreground">{yield_.toFixed(2)}%</p>
-              </div>
-              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Cash-on-Cash</p>
-                <p className="mt-1 text-base font-bold text-foreground">{coc.toFixed(2)}%</p>
-              </div>
-              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-                <p className="text-xs text-muted-foreground">Verdict</p>
-                <p className={`mt-1 text-base font-bold ${verdictColor}`}>
-                  {verdict ?? "—"}
-                </p>
-              </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Monthly Cashflow</p>
+              <p className={`mt-1 text-base font-bold ${cashflow >= 0 ? "text-success" : "text-destructive"}`}>
+                {cashflow >= 0 ? "+" : ""}£{Math.round(cashflow).toLocaleString()}
+              </p>
             </div>
-          )}
-
-          {/* Risk flags from scenario */}
-          {scenario?.risk_flags && scenario.risk_flags.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scenario Risk Flags</p>
-              <div className="flex flex-wrap gap-2">
-                {scenario.risk_flags.map((flag) => (
-                  <span
-                    key={flag.id}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-                      flag.severity === "HIGH" ? "border-destructive/30 bg-destructive/10 text-destructive" :
-                      flag.severity === "MEDIUM" ? "border-warning/30 bg-warning/10 text-warning" :
-                      "border-success/30 bg-success/10 text-success"
-                    }`}
-                  >
-                    {flag.name}
-                  </span>
-                ))}
-              </div>
+            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Gross Yield</p>
+              <p className="mt-1 text-base font-bold text-foreground">{yield_.toFixed(2)}%</p>
             </div>
-          )}
+            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Cash-on-Cash</p>
+              <p className="mt-1 text-base font-bold text-foreground">{coc.toFixed(2)}%</p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Total Capital</p>
+              <p className="mt-1 text-base font-bold text-foreground">£{Math.round(totalCapital).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+              <p className="text-xs text-muted-foreground">Verdict</p>
+              <p className={`mt-1 text-base font-bold ${verdictColor}`}>
+                {verdict}
+              </p>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -1188,13 +1163,7 @@ export function AnalysisResults({
     <div className="flex flex-col gap-6">
 
       {/* ── Verdict Banner ──────────────────────────────────────────── */}
-      {verdict ? (
-        <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
-      ) : (
-        <div className="flex flex-col items-center gap-1 py-4">
-          <DealScore score={dealScore} />
-        </div>
-      )}
+      <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
 
       {/* ── Key Metrics Grid ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

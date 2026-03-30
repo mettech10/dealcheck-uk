@@ -599,8 +599,8 @@ export default function AnalysePage() {
 
     // ROI-based deal score (matches the on-screen scoring formula)
     const score = calculateDealScore(results?.cashOnCashReturn ?? 0)
-    const scoreColor = score >= 75 ? "#16a34a" : score >= 50 ? "#0ea5e9" : score >= 25 ? "#f59e0b" : "#dc2626"
-    const scoreLabel = score >= 100 ? "Excellent Deal" : score >= 75 ? "Good Deal" : score >= 50 ? "Fair Deal" : score >= 25 ? "Below Average" : "Poor Deal"
+    const scoreColor = score >= 75 ? "#22c55e" : score >= 50 ? "#3b82f6" : "#ef4444"
+    const scoreLabel = score >= 75 ? "Strong Deal" : score >= 50 ? "Fair Deal" : "Caution"
 
     // Extract AI text sections for summary/strengths/risks
     const extractSection = (label: string) => {
@@ -645,7 +645,7 @@ export default function AnalysePage() {
             stroke-dasharray="${(score / 100) * 2 * Math.PI * 46} ${2 * Math.PI * 46}"/>
         </svg>
         <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;">
-          <span style="font-size:22px;font-weight:700;color:${scoreColor}">${score}%</span>
+          <span style="font-size:22px;font-weight:700;color:${scoreColor}">${score}</span>
           <span style="font-size:9px;color:#999">/100</span>
         </div>
       </div>
@@ -787,7 +787,7 @@ export default function AnalysePage() {
         <tr><td>Stamp Duty (SDLT)</td><td class="td-right">${gbp(res?.sdltAmount || 0)}</td></tr>
         <tr><td>Legal Fees</td><td class="td-right">${gbp(fd?.legalFees || 0)}</td></tr>
         <tr><td>Survey Costs</td><td class="td-right">${gbp(fd?.surveyCosts || 0)}</td></tr>
-        ${fd?.refurbishmentBudget ? `<tr><td>Refurbishment</td><td class="td-right">${gbp(fd.refurbishmentBudget)}</td></tr>` : ""}
+        ${(fd?.refurbishmentBudget ?? 0) > 0 ? `<tr><td>Refurbishment Budget</td><td class="td-right">${gbp(fd!.refurbishmentBudget)}</td></tr>` : ""}
         ${fd?.investmentType === "brr" && fd?.arv ? `<tr><td>After Repair Value (ARV)</td><td class="td-right">${gbp(fd.arv)}</td></tr>` : ""}
         <tr style="font-weight:700"><td><strong>Total Capital Required</strong></td><td class="td-right"><strong>${gbp(res?.totalCapitalRequired || 0)}</strong></td></tr>
       </table>
