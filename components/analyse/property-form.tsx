@@ -32,7 +32,7 @@ const schema = z.object({
   investmentType: z.enum(["btl", "brr", "hmo", "flip", "r2sa", "development"]),
   sqft: z.coerce.number().min(0).optional(),
   bedrooms: z.coerce.number().min(0).max(20),
-  condition: z.enum(["excellent", "good", "fair", "needs-work"]),
+  condition: z.enum(["excellent", "good", "cosmetic", "full-refurb", "structural"]),
   buyerType: z.enum(["first-time", "additional"]),
   refurbishmentBudget: z.coerce.number().min(0),
   legalFees: z.coerce.number().min(0),
@@ -164,16 +164,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
     setValue("propertyType", broad, { shouldDirty: false })
   }, [propertyTypeDetailValue, setValue])
 
-  // Auto-compute refurb budget from sqm + condition whenever they change,
-  // but only if the user hasn't manually entered a custom refurb amount
-  // (i.e. refurb is still 0 or matches our last auto-estimate).
+  // Auto-compute refurb budget from sqft + condition whenever they change.
+  // Always recalculates — user can still override manually.
   useEffect(() => {
     if (!sqftValue || sqftValue <= 0) return
     const estimated = estimateRefurbCost(sqftValue, conditionValue, propertyTypeValue, postcodeValue)
-    // Only overwrite if field is currently 0 or if estimate changed meaningfully
-    if (refurbValue === 0 || refurbValue === undefined) {
-      setValue("refurbishmentBudget", estimated, { shouldDirty: false })
-    }
+    setValue("refurbishmentBudget", estimated, { shouldDirty: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sqftValue, conditionValue, propertyTypeValue, postcodeValue])
 
@@ -192,10 +188,10 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
           <Link2 className="mt-0.5 size-4 shrink-0 text-primary" />
           <div className="flex flex-col gap-0.5">
             <p className="text-sm font-medium text-foreground">
-              Property details imported from listing
+              Details pre-filled from listing
             </p>
             <p className="text-xs text-muted-foreground">
-              We pre-filled what we could from the URL. Please review the details above and fill in the remaining fields below (rent, financing, running costs) to get a full analysis.
+              Please review and adjust if needed before analysing. Fill in the remaining fields (rent, financing, running costs) to get a full analysis.
             </p>
           </div>
         </div>
@@ -325,10 +321,11 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="excellent">Excellent</SelectItem>
-                    <SelectItem value="good">Good</SelectItem>
-                    <SelectItem value="fair">Fair</SelectItem>
-                    <SelectItem value="needs-work">Needs Work</SelectItem>
+                    <SelectItem value="excellent">Excellent — Move-in ready, no work needed</SelectItem>
+                    <SelectItem value="good">Good — Minor cosmetic touches only</SelectItem>
+                    <SelectItem value="cosmetic">Cosmetic — New kitchen/bathroom, redecoration</SelectItem>
+                    <SelectItem value="full-refurb">Full Refurb — Complete renovation throughout</SelectItem>
+                    <SelectItem value="structural">Structural / Major Works — Extensions, underpinning, rewiring</SelectItem>
                   </SelectContent>
                 </Select>
               )}
@@ -361,7 +358,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
                 />
               </FormField>
             </div>
-            <FormField label="Refurbishment Budget" hint={sqftValue ? "Auto-estimated from size & condition — edit to override" : "Enter manually or set floor size + condition above"}>
+            <FormField label="Refurbishment Budget" hint={sqftValue ? "Estimated based on property condition and size. Adjust if you have a specific quote." : "Enter manually or set floor size + condition above"}>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                 <Input type="number" className="pl-7" {...register("refurbishmentBudget")} />

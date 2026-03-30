@@ -33,15 +33,84 @@ export async function POST(req: Request) {
       // Scrapers return snake_case fields; remap to the camelCase shape
       // that page.tsx expects under `propertyData`.
       const raw = data.data || {}
+
+      // Resolve sqft: prefer scraped value, derive from sqm if needed
+      let sqft = raw.sqft ? Number(raw.sqft) : undefined
+      const sqm = raw.sqm ? Number(raw.sqm) : undefined
+      if (!sqft && sqm) {
+        sqft = Math.round(sqm * 10.764)
+      }
+
+      // If no floor size from listing, try EPC register (free, no key)
+      if (!sqft && raw.postcode) {
+        try {
+          const epcRes = await fetch(
+            `https://epc.opendatacommunities.org/api/v1/domestic/search?postcode=${encodeURIComponent(raw.postcode)}&size=1`,
+            { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
+          )
+          if (epcRes.ok) {
+            const epcData = await epcRes.json()
+            const rows = epcData?.rows || epcData?.results || []
+            if (rows.length > 0) {
+              const epcSqm = Number(rows[0]["total-floor-area"] || rows[0].totalFloorArea)
+              if (epcSqm > 0) {
+                sqft = Math.round(epcSqm * 10.764)
+              }
+            }
+          }
+        } catch {
+          // EPC lookup failed — leave sqft undefined for manual entry
+        }
+      }
+
+      // Map property type detail from scraper to form enum
+      const rawType = (raw.propertyType || raw.property_type || "").toLowerCase()
+      let propertyTypeDetail: string | undefined
+      if (rawType.includes("terrace") && rawType.includes("end")) propertyTypeDetail = "end-of-terrace"
+      else if (rawType.includes("terrace")) propertyTypeDetail = "terraced"
+      else if (rawType.includes("semi")) propertyTypeDetail = "semi-detached"
+      else if (rawType.includes("detach")) propertyTypeDetail = "detached"
+      else if (rawType.includes("flat") || rawType.includes("apartment")) propertyTypeDetail = "flat-apartment"
+      else if (rawType.includes("bungalow")) propertyTypeDetail = "bungalow"
+      else if (rawType.includes("maisonette")) propertyTypeDetail = "maisonette"
+
+      // Map broad property type for calculations
+      const broadType = ["flat-apartment", "maisonette"].includes(propertyTypeDetail || "")
+        ? "flat"
+        : "house"
+
+      // Map tenure type
+      const rawTenure = (raw.tenure_type || raw.tenureType || "").toLowerCase()
+      let tenureType: string | undefined
+      if (rawTenure.includes("freehold")) tenureType = "freehold"
+      else if (rawTenure.includes("leasehold")) tenureType = "leasehold"
+
       return NextResponse.json({
         success: true,
         propertyData: {
           address: raw.address || "",
           postcode: raw.postcode || "",
           purchasePrice: Number(raw.price || raw.purchasePrice) || 0,
-          propertyType: raw.propertyType || raw.property_type || "house",
-          bedrooms: Number(raw.bedrooms) || 3,
-          ...(raw.sqft ? { sqft: Number(raw.sqft) } : {}),
+          propertyType: broadType,
+          ...(propertyTypeDetail ? { propertyTypeDetail } : {}),
+          bedrooms: raw.bedrooms ? Number(raw.bedrooms) : undefined,
+          ...(raw.bathrooms ? { bathrooms: Number(raw.bathrooms) } : {}),
+          ...(sqft ? { sqft } : {}),
+          ...(sqm ? { sqm } : {}),
+          ...(tenureType ? { tenureType } : {}),
+          ...(tenureType === "leasehold" && raw.lease_years ? { leaseYears: Number(raw.lease_years) } : {}),
+          ...(tenureType === "leasehold" && raw.leaseYears ? { leaseYears: Number(raw.leaseYears) } : {}),
+          // Pass through listing display data
+          description: raw.description || undefined,
+          keyFeatures: raw.key_features || raw.keyFeatures || undefined,
+          images: raw.images || undefined,
+          floorplans: raw.floorplans || undefined,
+          agentName: raw.agent_name || raw.agentName || undefined,
+          agentPhone: raw.agent_phone || raw.agentPhone || undefined,
+          agentAddress: raw.agent_address || raw.agentAddress || undefined,
+          listingUrl: raw.listing_url || raw.listingUrl || url,
+          source: raw.source || undefined,
+          councilTaxBand: raw.council_tax_band || raw.councilTaxBand || undefined,
         },
       })
     }

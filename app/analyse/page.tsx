@@ -449,6 +449,9 @@ export default function AnalysePage() {
           propertyType: scraped.propertyType || "house",
           bedrooms: Number(scraped.bedrooms) || 3,
           ...(scraped.sqft ? { sqft: Number(scraped.sqft) } : {}),
+          ...(scraped.propertyTypeDetail ? { propertyTypeDetail: scraped.propertyTypeDetail } : {}),
+          ...(scraped.tenureType ? { tenureType: scraped.tenureType } : {}),
+          ...(scraped.tenureType === "leasehold" && scraped.leaseYears ? { leaseYears: Number(scraped.leaseYears) } : {}),
         }
 
         // Store the rich listing data for the property card display
@@ -591,7 +594,7 @@ export default function AnalysePage() {
       hmo: "HMO", flip: "Flip", r2sa: "Rent-to-SA (R2SA)", development: "Development",
     }
     const conditionLabels: Record<string, string> = {
-      excellent: "Excellent", good: "Good", fair: "Fair", "needs-work": "Needs Work",
+      excellent: "Excellent", good: "Good", cosmetic: "Cosmetic", "full-refurb": "Full Refurb", structural: "Structural",
     }
     const strategy = strategyLabels[fd?.investmentType || "btl"] || "BTL"
     const condition = conditionLabels[fd?.condition || "good"] || "Good"

@@ -10,7 +10,7 @@ export type PropertyTypeDetail =
   | "other"
 export type TenureType = "freehold" | "leasehold"
 export type InvestmentType = "btl" | "brr" | "hmo" | "flip" | "r2sa" | "development"
-export type PropertyCondition = "excellent" | "good" | "fair" | "needs-work"
+export type PropertyCondition = "excellent" | "good" | "cosmetic" | "full-refurb" | "structural"
 export type PurchaseType = "mortgage" | "bridging-loan" | "cash"
 
 export interface PropertyFormData {
