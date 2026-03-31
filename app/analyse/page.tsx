@@ -446,6 +446,7 @@ export default function AnalysePage() {
 
         // Map scraped data to form fields for pre-filling
         const scraped = data.propertyData
+        console.log("[PREFILL] scraped.sqft:", scraped.sqft, "scraped.sqm:", scraped.sqm, "scraped.sqftSource:", scraped.sqftSource)
         const mapped: Partial<PropertyFormData> = {
           address: scraped.address || "",
           postcode: scraped.postcode || "",
@@ -457,6 +458,7 @@ export default function AnalysePage() {
           ...(scraped.tenureType ? { tenureType: scraped.tenureType } : {}),
           ...(scraped.tenureType === "leasehold" && scraped.leaseYears ? { leaseYears: Number(scraped.leaseYears) } : {}),
         }
+        console.log("[PREFILL] mapped.sqft:", mapped.sqft, "full mapped keys:", Object.keys(mapped).join(", "))
 
         // Store the rich listing data for the property card display
         setScrapedListing({
