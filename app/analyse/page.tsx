@@ -233,6 +233,7 @@ export default function AnalysePage() {
   const [aiLoading, setAiLoading] = useState(false)
   const [backendData, setBackendData] = useState<BackendResults | null>(null)
   const [prefillData, setPrefillData] = useState<Partial<PropertyFormData> | null>(null)
+  const [sqftSource, setSqftSource] = useState<string | undefined>(undefined)
   const [scrapedFromUrl, setScrapedFromUrl] = useState(false)
   const [scrapedListing, setScrapedListing] = useState<ScrapedListing | null>(null)
 
@@ -321,8 +322,11 @@ export default function AnalysePage() {
           } else {
             setResults(calculateAll(data.propertyData))
           }
-        } else if (parsedResults) {
-          // URL mode: Build formData from parsed AI results, then use calculateAll
+        } else if (parsedResults && !body.propertyData) {
+          // URL mode only: Build formData from parsed AI results, then use calculateAll.
+          // Skip this branch when body.propertyData exists (manual mode) — the user's
+          // original form data (including refurbishmentBudget, sqft, condition etc.)
+          // was captured by handleManualSubmit and must not be overwritten.
           const propertyData: PropertyFormData = {
             address: parsedResults.address || 'Unknown',
             postcode: parsedResults.postcode || '',
@@ -350,7 +354,7 @@ export default function AnalysePage() {
             surveyCosts: 500
           }
           setFormData(propertyData)
-          
+
           // Use calculateAll to generate proper CalculationResults
           const calcResults = calculateAll(propertyData)
           setResults(calcResults)
@@ -476,6 +480,9 @@ export default function AnalysePage() {
           listingUrl:   scraped.listingUrl,
           source:       scraped.source,
         })
+
+        // Track where floor size came from (listing vs EPC)
+        setSqftSource(scraped.sqftSource || (scraped.sqft ? "listing" : undefined))
 
         // Transition to manual form with pre-filled data
         setPrefillData(mapped)
@@ -1134,6 +1141,7 @@ export default function AnalysePage() {
                 isLoading={isProcessing}
                 defaultValues={prefillData || undefined}
                 prefilled={scrapedFromUrl}
+                sqftSource={sqftSource}
               />
             </div>
           </div>

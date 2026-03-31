@@ -70,6 +70,7 @@ interface PropertyFormProps {
   isLoading: boolean
   defaultValues?: Partial<PropertyFormData>
   prefilled?: boolean
+  sqftSource?: string // "listing" | "epc" | undefined
 }
 
 function FormField({
@@ -95,7 +96,7 @@ function FormField({
   )
 }
 
-export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: PropertyFormProps) {
+export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sqftSource }: PropertyFormProps) {
   const baseDefaults: PropertyFormData = {
     address: "",
     postcode: "",
@@ -297,7 +298,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled }: 
               />
             </FormField>
           )}
-          <FormField label="Floor Size (sqft)" hint="From listing or EPC certificate (optional)">
+          <FormField label="Floor Size (sqft)" hint={
+            sqftSource === "epc" ? "Floor size from EPC register"
+            : sqftSource === "listing" ? "Floor size from listing"
+            : sqftValue ? "From listing or EPC certificate"
+            : "Floor size not found \u2014 enter manually"
+          }>
             <div className="relative">
               <Input
                 type="number"
