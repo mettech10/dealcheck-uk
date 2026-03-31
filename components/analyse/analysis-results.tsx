@@ -1141,7 +1141,7 @@ export function AnalysisResults({
     "Total Return": year.totalReturn,
   }))
 
-  const hasSoldComparables = (backendData?.sold_comparables?.length ?? 0) > 0
+  const hasSoldComparables = true // Always show — PropertyComparables fetches from Land Registry
   const hasRentComparables = (backendData?.rent_comparables?.length ?? 0) > 0
   const hasRefurb = !!backendData?.refurb_estimates && Object.keys(backendData.refurb_estimates).length > 0
   const hasStrategies =
@@ -1414,6 +1414,10 @@ export function AnalysisResults({
               postcode={data.postcode}
               bedrooms={data.bedrooms}
               currentPrice={data.purchasePrice}
+              propertyType={data.propertyType}
+              propertyTypeDetail={data.propertyTypeDetail}
+              tenureType={data.tenureType}
+              investmentType={data.investmentType}
             />
           </TabsContent>
         )}

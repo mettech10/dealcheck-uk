@@ -5,7 +5,7 @@ const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.o
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { postcode, propertyTypeDetail, propertyType, tenureType } = body
+    const { postcode, bedrooms, propertyType, propertyTypeDetail, tenureType, strategy } = body
 
     if (!postcode) {
       return NextResponse.json(
@@ -14,26 +14,25 @@ export async function POST(req: Request) {
       )
     }
 
-    // Call Flask backend with property filters
-    const response = await fetch(`${FLASK_URL}/api/sold-prices`, {
+    const response = await fetch(`${FLASK_URL}/api/rental-comparables`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         postcode: postcode.toUpperCase(),
-        ...(propertyTypeDetail ? { propertyTypeDetail } : {}),
+        bedrooms: bedrooms || 3,
         ...(propertyType ? { propertyType } : {}),
-        ...(tenureType ? { tenureType } : {}),
-      })
+        ...(propertyTypeDetail ? { propertyTypeDetail } : {}),
+        ...(strategy ? { strategy } : {}),
+      }),
     })
 
     const data = await response.json()
-
     return NextResponse.json(data)
 
   } catch (error) {
-    console.error("[API] Sold comparables error:", error)
+    console.error("[API] Rental listings error:", error)
     return NextResponse.json(
-      { success: false, message: "Failed to fetch sold prices" },
+      { success: false, message: "Failed to fetch rental comparables" },
       { status: 500 }
     )
   }
