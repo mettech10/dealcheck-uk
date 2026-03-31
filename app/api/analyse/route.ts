@@ -41,26 +41,47 @@ export async function POST(req: Request) {
         sqft = Math.round(sqm * 10.764)
       }
 
-      // If no floor size from listing, try EPC register (free, no key)
+      // If no floor size from listing, try EPC register
+      // Requires EPC_API_EMAIL + EPC_API_KEY for Basic auth
+      // Register free at: https://epc.opendatacommunities.org/login
+      let sqftSource: string | undefined
       if (!sqft && raw.postcode) {
-        try {
-          const epcRes = await fetch(
-            `https://epc.opendatacommunities.org/api/v1/domestic/search?postcode=${encodeURIComponent(raw.postcode)}&size=1`,
-            { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
-          )
-          if (epcRes.ok) {
-            const epcData = await epcRes.json()
-            const rows = epcData?.rows || epcData?.results || []
-            if (rows.length > 0) {
-              const epcSqm = Number(rows[0]["total-floor-area"] || rows[0].totalFloorArea)
-              if (epcSqm > 0) {
-                sqft = Math.round(epcSqm * 10.764)
+        const epcEmail = process.env.EPC_API_EMAIL || ""
+        const epcKey = process.env.EPC_API_KEY || ""
+        if (epcEmail && epcKey) {
+          try {
+            const basicAuth = Buffer.from(`${epcEmail}:${epcKey}`).toString("base64")
+            const epcRes = await fetch(
+              `https://epc.opendatacommunities.org/api/v1/domestic/search?postcode=${encodeURIComponent(raw.postcode)}&size=5`,
+              {
+                headers: {
+                  Accept: "application/json",
+                  Authorization: `Basic ${basicAuth}`,
+                },
+                signal: AbortSignal.timeout(5000),
               }
+            )
+            if (epcRes.ok) {
+              const epcData = await epcRes.json()
+              const rows = epcData?.rows || epcData?.results || []
+              if (rows.length > 0) {
+                const epcSqm = Number(rows[0]["total-floor-area"] || rows[0].totalFloorArea)
+                if (epcSqm > 0) {
+                  sqft = Math.round(epcSqm * 10.764)
+                  sqftSource = "epc"
+                  console.log(`[EPC] Floor size from EPC register: ${epcSqm} sqm → ${sqft} sqft`)
+                }
+              }
+            } else {
+              console.log(`[EPC] API returned ${epcRes.status} for postcode ${raw.postcode}`)
             }
+          } catch {
+            // EPC lookup failed — leave sqft undefined for manual entry
           }
-        } catch {
-          // EPC lookup failed — leave sqft undefined for manual entry
         }
+      }
+      if (sqft && !sqftSource) {
+        sqftSource = "listing"
       }
 
       // Map property type detail from scraper to form enum
@@ -97,6 +118,7 @@ export async function POST(req: Request) {
           ...(raw.bathrooms ? { bathrooms: Number(raw.bathrooms) } : {}),
           ...(sqft ? { sqft } : {}),
           ...(sqm ? { sqm } : {}),
+          ...(sqftSource ? { sqftSource } : {}),
           ...(tenureType ? { tenureType } : {}),
           ...(tenureType === "leasehold" && raw.lease_years ? { leaseYears: Number(raw.lease_years) } : {}),
           ...(tenureType === "leasehold" && raw.leaseYears ? { leaseYears: Number(raw.leaseYears) } : {}),
