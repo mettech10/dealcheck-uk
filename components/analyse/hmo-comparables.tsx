@@ -13,6 +13,7 @@ interface SpareRoomListing {
   room_type: string
   available_from: string
   listing_url: string
+  image_url?: string
 }
 
 interface HmoAnalysis {
@@ -44,6 +45,23 @@ function DemandBadge({ demand }: { demand: "strong" | "moderate" | "weak" }) {
   )
 }
 
+function HmoSummaryLine({ listings }: { listings: SpareRoomListing[] }) {
+  const rents = listings
+    .filter((l) => l.monthly_rent && l.monthly_rent > 0)
+    .map((l) => l.monthly_rent!)
+  if (rents.length === 0) return null
+  const avg = Math.round(rents.reduce((a, b) => a + b, 0) / rents.length)
+  const min = Math.min(...rents)
+  const max = Math.max(...rents)
+  return (
+    <div className="text-xs text-muted-foreground text-center pt-2 border-t border-border/30 mt-1">
+      {listings.length} room{listings.length !== 1 ? "s" : ""} found
+      {" · "}Average: £{avg.toLocaleString()} pcm
+      {" · "}Range: £{min.toLocaleString()} – £{max.toLocaleString()} pcm
+    </div>
+  )
+}
+
 export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [listings, setListings] = useState<SpareRoomListing[]>([])
   const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
@@ -59,21 +77,32 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
       setError(null)
 
       try {
+        console.log("[HMO] SPAREROOM CALL TRIGGERED - postcode:", postcode)
+        const spareRoomPayload = { postcode, maxResults: 12 }
+        console.log("[HMO] SPAREROOM INPUT PAYLOAD:", JSON.stringify(spareRoomPayload, null, 2))
+
         const res = await fetch("/api/comparables/spareroom", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ postcode, maxResults: 12 }),
+          body: JSON.stringify(spareRoomPayload),
         })
+        console.log("[HMO] SPAREROOM RESPONSE STATUS:", res.status)
         const data = await res.json()
+        console.log("[HMO] SPAREROOM RAW RESPONSE:", JSON.stringify(data, null, 2))
         if (cancelled) return
 
         if (!data.success) {
-          setError(data.message || "Failed to fetch SpareRoom listings")
+          console.log("[HMO] SPAREROOM FAILED:", data.message)
+          setError(data.message || "Unable to fetch SpareRoom data. Please try again.")
           setLoadingListings(false)
           return
         }
 
         const fetchedListings: SpareRoomListing[] = data.listings || []
+        console.log("[HMO] SPAREROOM RESULTS COUNT:", fetchedListings.length)
+        if (fetchedListings.length > 0) {
+          console.log("[HMO] SPAREROOM FIRST RESULT:", JSON.stringify(fetchedListings[0], null, 2))
+        }
         setListings(fetchedListings)
         setLoadingListings(false)
 
@@ -81,19 +110,24 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
         // Run HMO area analysis
         setLoadingAnalysis(true)
+        console.log("[HMO] HMO-ANALYSIS CALL - postcode:", postcode, "listings count:", fetchedListings.length)
         const aiRes = await fetch("/api/comparables/hmo-analysis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ postcode, listings: fetchedListings }),
         })
         const aiData = await aiRes.json()
+        console.log("[HMO] HMO-ANALYSIS RESPONSE:", JSON.stringify(aiData, null, 2).slice(0, 500))
         if (cancelled) return
 
         if (aiData.success && aiData.analysis) {
           setAnalysis(aiData.analysis)
         }
-      } catch {
-        if (!cancelled) setError("Failed to load HMO data")
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        const errStack = err instanceof Error ? err.stack : ""
+        console.log("[HMO] ERROR TRIGGERED:", errMsg, errStack)
+        if (!cancelled) setError("Unable to fetch SpareRoom data. Please try again.")
       } finally {
         if (!cancelled) {
           setLoadingListings(false)
@@ -140,43 +174,64 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
         {listings.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
-            No SpareRoom listings found near {postcode}. Try a broader postcode (e.g. just the outward code).
+            No room listings found on SpareRoom for this postcode. Try a nearby postcode.
           </p>
         ) : (
-          <div className="flex flex-col divide-y divide-border/50 rounded-xl border border-border/50 overflow-hidden">
-            {listings.map((lst, i) => (
-              <div key={i} className="flex items-start gap-3 px-4 py-3 bg-card hover:bg-muted/30 transition-colors">
-                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                  <p className="text-sm font-medium text-foreground truncate">{lst.title}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                    <span>{lst.postcode || lst.address}</span>
-                    {lst.room_type && lst.room_type !== "Unknown" && <span>· {lst.room_type}</span>}
-                    {lst.bills_included === "Yes" && <span>· Bills included</span>}
-                    {lst.available_from && lst.available_from !== "Now" && (
-                      <span>· Available {lst.available_from}</span>
+          <>
+            <div className="flex flex-col divide-y divide-border/50 rounded-xl border border-border/50 overflow-hidden">
+              {listings.map((lst, i) => (
+                <div key={i} className="flex items-start gap-3 px-4 py-3 bg-card hover:bg-muted/30 transition-colors">
+                  {/* Thumbnail */}
+                  {lst.image_url && (
+                    <div className="shrink-0 w-16 h-12 rounded overflow-hidden bg-muted">
+                      <img
+                        src={lst.image_url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                    <p className="text-sm font-medium text-foreground truncate">{lst.title}</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      <span>{lst.postcode || lst.address}</span>
+                      {lst.room_type && lst.room_type !== "Unknown" && (
+                        <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">{lst.room_type}</span>
+                      )}
+                      {lst.bills_included === "Yes" && (
+                        <span className="text-[10px] rounded bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5">Bills incl.</span>
+                      )}
+                      {lst.available_from && lst.available_from !== "Now" && (
+                        <span>· Available {lst.available_from}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {lst.monthly_rent ? (
+                      <span className="text-sm font-semibold text-foreground">£{lst.monthly_rent.toLocaleString()} pcm</span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">POA</span>
+                    )}
+                    {lst.listing_url && (
+                      <a
+                        href={lst.listing_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        View <ExternalLink className="size-3" />
+                      </a>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  {lst.monthly_rent ? (
-                    <span className="text-sm font-semibold text-foreground">£{lst.monthly_rent.toLocaleString()} pcm</span>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">POA</span>
-                  )}
-                  {lst.listing_url && (
-                    <a
-                      href={lst.listing_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-primary hover:underline"
-                    >
-                      View <ExternalLink className="size-3" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
+            {/* Summary line */}
+            <HmoSummaryLine listings={listings} />
+          </>
         )}
       </div>
 
