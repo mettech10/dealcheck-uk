@@ -65,6 +65,7 @@ function HmoSummaryLine({ listings }: { listings: SpareRoomListing[] }) {
 export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [listings, setListings] = useState<SpareRoomListing[]>([])
   const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
+  const [searchArea, setSearchArea] = useState<string>("")
   const [loadingListings, setLoadingListings] = useState(true)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -99,11 +100,13 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
         }
 
         const fetchedListings: SpareRoomListing[] = data.listings || []
-        console.log("[HMO] SPAREROOM RESULTS COUNT:", fetchedListings.length)
+        const area = data.searchArea || postcode.split(" ")[0] || postcode
+        console.log("[HMO] SPAREROOM RESULTS COUNT:", fetchedListings.length, "searchArea:", area)
         if (fetchedListings.length > 0) {
           console.log("[HMO] SPAREROOM FIRST RESULT:", JSON.stringify(fetchedListings[0], null, 2))
         }
         setListings(fetchedListings)
+        setSearchArea(area)
         setLoadingListings(false)
 
         if (fetchedListings.length === 0) return
@@ -165,16 +168,17 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-base font-semibold text-foreground">
-            Rental Comparables — {postcode}
+            Rental Comparables — {searchArea || postcode.split(" ")[0]} area
           </h3>
           <span className="text-xs text-muted-foreground">
-            Live listings from SpareRoom · {listings.length} found
+            Live room listings from SpareRoom · searching {searchArea || postcode.split(" ")[0]}
           </span>
         </div>
 
         {listings.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
-            No room listings found on SpareRoom for this postcode. Try a nearby postcode.
+            No SpareRoom listings found in the {searchArea || postcode.split(" ")[0]} area.
+            This may indicate low HMO demand in this location.
           </p>
         ) : (
           <>
