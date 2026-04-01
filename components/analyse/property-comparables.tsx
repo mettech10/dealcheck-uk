@@ -45,6 +45,7 @@ interface RentalData {
   minRent: number
   maxRent: number
   message?: string
+  searchArea?: string
 }
 
 // ── Rental Estimate (legacy PropertyData) ─────────────────────────────────
@@ -381,6 +382,7 @@ export function PropertyComparables({
             <CardDescription className="text-xs">
               Live rental listings from Rightmove · {bedrooms} bed
               {propertyTypeDetail ? ` · ${propertyTypeDetail.replace(/-/g, " ")}` : ""}
+              {rentalListings?.searchArea ? ` · searching ${rentalListings.searchArea}` : ""}
             </CardDescription>
 
             {rentalLoading && (
