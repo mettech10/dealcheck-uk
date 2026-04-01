@@ -21,6 +21,7 @@ interface SoldData {
   sales: ComparableSale[]
   average: number
   count: number
+  radiusMiles?: number
 }
 
 // ── Rental Comparables Types ──────────────────────────────────────────────
@@ -100,6 +101,7 @@ export function PropertyComparables({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               postcode,
+              bedrooms,
               ...(propertyTypeDetail ? { propertyTypeDetail } : {}),
               ...(propertyType ? { propertyType } : {}),
               ...(tenureType ? { tenureType } : {}),
@@ -265,6 +267,9 @@ export function PropertyComparables({
               Recent sales from Land Registry
               {propertyTypeDetail ? ` · ${propertyTypeDetail.replace(/-/g, " ")}` : ""}
               {tenureType ? ` · ${tenureType}` : ""}
+              {soldData && soldData.radiusMiles && soldData.radiusMiles > 0
+                ? ` · within ${soldData.radiusMiles} mile${soldData.radiusMiles !== 1 ? "s" : ""}`
+                : ""}
             </CardDescription>
 
             {/* Average Price */}
@@ -349,9 +354,22 @@ export function PropertyComparables({
               </div>
             )}
 
+            {/* Rightmove sold prices link */}
+            {soldData && postcode && (
+              <a
+                href={`https://www.rightmove.co.uk/house-prices/${postcode.replace(/\s+/g, "-").toLowerCase()}.html`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 text-xs text-primary hover:text-primary/80 py-2 border-t border-border/30 mt-2"
+              >
+                View area sold prices on Rightmove
+                <ExternalLink className="size-3" />
+              </a>
+            )}
+
             {soldData && soldData.sales.length === 0 && (
               <div className="text-sm text-muted-foreground text-center py-4">
-                No recent sales found for this postcode
+                No recent sales found for this postcode or nearby area
               </div>
             )}
           </>

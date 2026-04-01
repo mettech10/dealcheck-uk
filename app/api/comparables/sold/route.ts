@@ -5,7 +5,7 @@ const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.o
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { postcode, propertyTypeDetail, propertyType, tenureType } = body
+    const { postcode, propertyTypeDetail, propertyType, tenureType, bedrooms } = body
 
     if (!postcode) {
       return NextResponse.json(
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
         ...(propertyTypeDetail ? { propertyTypeDetail } : {}),
         ...(propertyType ? { propertyType } : {}),
         ...(tenureType ? { tenureType } : {}),
+        ...(bedrooms ? { bedrooms } : {}),
       })
     })
 

@@ -471,141 +471,10 @@ function HouseValuationCard({
   )
 }
 
-// ── Sold Comparables ───────────────────────────────────────────────────────
-function SoldComparablesTable({
-  comparables,
-}: {
-  comparables?: BackendResults["sold_comparables"]
-}) {
-  if (!comparables || comparables.length === 0) return null
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="size-4 text-primary" />
-          <CardTitle className="text-sm">Comparable Sold Prices</CardTitle>
-          <Badge variant="outline" className="ml-auto text-xs">
-            {comparables.length} sales
-          </Badge>
-        </div>
-        <CardDescription className="text-xs">
-          Recent sold prices in this postcode area
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/50 text-left">
-                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
-                  Address
-                </th>
-                <th className="pb-2 pr-4 text-right text-xs font-medium text-muted-foreground">
-                  Price
-                </th>
-                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
-                  Type
-                </th>
-                <th className="pb-2 text-right text-xs font-medium text-muted-foreground">
-                  Date
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparables.slice(0, 6).map((sale, i) => (
-                <tr key={i} className="border-b border-border/20 last:border-0">
-                  <td className="py-2 pr-4 text-foreground">
-                    <span className="line-clamp-1 block max-w-[180px]">
-                      {sale.address}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-4 text-right font-medium text-foreground">
-                    {formatCurrency(sale.price)}
-                  </td>
-                  <td className="py-2 pr-4 text-muted-foreground">
-                    {sale.type || "—"}
-                  </td>
-                  <td className="py-2 text-right text-muted-foreground">
-                    {sale.date || "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ── Rent Comparables ───────────────────────────────────────────────────────
-function RentComparablesTable({
-  comparables,
-}: {
-  comparables?: BackendResults["rent_comparables"]
-}) {
-  if (!comparables || comparables.length === 0) return null
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <Users className="size-4 text-primary" />
-          <CardTitle className="text-sm">Comparable Rental Prices</CardTitle>
-          <Badge variant="outline" className="ml-auto text-xs">
-            {comparables.length} listings
-          </Badge>
-        </div>
-        <CardDescription className="text-xs">
-          Current rental market in this area
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/50 text-left">
-                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
-                  Address
-                </th>
-                <th className="pb-2 pr-4 text-right text-xs font-medium text-muted-foreground">
-                  Rent/mo
-                </th>
-                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
-                  Beds
-                </th>
-                <th className="pb-2 text-xs font-medium text-muted-foreground">
-                  Source
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparables.slice(0, 6).map((rent, i) => (
-                <tr key={i} className="border-b border-border/20 last:border-0">
-                  <td className="py-2 pr-4 text-foreground">
-                    <span className="line-clamp-1 block max-w-[180px]">
-                      {rent.address}
-                    </span>
-                  </td>
-                  <td className="py-2 pr-4 text-right font-medium text-foreground">
-                    {formatCurrency(rent.monthly_rent)}/mo
-                  </td>
-                  <td className="py-2 pr-4 text-muted-foreground">
-                    {rent.bedrooms ?? "—"}
-                  </td>
-                  <td className="py-2 text-xs text-muted-foreground">
-                    {rent.source || "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+// ── Sold & Rent Comparables ────────────────────────────────────────────────
+// Removed: SoldComparablesTable and RentComparablesTable were duplicating
+// data already displayed in the PropertyComparables (Market Comparables)
+// tabbed section. Data is now shown only in that tabbed section.
 
 // ── Refurb Estimates ───────────────────────────────────────────────────────
 function RefurbEstimatesCard({
@@ -1659,12 +1528,9 @@ export function AnalysisResults({
       )}
 
       {/* ── Sold & Rent Comparables ─────────────────────────────────── */}
-      {hasSoldComparables && (
-        <SoldComparablesTable comparables={backendData?.sold_comparables} />
-      )}
-      {hasRentComparables && (
-        <RentComparablesTable comparables={backendData?.rent_comparables} />
-      )}
+      {/* Removed: SoldComparablesTable and RentComparablesTable were
+          duplicating data already shown in the Market Comparables
+          tabbed section (PropertyComparables component). */}
 
       {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
       {data.investmentType === "hmo" && data.postcode && (
