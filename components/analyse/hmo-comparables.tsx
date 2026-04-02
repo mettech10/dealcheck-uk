@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { ExternalLink, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
 
-interface SpareRoomListing {
+interface RoomListing {
   title: string
   address: string
   postcode: string
@@ -14,6 +14,8 @@ interface SpareRoomListing {
   available_from: string
   listing_url: string
   image_url?: string
+  distance_km?: number | null
+  source?: string
 }
 
 interface HmoAnalysis {
@@ -50,7 +52,7 @@ function DemandBadge({ demand }: { demand: "strong" | "moderate" | "weak" }) {
   )
 }
 
-function HmoSummaryLine({ listings }: { listings: SpareRoomListing[] }) {
+function HmoSummaryLine({ listings }: { listings: RoomListing[] }) {
   const rents = listings
     .filter((l) => l.monthly_rent && l.monthly_rent > 0)
     .map((l) => l.monthly_rent!)
@@ -68,7 +70,7 @@ function HmoSummaryLine({ listings }: { listings: SpareRoomListing[] }) {
 }
 
 export function HmoComparables({ postcode }: HmoComparablesProps) {
-  const [listings, setListings] = useState<SpareRoomListing[]>([])
+  const [listings, setListings] = useState<RoomListing[]>([])
   const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
   const [searchArea, setSearchArea] = useState<string>("")
   const [manualSearch, setManualSearch] = useState<ManualSearchInfo | null>(null)
@@ -100,14 +102,30 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
         if (!data.success) {
           console.log("[HMO] SPAREROOM FAILED:", data.message)
-          setError(data.message || "Unable to fetch SpareRoom data. Please try again.")
+          setError(data.message || "Unable to fetch room listing data. Please try again.")
           setLoadingListings(false)
           return
         }
 
-        const fetchedListings: SpareRoomListing[] = data.listings || []
+        // Normalize listing fields from either OpenRent or SpareRoom format
+        const rawListings = data.listings || []
+        const fetchedListings: RoomListing[] = rawListings.map((l: Record<string, unknown>) => ({
+          title: (l.title as string) || (l.ad_title as string) || "Room to rent",
+          address: (l.area as string) || (l.address as string) || (l.postcode as string) || "",
+          postcode: (l.area as string) || (l.postcode as string) || "",
+          monthly_rent: (l.rentPcm as number) ?? (l.monthly_rent as number) ?? null,
+          bills_included: l.billsIncluded === true ? "Yes" : l.billsIncluded === false ? "No" : (l.bills_included as string) || "Unknown",
+          num_rooms: (l.num_rooms as number) ?? null,
+          room_type: (l.roomType as string) || (l.room_type as string) || "Unknown",
+          available_from: (l.available_from as string) || "Now",
+          listing_url: (l.listingUrl as string) || (l.listing_url as string) || "",
+          image_url: (l.imageUrl as string) || (l.image_url as string) || "",
+          distance_km: (l.distanceKm as number) ?? null,
+          source: (l.source as string) || data.source || "unknown",
+        }))
         const area = data.searchArea || postcode.split(" ")[0] || postcode
-        console.log("[HMO] SPAREROOM RESULTS COUNT:", fetchedListings.length, "searchArea:", area, "manualSearch:", data.manualSearch)
+        const dataSource = data.source || "unknown"
+        console.log("[HMO] RESULTS:", fetchedListings.length, "source:", dataSource, "searchArea:", area, "manualSearch:", data.manualSearch)
         if (fetchedListings.length > 0) {
           console.log("[HMO] SPAREROOM FIRST RESULT:", JSON.stringify(fetchedListings[0], null, 2))
         }
@@ -142,7 +160,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
         const errMsg = err instanceof Error ? err.message : String(err)
         const errStack = err instanceof Error ? err.stack : ""
         console.log("[HMO] ERROR TRIGGERED:", errMsg, errStack)
-        if (!cancelled) setError("Unable to fetch SpareRoom data. Please try again.")
+        if (!cancelled) setError("Unable to fetch room listing data. Please try again.")
       } finally {
         if (!cancelled) {
           setLoadingListings(false)
@@ -160,7 +178,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-3 py-8">
           <Loader2 className="size-5 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Fetching live SpareRoom listings near {postcode}…</p>
+          <p className="text-sm text-muted-foreground">Fetching live room listings near {postcode}…</p>
         </div>
       </div>
     )
@@ -183,7 +201,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
             Rental Comparables — {searchArea || postcode.split(" ")[0]} area
           </h3>
           <span className="text-xs text-muted-foreground">
-            Live room listings from SpareRoom · searching {searchArea || postcode.split(" ")[0]}
+            Live room listings · searching {searchArea || postcode.split(" ")[0]}
           </span>
         </div>
 
@@ -209,7 +227,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           </div>
         ) : listings.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
-            No SpareRoom listings found in the {searchArea || postcode.split(" ")[0]} area.
+            No room listings found in the {searchArea || postcode.split(" ")[0]} area.
             This may indicate low HMO demand in this location.
           </p>
         ) : (
@@ -233,6 +251,9 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
                     <p className="text-sm font-medium text-foreground truncate">{lst.title}</p>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       <span>{lst.postcode || lst.address}</span>
+                      {lst.distance_km != null && (
+                        <span>{lst.distance_km}km away</span>
+                      )}
                       {lst.room_type && lst.room_type !== "Unknown" && (
                         <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">{lst.room_type}</span>
                       )}
