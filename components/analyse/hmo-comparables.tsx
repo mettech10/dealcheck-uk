@@ -24,6 +24,11 @@ interface HmoAnalysis {
   verdict: string
 }
 
+interface ManualSearchInfo {
+  searchUrl: string
+  message: string
+}
+
 interface HmoComparablesProps {
   postcode: string
 }
@@ -66,6 +71,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [listings, setListings] = useState<SpareRoomListing[]>([])
   const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
   const [searchArea, setSearchArea] = useState<string>("")
+  const [manualSearch, setManualSearch] = useState<ManualSearchInfo | null>(null)
   const [loadingListings, setLoadingListings] = useState(true)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -101,13 +107,19 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
         const fetchedListings: SpareRoomListing[] = data.listings || []
         const area = data.searchArea || postcode.split(" ")[0] || postcode
-        console.log("[HMO] SPAREROOM RESULTS COUNT:", fetchedListings.length, "searchArea:", area)
+        console.log("[HMO] SPAREROOM RESULTS COUNT:", fetchedListings.length, "searchArea:", area, "manualSearch:", data.manualSearch)
         if (fetchedListings.length > 0) {
           console.log("[HMO] SPAREROOM FIRST RESULT:", JSON.stringify(fetchedListings[0], null, 2))
         }
         setListings(fetchedListings)
         setSearchArea(area)
         setLoadingListings(false)
+
+        // If backend returned a manual search fallback, show that instead
+        if (data.manualSearch && data.searchUrl) {
+          setManualSearch({ searchUrl: data.searchUrl, message: data.message || "" })
+          return
+        }
 
         if (fetchedListings.length === 0) return
 
@@ -175,7 +187,27 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           </span>
         </div>
 
-        {listings.length === 0 ? (
+        {manualSearch ? (
+          <div className="rounded-xl border border-border/50 bg-card p-5 flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              SpareRoom data is temporarily unavailable for automated retrieval.
+              Use the link below to search for HMO room listings near{" "}
+              <span className="font-medium text-foreground">{searchArea || postcode.split(" ")[0]}</span> directly on SpareRoom.
+            </p>
+            <a
+              href={manualSearch.searchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors px-4 py-2.5 text-sm font-medium w-fit"
+            >
+              Search SpareRoom for rooms near {searchArea || postcode.split(" ")[0]}
+              <ExternalLink className="size-4" />
+            </a>
+            <p className="text-xs text-muted-foreground">
+              Tip: Check how many rooms are available and at what price to gauge HMO demand in this area.
+            </p>
+          </div>
+        ) : listings.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
             No SpareRoom listings found in the {searchArea || postcode.split(" ")[0]} area.
             This may indicate low HMO demand in this location.
