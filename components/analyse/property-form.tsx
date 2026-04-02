@@ -156,6 +156,8 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const refurbValue = watch("refurbishmentBudget")
   const tenureTypeValue = watch("tenureType")
   const propertyTypeDetailValue = watch("propertyTypeDetail")
+  const roomCountValue = watch("roomCount")
+  const avgRoomRateValue = watch("avgRoomRate")
 
   // Auto-map the granular property type to the broad type used by calculations.
   useEffect(() => {
@@ -180,6 +182,14 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const isFLIP     = investmentType === "flip"
   const isBridging = purchaseType === "bridging-loan"
   const isCash     = purchaseType === "cash"
+
+  // HMO: auto-derive monthlyRent from roomCount × avgRoomRate
+  const hmoTotalRent = (roomCountValue || 0) * (avgRoomRateValue || 0)
+  useEffect(() => {
+    if (isHMO && hmoTotalRent >= 0) {
+      setValue("monthlyRent", hmoTotalRent)
+    }
+  }, [isHMO, hmoTotalRent, setValue])
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
@@ -535,6 +545,35 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   placeholder="450"
                   {...register("avgRoomRate")}
                 />
+              </div>
+            </FormField>
+          </div>
+          {/* Live total rent preview */}
+          {hmoTotalRent > 0 && (
+            <div className="rounded-lg bg-primary/5 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Total monthly rent: </span>
+              <span className="font-semibold text-foreground">
+                £{hmoTotalRent.toLocaleString()}
+              </span>
+              <span className="text-xs text-muted-foreground ml-1">
+                ({roomCountValue} rooms × £{avgRoomRateValue} per room)
+              </span>
+            </div>
+          )}
+          {/* HMO void and management fields */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField label="Void Period" hint="Weeks per year without tenants">
+              <Input type="number" {...register("voidWeeks")} />
+            </FormField>
+            <FormField label="Management Fee" hint="% of rent">
+              <div className="relative">
+                <Input
+                  type="number"
+                  step="0.5"
+                  className="pr-7"
+                  {...register("managementFeePercent")}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
               </div>
             </FormField>
           </div>
