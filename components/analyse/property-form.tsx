@@ -324,9 +324,11 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">sqft</span>
             </div>
           </FormField>
-          <FormField label="Bedrooms">
-            <Input type="number" {...register("bedrooms")} />
-          </FormField>
+          {!isHMO && (
+            <FormField label="Bedrooms">
+              <Input type="number" {...register("bedrooms")} />
+            </FormField>
+          )}
           <FormField label="Condition">
             <Controller
               control={control}
@@ -367,7 +369,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="additional">Second Home / Investment (5% SDLT surcharge)</SelectItem>
-                        <SelectItem value="first-time">First-Time Buyer (0% up to £425k, 5% on £425k–£625k)</SelectItem>
+                        <SelectItem value="first-time">First-Time Buyer (0% up to £300k, 5% on £300k–£500k)</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -562,7 +564,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
           )}
           {/* HMO void and management fields */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField label="Void Period" hint="Weeks per year without tenants">
+            <FormField label="Void Period" hint={`Void calculated per room (1 room empty for ${watch("voidWeeks") || 4} weeks/yr)`}>
               <Input type="number" {...register("voidWeeks")} />
             </FormField>
             <FormField label="Management Fee" hint="% of rent">
