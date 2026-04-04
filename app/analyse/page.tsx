@@ -20,6 +20,7 @@ import {
   Loader2,
   ExternalLink,
   FileDown,
+  FileUp,
 } from "lucide-react"
 
 // Helper to format analysis results from backend
@@ -220,7 +221,7 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
   return formatted
 }
 
-type InputMode = "url" | "manual"
+type InputMode = "url" | "manual" | "pdf"
 
 export default function AnalysePage() {
   const [inputMode, setInputMode] = useState<InputMode>("url")
@@ -236,6 +237,9 @@ export default function AnalysePage() {
   const [sqftSource, setSqftSource] = useState<string | undefined>(undefined)
   const [scrapedFromUrl, setScrapedFromUrl] = useState(false)
   const [scrapedListing, setScrapedListing] = useState<ScrapedListing | null>(null)
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [pdfProcessing, setPdfProcessing] = useState(false)
+  const [pdfNotice, setPdfNotice] = useState<{ fieldsFound: string[]; fieldsMissing: string[] } | null>(null)
 
   // Call the Flask backend API and handle the response
   const callAnalysisAPI = useCallback(
@@ -550,8 +554,67 @@ export default function AnalysePage() {
       })
   }, [aiLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // PDF upload handler
+  const handlePdfUpload = useCallback(async () => {
+    if (!pdfFile) return
+    if (pdfFile.size > 10 * 1024 * 1024) {
+      setError("PDF exceeds 10MB limit. Please use a smaller file.")
+      return
+    }
+    setError(null)
+    setPdfProcessing(true)
+
+    try {
+      // Convert to base64
+      const buffer = await pdfFile.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+      let binary = ""
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i])
+      }
+      const pdfBase64 = btoa(binary)
+
+      const res = await fetch("/api/analyse/pdf-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pdfBase64, filename: pdfFile.name }),
+      })
+      const data = await res.json()
+
+      if (!data.success) {
+        setError(data.message || "Failed to extract data from PDF")
+        return
+      }
+
+      const ext = data.extracted || {}
+      const mapped: Partial<PropertyFormData> = {
+        ...(ext.address ? { address: ext.address } : {}),
+        ...(ext.postcode ? { postcode: ext.postcode } : {}),
+        ...(ext.purchasePrice ? { purchasePrice: Number(ext.purchasePrice) } : {}),
+        ...(ext.bedrooms ? { bedrooms: Number(ext.bedrooms) } : {}),
+        ...(ext.propertyType ? { propertyType: ext.propertyType } : {}),
+        ...(ext.tenureType ? { tenureType: ext.tenureType } : {}),
+        ...(ext.monthlyRent ? { monthlyRent: Number(ext.monthlyRent) } : {}),
+        ...(ext.floorSizeSqft ? { sqft: Number(ext.floorSizeSqft) } : {}),
+        ...(ext.condition ? { condition: ext.condition } : {}),
+        ...(ext.strategy ? { investmentType: ext.strategy } : {}),
+        ...(ext.refurbBudget ? { refurbishmentBudget: Number(ext.refurbBudget) } : {}),
+        ...(ext.leaseYearsRemaining ? { leaseYears: Number(ext.leaseYearsRemaining) } : {}),
+      }
+
+      setPrefillData(mapped)
+      setPdfNotice({ fieldsFound: data.fieldsFound || [], fieldsMissing: data.fieldsMissing || [] })
+      setScrapedFromUrl(true)
+      setInputMode("manual")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to process PDF")
+    } finally {
+      setPdfProcessing(false)
+    }
+  }, [pdfFile])
+
   const hasResults = (results && formData) || aiText
-  const isProcessing = isLoading || aiLoading
+  const isProcessing = isLoading || aiLoading || pdfProcessing
 
   // Restore a saved analysis from the Recent Deals panel
   const handleLoadSavedDeal = useCallback(
@@ -1065,6 +1128,18 @@ export default function AnalysePage() {
               <ClipboardEdit className="size-4" />
               Enter Details Manually
             </button>
+            <button
+              type="button"
+              onClick={() => setInputMode("pdf")}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
+                inputMode === "pdf"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <FileUp className="size-4" />
+              Upload Deal PDF
+            </button>
           </div>
         )}
 
@@ -1129,6 +1204,77 @@ export default function AnalysePage() {
                 </p>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* PDF Upload Mode */}
+        {inputMode === "pdf" && !hasResults && (
+          <div className="mb-8 max-w-3xl">
+            <div className="flex flex-col gap-4">
+              <label className="text-sm font-medium text-foreground">
+                Upload Deal PDF
+              </label>
+              <div className="rounded-xl border-2 border-dashed border-border/60 bg-card/50 p-8 text-center">
+                <FileUp className="mx-auto size-10 text-muted-foreground/50 mb-3" />
+                <p className="text-sm text-muted-foreground mb-4">
+                  Upload a property deal PDF to extract details automatically
+                </p>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  id="pdf-upload"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      if (file.size > 10 * 1024 * 1024) {
+                        setError("PDF exceeds 10MB limit")
+                        return
+                      }
+                      setPdfFile(file)
+                      setError(null)
+                    }
+                  }}
+                />
+                <label
+                  htmlFor="pdf-upload"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-muted px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/80 transition-colors"
+                >
+                  Choose PDF file
+                </label>
+                <p className="text-xs text-muted-foreground mt-2">PDF only, max 10MB</p>
+              </div>
+
+              {pdfFile && (
+                <div className="flex items-center justify-between rounded-lg border border-border/50 bg-card px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <FileUp className="size-5 text-primary" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{pdfFile.name}</p>
+                      <p className="text-xs text-muted-foreground">{(pdfFile.size / 1024).toFixed(0)} KB</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handlePdfUpload}
+                    disabled={pdfProcessing}
+                    size="sm"
+                  >
+                    {pdfProcessing ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin mr-1" />
+                        Processing...
+                      </>
+                    ) : (
+                      "Process PDF"
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {error && (
+                <p className="text-sm text-destructive">{error}</p>
+              )}
+            </div>
           </div>
         )}
 

@@ -62,12 +62,15 @@ function formatCurrency(n: number | null) {
   return `£${Math.round(n).toLocaleString("en-GB")}`
 }
 
+const INITIAL_SHOW = 3
+
 export function RecentDeals({ onLoad }: RecentDealsProps) {
   const [analyses, setAnalyses] = useState<SavedAnalysis[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
   const fetchAnalyses = useCallback(async () => {
     try {
@@ -158,7 +161,7 @@ export function RecentDeals({ onLoad }: RecentDealsProps) {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {analyses.map((deal) => (
+        {(showAll ? analyses : analyses.slice(0, INITIAL_SHOW)).map((deal) => (
           <div
             key={deal.id}
             onClick={() => handleLoad(deal.id)}
@@ -255,6 +258,26 @@ export function RecentDeals({ onLoad }: RecentDealsProps) {
           </div>
         ))}
       </div>
+
+      {!showAll && analyses.length > INITIAL_SHOW && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mx-auto flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium text-primary hover:bg-primary/5 transition-colors"
+        >
+          Show {analyses.length - INITIAL_SHOW} more deal{analyses.length - INITIAL_SHOW !== 1 ? "s" : ""}
+        </button>
+      )}
+
+      {showAll && analyses.length > INITIAL_SHOW && (
+        <button
+          type="button"
+          onClick={() => setShowAll(false)}
+          className="mx-auto flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 transition-colors"
+        >
+          Show less
+        </button>
+      )}
     </div>
   )
 }
