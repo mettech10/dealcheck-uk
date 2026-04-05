@@ -79,7 +79,8 @@ export interface PropertyFormData {
   // Running Costs
   managementFeePercent: number
   insurance: number
-  maintenance: number
+  maintenance: number          // legacy flat annual £ — still used as fallback
+  maintenancePercent: number   // preferred: % of annual rent (default 10%)
   groundRent: number
   bills: number
 }
@@ -129,6 +130,18 @@ export interface CalculationResults {
   // Running Costs Breakdown
   annualRunningCosts: number
   monthlyRunningCosts: number
+
+  // BRRRR-specific
+  refinancedMortgageAmount?: number  // mortgage on ARV after refinance
+  moneyLeftInDeal?: number           // total invested minus capital returned at refinance
+  equityGained?: number              // ARV - purchase - refurb (forced appreciation)
+
+  // Flip-specific
+  flipGrossProfit?: number           // ARV - purchase - refurb
+  flipSellingCosts?: number          // agent fees + selling legal
+  flipFinanceCosts?: number          // bridging interest + fees
+  flipNetProfit?: number             // gross profit - selling costs - finance costs - SDLT - legal - survey
+  flipROI?: number                   // net profit / total capital invested (%)
 
   // Projections
   fiveYearProjection: YearProjection[]

@@ -1037,47 +1037,117 @@ export function AnalysisResults({
       <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
 
       {/* ── Key Metrics Grid ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <MetricCard
-          label="Gross Yield"
-          value={formatPercent(results.grossYield)}
-          icon={Percent}
-          positive={results.grossYield >= 6}
-        />
-        <MetricCard
-          label="Net Yield"
-          value={formatPercent(results.netYield)}
-          icon={Percent}
-          positive={results.netYield >= 4}
-        />
-        <MetricCard
-          label="Monthly Cash Flow"
-          value={formatCurrency(results.monthlyCashFlow)}
-          icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
-          positive={results.monthlyCashFlow >= 0}
-        />
-        <MetricCard
-          label="Cash-on-Cash ROI"
-          value={formatPercent(results.cashOnCashReturn)}
-          icon={PoundSterling}
-          positive={results.cashOnCashReturn >= 5}
-        />
-        <MetricCard
-          label="Total Capital Required"
-          value={formatCurrency(results.totalCapitalRequired)}
-          icon={Wallet}
-        />
-        <MetricCard
-          label="SDLT"
-          value={formatCurrency(results.sdltAmount)}
-          sub={
-            data.buyerType === "additional"
-              ? "Incl. 5% surcharge"
-              : "First-time buyer rate"
-          }
-          icon={Home}
-        />
-      </div>
+      {data.investmentType === "flip" ? (
+        /* Flip-specific metrics */
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            label="Net Profit"
+            value={formatCurrency(results.flipNetProfit ?? 0)}
+            icon={(results.flipNetProfit ?? 0) >= 0 ? TrendingUp : TrendingDown}
+            positive={(results.flipNetProfit ?? 0) >= 0}
+          />
+          <MetricCard
+            label="Flip ROI"
+            value={formatPercent(results.flipROI ?? 0)}
+            icon={PoundSterling}
+            positive={(results.flipROI ?? 0) >= 20}
+          />
+          <MetricCard
+            label="Gross Profit"
+            value={formatCurrency(results.flipGrossProfit ?? 0)}
+            sub="ARV − Purchase − Refurb"
+            icon={TrendingUp}
+            positive={(results.flipGrossProfit ?? 0) >= 0}
+          />
+          <MetricCard
+            label="Selling Costs"
+            value={formatCurrency(results.flipSellingCosts ?? 0)}
+            sub="Agent fee + selling legal"
+            icon={Home}
+          />
+          <MetricCard
+            label="Finance Costs"
+            value={formatCurrency(results.flipFinanceCosts ?? 0)}
+            sub={results.bridgingLoanDetails ? `Bridging @ ${results.bridgingLoanDetails.monthlyInterestRate}%/mo` : "Interest during hold period"}
+            icon={Wallet}
+          />
+          <MetricCard
+            label="Total Capital Required"
+            value={formatCurrency(results.totalCapitalRequired)}
+            icon={Wallet}
+          />
+          <MetricCard
+            label="SDLT"
+            value={formatCurrency(results.sdltAmount)}
+            sub={data.buyerType === "additional" ? "Incl. 5% surcharge" : "First-time buyer rate"}
+            icon={Home}
+          />
+        </div>
+      ) : (
+        /* Standard metrics for BTL, BRRRR, HMO, SA */
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <MetricCard
+            label="Gross Yield"
+            value={formatPercent(results.grossYield)}
+            icon={Percent}
+            positive={results.grossYield >= 6}
+          />
+          <MetricCard
+            label="Net Yield"
+            value={formatPercent(results.netYield)}
+            icon={Percent}
+            positive={results.netYield >= 4}
+          />
+          <MetricCard
+            label="Monthly Cash Flow"
+            value={formatCurrency(results.monthlyCashFlow)}
+            icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
+            positive={results.monthlyCashFlow >= 0}
+          />
+          <MetricCard
+            label="Cash-on-Cash ROI"
+            value={formatPercent(results.cashOnCashReturn)}
+            icon={PoundSterling}
+            positive={results.cashOnCashReturn >= 5}
+          />
+          <MetricCard
+            label="Total Capital Required"
+            value={formatCurrency(results.totalCapitalRequired)}
+            sub={data.investmentType === "brr" && results.moneyLeftInDeal !== undefined
+              ? `Money left in deal after refinance`
+              : undefined}
+            icon={Wallet}
+          />
+          <MetricCard
+            label="SDLT"
+            value={formatCurrency(results.sdltAmount)}
+            sub={
+              data.buyerType === "additional"
+                ? "Incl. 5% surcharge"
+                : "First-time buyer rate"
+            }
+            icon={Home}
+          />
+          {/* BRRRR-specific extra cards */}
+          {data.investmentType === "brr" && results.refinancedMortgageAmount !== undefined && (
+            <>
+              <MetricCard
+                label="Refinanced Mortgage"
+                value={formatCurrency(results.refinancedMortgageAmount)}
+                sub={`${data.depositPercentage}% LTV on ARV ${formatCurrency(data.arv || 0)}`}
+                icon={Building2}
+              />
+              <MetricCard
+                label="Equity Gained"
+                value={formatCurrency(results.equityGained ?? 0)}
+                sub="Forced appreciation from refurb"
+                icon={TrendingUp}
+                positive={(results.equityGained ?? 0) > 0}
+              />
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}
@@ -1555,8 +1625,10 @@ export function AnalysisResults({
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
 
-      {/* ── Sensitivity Analysis ────────────────────────────────────── */}
-      <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
+      {/* ── Sensitivity Analysis (not applicable for flip — no recurring income) */}
+      {data.investmentType !== "flip" && (
+        <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
+      )}
 
       {/* ── AI Insights (Strengths / Risks / Area / Next Steps) ─────── */}
       {hasAIInsights ? (

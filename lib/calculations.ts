@@ -234,38 +234,183 @@ function calculateProjection(
  * Run full analysis calculations
  */
 export function calculateAll(data: PropertyFormData): CalculationResults {
-  // ── R2SA: rent the property from a landlord, sublet as serviced accommodation ──
+  // ── Serviced Accommodation (R2SA or SA-owned) ──────────────────────────
   if (data.investmentType === "r2sa") {
-    const saRevenue   = data.saMonthlySARevenue || 0
-    const rentPaid    = data.monthlyRent         // rent paid to the landlord
-    const setupCosts  = data.saSetupCosts || 5000
-    // Operating costs: cleaning, utilities, platform fees (~30% of SA revenue)
-    const monthlyOpCosts  = saRevenue * 0.30
-    const monthlyExpenses = Math.round((rentPaid + monthlyOpCosts) * 100) / 100
+    const isOwned = data.saOwnershipType === "own"
+    const saRevenue = data.saMonthlySARevenue || 0
+
+    // ── SA Operating Costs (from detailed form fields) ──
+    const platformFee     = saRevenue * ((data.saPlatformFeePercent ?? 15) / 100)
+    const cleaningCosts   = (data.saCleaningCostPerStay ?? 80) * (data.saAvgStaysPerMonth ?? 8)
+    const utilities       = data.saUtilitiesMonthly ?? 200
+    const saInsurance     = (data.saInsuranceAnnual ?? 800) / 12
+    const saManagement    = saRevenue * ((data.saManagementFeePercent ?? 20) / 100)
+    const saMaintenance   = saRevenue * ((data.saMaintenancePercent ?? 5) / 100)
+
+    const monthlyOpCosts = Math.round((platformFee + cleaningCosts + utilities + saInsurance + saManagement + saMaintenance) * 100) / 100
+
+    if (!isOwned) {
+      // ── Pure R2SA: rent from landlord, sublet as SA ──
+      const rentPaid = data.saMonthlyLease || data.monthlyRent || 0
+      const setupCosts = data.saSetupCosts || 5000
+      const monthlyExpenses = Math.round((rentPaid + monthlyOpCosts) * 100) / 100
+      const monthlyCashFlow = Math.round((saRevenue - monthlyExpenses) * 100) / 100
+      const annualCashFlow  = Math.round(monthlyCashFlow * 12 * 100) / 100
+      const cashOnCashReturn =
+        setupCosts > 0 ? Math.round((annualCashFlow / setupCosts) * 10000) / 100 : 0
+
+      return {
+        sdltAmount: 0,
+        sdltBreakdown: [],
+        totalPurchaseCost: 0,
+        totalCapitalRequired: setupCosts,
+        depositAmount: 0,
+        mortgageAmount: 0,
+        monthlyMortgagePayment: 0,
+        annualMortgageCost: 0,
+        bridgingLoanDetails: undefined,
+        grossYield: 0,
+        netYield: 0,
+        monthlyIncome: Math.round(saRevenue * 100) / 100,
+        monthlyExpenses,
+        monthlyCashFlow,
+        annualCashFlow,
+        cashOnCashReturn,
+        annualRunningCosts: Math.round(monthlyExpenses * 12 * 100) / 100,
+        monthlyRunningCosts: monthlyExpenses,
+        fiveYearProjection: [],
+      }
+    }
+
+    // ── SA-Owned: you own the property, run it as SA ──
+    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+      data.purchasePrice,
+      data.buyerType
+    )
+    const depositAmount = data.purchaseType === "cash"
+      ? data.purchasePrice
+      : Math.round(data.purchasePrice * (data.depositPercentage / 100))
+    const mortgageAmount = data.purchaseType === "cash" ? 0 : data.purchasePrice - depositAmount
+    const setupCosts = data.saSetupCosts || 5000
+
+    const monthlyMortgage = data.purchaseType === "cash"
+      ? 0
+      : calculateMortgagePayment(mortgageAmount, data.interestRate, data.mortgageTerm, data.mortgageType)
+
+    const totalCapitalRequired = depositAmount + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget + setupCosts
+    const totalPurchaseCost = data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget + setupCosts
+
+    const monthlyExpenses = Math.round((monthlyMortgage + monthlyOpCosts) * 100) / 100
     const monthlyCashFlow = Math.round((saRevenue - monthlyExpenses) * 100) / 100
     const annualCashFlow  = Math.round(monthlyCashFlow * 12 * 100) / 100
-    const cashOnCashReturn =
-      setupCosts > 0 ? Math.round((annualCashFlow / setupCosts) * 10000) / 100 : 0
+
+    const annualSARevenue = saRevenue * 12
+    const grossYield = data.purchasePrice > 0
+      ? Math.round((annualSARevenue / data.purchasePrice) * 10000) / 100
+      : 0
+    const netYield = data.purchasePrice > 0
+      ? Math.round(((annualSARevenue - monthlyExpenses * 12) / data.purchasePrice) * 10000) / 100
+      : 0
+    const cashOnCashReturn = totalCapitalRequired > 0
+      ? Math.round((annualCashFlow / totalCapitalRequired) * 10000) / 100
+      : 0
+
+    const capitalGrowthRate = Math.min(Math.max(data.capitalGrowthRate ?? 4, 0), 30)
+    const fiveYearProjection = calculateProjection(
+      data.purchasePrice, annualSARevenue, annualCashFlow,
+      mortgageAmount, capitalGrowthRate, 2
+    )
 
     return {
-      sdltAmount: 0,
-      sdltBreakdown: [],
-      totalPurchaseCost: 0,
-      totalCapitalRequired: setupCosts,
-      depositAmount: 0,
-      mortgageAmount: 0,
-      monthlyMortgagePayment: 0,
-      annualMortgageCost: 0,
+      sdltAmount,
+      sdltBreakdown,
+      totalPurchaseCost,
+      totalCapitalRequired,
+      depositAmount,
+      mortgageAmount,
+      monthlyMortgagePayment: monthlyMortgage,
+      annualMortgageCost: monthlyMortgage * 12,
       bridgingLoanDetails: undefined,
-      grossYield: 0,
-      netYield: 0,
+      grossYield,
+      netYield,
       monthlyIncome: Math.round(saRevenue * 100) / 100,
       monthlyExpenses,
       monthlyCashFlow,
       annualCashFlow,
       cashOnCashReturn,
-      annualRunningCosts: Math.round(monthlyExpenses * 12 * 100) / 100,
-      monthlyRunningCosts: monthlyExpenses,
+      annualRunningCosts: Math.round(monthlyOpCosts * 12 * 100) / 100,
+      monthlyRunningCosts: monthlyOpCosts,
+      fiveYearProjection,
+    }
+  }
+
+  // ── Flip: Buy, refurbish, sell for profit ────────────────────────────
+  if (data.investmentType === "flip") {
+    const arv = data.arv || data.purchasePrice // selling price
+    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(data.purchasePrice, data.buyerType)
+
+    // Finance costs (bridging or mortgage during the hold period)
+    let financeCosts = 0
+    let bridgingDetails = undefined
+    if (data.purchaseType === "bridging-loan") {
+      const bridgingLoanAmt = data.purchasePrice - Math.round(data.purchasePrice * (data.depositPercentage / 100))
+      const bRate = data.bridgingMonthlyRate || 0.75
+      const bTerm = data.bridgingTermMonths || 12
+      const result = calculateBridgingLoan(bridgingLoanAmt, bRate, bTerm, data.bridgingArrangementFee || 1, data.bridgingExitFee || 0.5, true)
+      financeCosts = result.totalCost
+      bridgingDetails = {
+        loanAmount: bridgingLoanAmt,
+        monthlyInterestRate: bRate, termMonths: bTerm,
+        monthlyInterest: result.monthlyInterest, totalInterest: result.totalInterest,
+        arrangementFee: result.arrangementFee, exitFee: result.exitFee,
+        totalCost: result.totalCost, totalRepayment: result.totalRepayment, apr: result.apr,
+      }
+    } else if (data.purchaseType === "mortgage") {
+      const mortAmt = data.purchasePrice - Math.round(data.purchasePrice * (data.depositPercentage / 100))
+      const holdMonths = data.bridgingTermMonths || 6 // how long to hold before selling
+      const monthlyPayment = calculateMortgagePayment(mortAmt, data.interestRate, data.mortgageTerm, data.mortgageType)
+      financeCosts = monthlyPayment * holdMonths
+    }
+
+    // Selling costs: estate agent (~1.5% + VAT = ~1.8%) + selling legal (~£1,000)
+    const agentFee = Math.round(arv * 0.018)
+    const sellingLegal = 1000
+    const sellingCosts = agentFee + sellingLegal
+
+    // Total capital required (what the investor puts in)
+    const depositAmount = data.purchaseType === "cash" ? data.purchasePrice
+      : Math.round(data.purchasePrice * (data.depositPercentage / 100))
+    const totalCapitalRequired = depositAmount + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget
+    const totalPurchaseCost = data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget
+
+    // Profit calculation
+    const grossProfit = arv - data.purchasePrice - data.refurbishmentBudget
+    const netProfit = arv - data.purchasePrice - data.refurbishmentBudget - sdltAmount - data.legalFees - data.surveyCosts - sellingCosts - financeCosts
+    const flipROI = totalCapitalRequired > 0 ? Math.round((netProfit / totalCapitalRequired) * 10000) / 100 : 0
+
+    return {
+      sdltAmount, sdltBreakdown,
+      totalPurchaseCost,
+      totalCapitalRequired,
+      depositAmount,
+      mortgageAmount: data.purchaseType === "cash" ? 0 : data.purchasePrice - depositAmount,
+      monthlyMortgagePayment: 0,
+      annualMortgageCost: 0,
+      bridgingLoanDetails: bridgingDetails,
+      grossYield: 0, // not applicable for flip
+      netYield: 0,
+      monthlyIncome: 0,
+      monthlyExpenses: 0,
+      monthlyCashFlow: 0,
+      annualCashFlow: netProfit, // use annualCashFlow to show the profit figure
+      cashOnCashReturn: flipROI,
+      annualRunningCosts: 0,
+      monthlyRunningCosts: 0,
+      flipGrossProfit: grossProfit,
+      flipSellingCosts: sellingCosts,
+      flipFinanceCosts: financeCosts,
+      flipNetProfit: netProfit,
+      flipROI,
       fiveYearProjection: [],
     }
   }
@@ -361,7 +506,11 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   // Running costs
   const monthlyManagement = data.monthlyRent * (data.managementFeePercent / 100)
   const monthlyInsurance = data.insurance / 12
-  const monthlyMaintenance = data.maintenance / 12
+  // Maintenance: prefer percentage of annual rent; fall back to flat amount
+  const maintenanceAnnual = data.maintenancePercent > 0
+    ? annualRent * (data.maintenancePercent / 100)
+    : data.maintenance
+  const monthlyMaintenance = maintenanceAnnual / 12
   const monthlyGroundRent = data.groundRent / 12
   const monthlyBills = data.bills / 12
 
@@ -381,31 +530,77 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   const monthlyExpenses =
     Math.round((monthlyMortgagePayment + monthlyRunningCosts) * 100) / 100
 
-  // Cash flow
-  const monthlyCashFlow = Math.round((monthlyIncome - monthlyExpenses) * 100) / 100
-  const annualCashFlow = Math.round(monthlyCashFlow * 12 * 100) / 100
+  // ── BRRRR Refinance Logic ──────────────────────────────────────────────
+  // For BRR strategy: refinance based on ARV, recalculate mortgage & ROI
+  let refinancedMortgageAmount: number | undefined
+  let moneyLeftInDeal: number | undefined
+  let equityGained: number | undefined
+  let finalMortgageAmount = mortgageAmount
+  let finalMonthlyMortgage = monthlyMortgagePayment
+  let finalAnnualMortgage = annualMortgageCost
+  let finalTotalCapital = totalCapitalRequired
+
+  if (data.investmentType === "brr" && data.arv && data.arv > 0) {
+    // Refinance: new mortgage based on ARV at the same LTV as deposit%
+    const refinanceLTV = (100 - data.depositPercentage) / 100
+    refinancedMortgageAmount = Math.round(data.arv * refinanceLTV)
+
+    // New monthly mortgage payment on the refinanced amount
+    // Always calculated for BRRRR — even if initial purchase was cash,
+    // the refinance creates a new mortgage
+    finalMonthlyMortgage = calculateMortgagePayment(
+      refinancedMortgageAmount,
+      data.interestRate,
+      data.mortgageTerm,
+      data.mortgageType
+    )
+    finalAnnualMortgage = finalMonthlyMortgage * 12
+    finalMortgageAmount = refinancedMortgageAmount
+
+    // Total cash invested upfront (before refinance returns capital)
+    // Includes: purchase price + SDLT + legal + survey + refurb (full amount, whether cash or bridging)
+    const totalCashInvested = data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget
+
+    // Capital returned at refinance: the refinanced mortgage pays off the original loan,
+    // and any excess is returned to the investor
+    const originalLoanPayoff = mortgageAmount // bridging or original mortgage to repay
+    const capitalReturned = Math.max(0, refinancedMortgageAmount - originalLoanPayoff)
+
+    // Money left in deal = what you put in minus what you get back
+    moneyLeftInDeal = Math.max(0, totalCapitalRequired - capitalReturned)
+    finalTotalCapital = moneyLeftInDeal
+
+    // Equity gained through forced appreciation (refurb uplift)
+    equityGained = data.arv - data.purchasePrice - data.refurbishmentBudget
+  }
+
+  // Recalculate expenses & cash flow with final (possibly refinanced) mortgage
+  const finalMonthlyExpenses =
+    Math.round((finalMonthlyMortgage + monthlyRunningCosts) * 100) / 100
+  const finalMonthlyCashFlow = Math.round((monthlyIncome - finalMonthlyExpenses) * 100) / 100
+  const finalAnnualCashFlow = Math.round(finalMonthlyCashFlow * 12 * 100) / 100
+
+  // ROI (cash-on-cash return) — for BRRRR, based on money left in deal
+  const cashOnCashReturn =
+    finalTotalCapital > 0
+      ? Math.round((finalAnnualCashFlow / finalTotalCapital) * 10000) / 100
+      : 0
 
   // Yields
   const grossYield = calculateGrossYield(annualRent, data.purchasePrice)
   const netYield = calculateNetYield(
     annualRent,
-    annualRunningCosts + annualMortgageCost,
+    annualRunningCosts + finalAnnualMortgage,
     data.purchasePrice
   )
-
-  // ROI (cash-on-cash return)
-  const cashOnCashReturn =
-    totalCapitalRequired > 0
-      ? Math.round((annualCashFlow / totalCapitalRequired) * 10000) / 100
-      : 0
 
   // 5-year projection — use user-supplied capitalGrowthRate (default 4%, clamped 0–30%)
   const capitalGrowthRate = Math.min(Math.max(data.capitalGrowthRate ?? 4, 0), 30)
   const fiveYearProjection = calculateProjection(
-    data.purchasePrice,
+    data.investmentType === "brr" && data.arv ? data.arv : data.purchasePrice,
     annualRent,
-    annualCashFlow,
-    mortgageAmount,
+    finalAnnualCashFlow,
+    finalMortgageAmount,
     capitalGrowthRate,
     data.annualRentIncrease
   )
@@ -414,21 +609,24 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     sdltAmount,
     sdltBreakdown,
     totalPurchaseCost,
-    totalCapitalRequired,
+    totalCapitalRequired: finalTotalCapital,
     depositAmount,
-    mortgageAmount,
-    monthlyMortgagePayment,
-    annualMortgageCost,
+    mortgageAmount: finalMortgageAmount,
+    monthlyMortgagePayment: finalMonthlyMortgage,
+    annualMortgageCost: finalAnnualMortgage,
     bridgingLoanDetails,
     grossYield,
     netYield,
     monthlyIncome,
-    monthlyExpenses,
-    monthlyCashFlow,
-    annualCashFlow,
+    monthlyExpenses: finalMonthlyExpenses,
+    monthlyCashFlow: finalMonthlyCashFlow,
+    annualCashFlow: finalAnnualCashFlow,
     cashOnCashReturn,
     annualRunningCosts,
     monthlyRunningCosts,
+    refinancedMortgageAmount,
+    moneyLeftInDeal,
+    equityGained,
     fiveYearProjection,
   }
 }

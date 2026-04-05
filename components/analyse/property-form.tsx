@@ -66,12 +66,14 @@ const schema = z.object({
   saManagementFeePercent: z.coerce.number().min(0).max(100).optional(),
   saMaintenancePercent: z.coerce.number().min(0).max(100).optional(),
   capitalGrowthRate: z.coerce.number().min(0).max(30).optional(),
+  mortgageType: z.enum(["repayment", "interest-only"]),
   monthlyRent: z.coerce.number().min(0),
   annualRentIncrease: z.coerce.number().min(0).max(20),
   voidWeeks: z.coerce.number().min(0).max(52),
   managementFeePercent: z.coerce.number().min(0).max(100),
   insurance: z.coerce.number().min(0),
   maintenance: z.coerce.number().min(0),
+  maintenancePercent: z.coerce.number().min(0).max(100),
   groundRent: z.coerce.number().min(0),
   bills: z.coerce.number().min(0),
 })
@@ -153,6 +155,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     managementFeePercent: 10,
     insurance: 300,
     maintenance: 500,
+    maintenancePercent: 10,
     groundRent: 0,
     bills: 0,
   }
@@ -501,6 +504,23 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                 <FormField label="Mortgage Term" hint="In years">
                   <Input type="number" {...register("mortgageTerm")} />
                 </FormField>
+                <FormField label="Mortgage Type">
+                  <Controller
+                    control={control}
+                    name="mortgageType"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="interest-only">Interest Only</SelectItem>
+                          <SelectItem value="repayment">Repayment (Capital &amp; Interest)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
               </>
             )}
             {/* Capital Growth — visible for all non-R2SA types */}
@@ -828,27 +848,35 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
         <div className="flex flex-col gap-4">
           <h3 className="text-base font-semibold text-foreground">Running Costs</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField label="Management Fee" hint="% of rent">
-              <div className="relative">
-                <Input
-                  type="number"
-                  step="0.5"
-                  className="pr-7"
-                  {...register("managementFeePercent")}
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-              </div>
-            </FormField>
+            {/* Management fee — only shown here for non-HMO (HMO has it in its own section) */}
+            {!isHMO && (
+              <FormField label="Management Fee" hint="% of rent">
+                <div className="relative">
+                  <Input
+                    type="number"
+                    step="0.5"
+                    className="pr-7"
+                    {...register("managementFeePercent")}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                </div>
+              </FormField>
+            )}
             <FormField label="Insurance (Annual)">
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                 <Input type="number" className="pl-7" {...register("insurance")} />
               </div>
             </FormField>
-            <FormField label="Maintenance (Annual)">
+            <FormField label="Maintenance" hint="% of annual rent (industry standard: 10%)">
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
-                <Input type="number" className="pl-7" {...register("maintenance")} />
+                <Input
+                  type="number"
+                  step="0.5"
+                  className="pr-7"
+                  {...register("maintenancePercent")}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
               </div>
             </FormField>
             <FormField label="Ground Rent (Annual)">
