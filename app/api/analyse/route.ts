@@ -193,6 +193,9 @@ export async function POST(req: Request) {
 
       // Flask /ai-analyze expects flat camelCase property fields directly in
       // the request body, not nested under propertyData.
+      // Also forward the frontend's calculationResults so the backend can use
+      // the exact same yield/cashflow figures for the benchmark comparison,
+      // avoiding contradictions between headline metrics and benchmark panel.
       const response = await fetch(`${BACKEND_API_URL}/ai-analyze`, {
         method: "POST",
         headers: {
@@ -203,6 +206,19 @@ export async function POST(req: Request) {
         body: JSON.stringify({
           ...propertyData,
           userEmail,
+          // Pass the frontend's calculated metrics so benchmark comparison
+          // uses the same figures shown in the headline metrics cards
+          _frontendMetrics: calculationResults
+            ? {
+                grossYield: calculationResults.grossYield,
+                netYield: calculationResults.netYield,
+                monthlyCashFlow: calculationResults.monthlyCashFlow,
+                annualCashFlow: calculationResults.annualCashFlow,
+                cashOnCashReturn: calculationResults.cashOnCashReturn,
+                monthlyIncome: calculationResults.monthlyIncome,
+                monthlyExpenses: calculationResults.monthlyExpenses,
+              }
+            : undefined,
         }),
       })
 
