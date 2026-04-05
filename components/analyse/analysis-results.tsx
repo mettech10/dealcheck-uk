@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import Link from "next/link"
 import {
   Card,
   CardContent,
@@ -1727,6 +1728,16 @@ export function AnalysisResults({
           </CardContent>
         </Card>
       )}
+
+      {/* Disclaimer */}
+      <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground/70">
+        Metalyzi provides analytical information only, not regulated financial advice.
+        Always seek independent professional advice before making investment decisions.{" "}
+        <Link href="/disclaimer" className="underline hover:text-muted-foreground">
+          Full disclaimer
+        </Link>{" "}
+        — Metusa Property Ltd, Company No. 15651934.
+      </p>
     </div>
   )
 }

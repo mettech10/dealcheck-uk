@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
-import { Analytics } from '@vercel/analytics/next'
 import { AnalyticsTracker } from '@/components/admin/analytics-tracker'
+import { Footer } from '@/components/landing/footer'
+import { CookieConsent } from '@/components/cookie-consent'
+import { ConditionalAnalytics } from '@/components/conditional-analytics'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -21,10 +23,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className="font-sans antialiased bg-background text-foreground">
-        {children}
+      <body className="font-sans antialiased bg-background text-foreground flex min-h-screen flex-col">
+        <div className="flex-1">
+          {children}
+        </div>
+        <Footer />
+        <CookieConsent />
         <AnalyticsTracker />
-        <Analytics />
+        <ConditionalAnalytics />
       </body>
     </html>
   )
