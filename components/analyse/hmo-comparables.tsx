@@ -28,6 +28,7 @@ interface HmoAnalysis {
 
 interface ManualSearchInfo {
   searchUrl: string
+  openrentUrl?: string
   message: string
 }
 
@@ -135,7 +136,11 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
         // If backend returned a manual search fallback, show that instead
         if (data.manualSearch && data.searchUrl) {
-          setManualSearch({ searchUrl: data.searchUrl, message: data.message || "" })
+          setManualSearch({
+            searchUrl: data.searchUrl,
+            openrentUrl: data.openrentUrl || "",
+            message: data.message || "",
+          })
           return
         }
 
@@ -208,19 +213,32 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
         {manualSearch ? (
           <div className="rounded-xl border border-border/50 bg-card p-5 flex flex-col gap-3">
             <p className="text-sm text-muted-foreground leading-relaxed">
-              SpareRoom data is temporarily unavailable for automated retrieval.
-              Use the link below to search for HMO room listings near{" "}
-              <span className="font-medium text-foreground">{searchArea || postcode.split(" ")[0]}</span> directly on SpareRoom.
+              No automated room listing data available for{" "}
+              <span className="font-medium text-foreground">{searchArea || postcode.split(" ")[0]}</span>.
+              Search manually on SpareRoom or OpenRent to gauge HMO demand.
             </p>
-            <a
-              href={manualSearch.searchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors px-4 py-2.5 text-sm font-medium w-fit"
-            >
-              Search SpareRoom for rooms near {searchArea || postcode.split(" ")[0]}
-              <ExternalLink className="size-4" />
-            </a>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={manualSearch.searchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors px-4 py-2.5 text-sm font-medium"
+              >
+                Search SpareRoom
+                <ExternalLink className="size-4" />
+              </a>
+              {manualSearch.openrentUrl && (
+                <a
+                  href={manualSearch.openrentUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 text-foreground hover:bg-muted transition-colors px-4 py-2.5 text-sm font-medium"
+                >
+                  Search OpenRent
+                  <ExternalLink className="size-4" />
+                </a>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               Tip: Check how many rooms are available and at what price to gauge HMO demand in this area.
             </p>
