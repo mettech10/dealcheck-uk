@@ -250,6 +250,24 @@ export interface BackendResults {
   market_source?: string
   risk_flags?: RiskFlag[]
   regional_benchmark?: RegionalBenchmark
+  postcode_benchmark?: {
+    postcode_district: string
+    property_type: string
+    bedrooms: number | null
+    median_sold_price: number | null
+    avg_sold_price: number | null
+    transaction_count_12m: number | null
+    price_growth_5yr_pct: number | null
+    median_monthly_rent: number | null
+    lower_quartile_rent: number | null
+    upper_quartile_rent: number | null
+    gross_yield_median: number | null
+    gross_yield_lower: number | null
+    gross_yield_upper: number | null
+    void_rate_pct: number | null
+    data_month: string | null
+    _match: string
+  }
 }
 
 export interface RiskFlag {
