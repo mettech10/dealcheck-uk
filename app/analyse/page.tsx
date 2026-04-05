@@ -1243,7 +1243,6 @@ export default function AnalysePage() {
                   onClick={handlePdfUpload}
                   disabled={pdfProcessing}
                   size="sm"
-                  variant="outline"
                   className="shrink-0 text-xs"
                 >
                   {pdfProcessing ? (
