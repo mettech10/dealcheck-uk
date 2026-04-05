@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
 import { PropertyComparables } from "./property-comparables"
+import { SAComparables } from "./sa-comparables"
 import { HmoComparables } from "./hmo-comparables"
 import {
   BarChart,
@@ -1280,15 +1281,22 @@ export function AnalysisResults({
 
         {(hasSoldComparables || hasRentComparables) && (
           <TabsContent value="comparables" className="mt-4">
-            <PropertyComparables
-              postcode={data.postcode}
-              bedrooms={data.bedrooms}
-              currentPrice={data.purchasePrice}
-              propertyType={data.propertyType}
-              propertyTypeDetail={data.propertyTypeDetail}
-              tenureType={data.tenureType}
-              investmentType={data.investmentType}
-            />
+            {data.investmentType === "r2sa" ? (
+              <SAComparables
+                postcode={data.postcode}
+                bedrooms={data.bedrooms}
+              />
+            ) : (
+              <PropertyComparables
+                postcode={data.postcode}
+                bedrooms={data.bedrooms}
+                currentPrice={data.purchasePrice}
+                propertyType={data.propertyType}
+                propertyTypeDetail={data.propertyTypeDetail}
+                tenureType={data.tenureType}
+                investmentType={data.investmentType}
+              />
+            )}
           </TabsContent>
         )}
       </Tabs>

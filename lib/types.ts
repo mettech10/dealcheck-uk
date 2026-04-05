@@ -53,9 +53,20 @@ export interface PropertyFormData {
   roomCount?: number    // number of lettable rooms
   avgRoomRate?: number  // average monthly rent per room
 
-  // Rent-to-SA (R2SA)
-  saMonthlySARevenue?: number // expected gross monthly SA revenue
+  // Serviced Accommodation (SA / R2SA)
+  saMonthlySARevenue?: number // legacy field (kept for compat)
   saSetupCosts?: number       // one-off setup / furnishing costs
+  saOwnershipType?: "own" | "rent-to-sa"
+  saNightlyRate?: number      // average nightly rate £
+  saOccupancyRate?: number    // expected occupancy % (0-100)
+  saPlatformFeePercent?: number // Airbnb/Booking commission %
+  saCleaningCostPerStay?: number // cleaning cost per turnover £
+  saAvgStaysPerMonth?: number   // average stays/turnovers per month
+  saMonthlyLease?: number     // monthly rent/lease if rent-to-SA £
+  saUtilitiesMonthly?: number // monthly utilities £
+  saInsuranceAnnual?: number  // annual SA insurance £
+  saManagementFeePercent?: number // SA management company %
+  saMaintenancePercent?: number   // maintenance as % of revenue
 
   // Projections — user-supplied assumptions
   capitalGrowthRate?: number  // annual property appreciation %, default 4
