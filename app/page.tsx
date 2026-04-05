@@ -6,7 +6,6 @@ import { HowItWorks } from "@/components/landing/how-it-works"
 import { Pricing } from "@/components/landing/pricing"
 import { Testimonials } from "@/components/landing/testimonials"
 import { CTA } from "@/components/landing/cta"
-import { Footer } from "@/components/landing/footer"
 
 export default async function HomePage() {
   const supabase = await createClient()
@@ -22,7 +21,7 @@ export default async function HomePage() {
     : null
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex flex-col">
       <Navbar user={navUser} />
       <main className="flex-1">
         <Hero />
@@ -32,7 +31,6 @@ export default async function HomePage() {
         <Testimonials />
         <CTA />
       </main>
-      <Footer />
     </div>
   )
 }

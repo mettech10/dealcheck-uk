@@ -4,9 +4,13 @@
 'use client'
 
 import { useEffect } from 'react'
+import { hasAnalyticsConsent } from '@/components/cookie-consent'
 
 export function AnalyticsTracker() {
   useEffect(() => {
+    // Only track if user has accepted analytics cookies
+    if (!hasAnalyticsConsent()) return
+
     // Track page visit
     const trackVisit = async () => {
       try {
