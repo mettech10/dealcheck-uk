@@ -51,9 +51,20 @@ const schema = z.object({
   // HMO
   roomCount: z.coerce.number().min(0).max(20).optional(),
   avgRoomRate: z.coerce.number().min(0).optional(),
-  // R2SA
+  // SA / R2SA
   saMonthlySARevenue: z.coerce.number().min(0).optional(),
   saSetupCosts: z.coerce.number().min(0).optional(),
+  saOwnershipType: z.enum(["own", "rent-to-sa"]).optional(),
+  saNightlyRate: z.coerce.number().min(0).optional(),
+  saOccupancyRate: z.coerce.number().min(0).max(100).optional(),
+  saPlatformFeePercent: z.coerce.number().min(0).max(100).optional(),
+  saCleaningCostPerStay: z.coerce.number().min(0).optional(),
+  saAvgStaysPerMonth: z.coerce.number().min(0).max(60).optional(),
+  saMonthlyLease: z.coerce.number().min(0).optional(),
+  saUtilitiesMonthly: z.coerce.number().min(0).optional(),
+  saInsuranceAnnual: z.coerce.number().min(0).optional(),
+  saManagementFeePercent: z.coerce.number().min(0).max(100).optional(),
+  saMaintenancePercent: z.coerce.number().min(0).max(100).optional(),
   capitalGrowthRate: z.coerce.number().min(0).max(30).optional(),
   monthlyRent: z.coerce.number().min(0),
   annualRentIncrease: z.coerce.number().min(0).max(20),
@@ -125,6 +136,17 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     avgRoomRate: 0,
     saMonthlySARevenue: 0,
     saSetupCosts: 5000,
+    saOwnershipType: "rent-to-sa",
+    saNightlyRate: 0,
+    saOccupancyRate: 65,
+    saPlatformFeePercent: 15,
+    saCleaningCostPerStay: 80,
+    saAvgStaysPerMonth: 8,
+    saMonthlyLease: 0,
+    saUtilitiesMonthly: 200,
+    saInsuranceAnnual: 800,
+    saManagementFeePercent: 20,
+    saMaintenancePercent: 5,
     monthlyRent: 0,
     annualRentIncrease: 2,
     voidWeeks: 2,
@@ -175,6 +197,19 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     setValue("refurbishmentBudget", estimated, { shouldDirty: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sqftValue, conditionValue, propertyTypeValue, postcodeValue])
+
+  // SA-specific watches
+  const saNightlyRate = watch("saNightlyRate") || 0
+  const saOccupancyRate = watch("saOccupancyRate") || 0
+  const saOwnershipType = watch("saOwnershipType") || "rent-to-sa"
+  const saEstimatedMonthly = Math.round(saNightlyRate * (saOccupancyRate / 100) * 30)
+
+  // Auto-derive saMonthlySARevenue from nightly rate × occupancy
+  useEffect(() => {
+    if (investmentType === "r2sa" && saEstimatedMonthly > 0) {
+      setValue("saMonthlySARevenue", saEstimatedMonthly, { shouldDirty: false })
+    }
+  }, [investmentType, saEstimatedMonthly, setValue])
 
   const isR2SA     = investmentType === "r2sa"
   const isHMO      = investmentType === "hmo"
@@ -582,8 +617,8 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
         </div>
       )}
 
-      {/* ── Rental Income (hidden for HMO — room×rate; hidden for Flip — sell strategy) */}
-      {!isHMO && !isFLIP && (
+      {/* ── Rental Income (hidden for HMO — room×rate; hidden for Flip — sell strategy; hidden for R2SA — handled in SA section) */}
+      {!isHMO && !isFLIP && !isR2SA && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">
@@ -635,33 +670,155 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
 
       {/* ── R2SA — Serviced Accommodation Details ───────────────────── */}
       {isR2SA && (
-        <div className="flex flex-col gap-4">
-          <h3 className="text-base font-semibold text-foreground">
-            Serviced Accommodation Details
-          </h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField label="Monthly SA Revenue" hint="Expected gross revenue from bookings">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
-                <Input
-                  type="number"
-                  className="pl-7"
-                  placeholder="2000"
-                  {...register("saMonthlySARevenue")}
-                />
+        <div className="flex flex-col gap-6">
+          {/* Ownership toggle */}
+          <div className="flex flex-col gap-4">
+            <h3 className="text-base font-semibold text-foreground">Property Ownership</h3>
+            <Controller
+              name="saOwnershipType"
+              control={control}
+              render={({ field }) => (
+                <div className="flex gap-2">
+                  {(["own", "rent-to-sa"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => field.onChange(opt)}
+                      className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all ${
+                        field.value === opt
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                      }`}
+                    >
+                      {opt === "own" ? "I own this property" : "Rent-to-SA (I rent & sublet)"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            />
+          </div>
+
+          {/* SA Income */}
+          <div className="flex flex-col gap-4">
+            <h3 className="text-base font-semibold text-foreground">SA Income</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Average nightly rate (£)" hint="Your target or current average nightly rate">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                  <Input type="number" className="pl-7" placeholder="120" {...register("saNightlyRate")} />
+                </div>
+              </FormField>
+              <FormField label="Expected occupancy rate (%)" hint="Industry average is 60-70% for UK SA">
+                <div className="relative">
+                  <Input type="number" step="1" className="pr-7" {...register("saOccupancyRate")} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                </div>
+              </FormField>
+            </div>
+            {/* Auto-calculated monthly income */}
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Estimated Monthly Income</span>
+                <span className="text-lg font-bold text-primary">
+                  £{saEstimatedMonthly.toLocaleString()}
+                </span>
               </div>
-            </FormField>
-            <FormField label="Setup / Furnishing Costs" hint="One-off cost to furnish the property">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
-                <Input
-                  type="number"
-                  className="pl-7"
-                  placeholder="5000"
-                  {...register("saSetupCosts")}
-                />
+              <p className="mt-1 text-xs text-muted-foreground">
+                = £{saNightlyRate} × {saOccupancyRate}% × 30 nights
+              </p>
+            </div>
+          </div>
+
+          {/* SA Costs */}
+          <div className="flex flex-col gap-4">
+            <h3 className="text-base font-semibold text-foreground">SA Costs (Monthly)</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Platform commission (%)" hint="Airbnb/Booking.com typically charge 12-20%">
+                <div className="relative">
+                  <Input type="number" step="0.5" className="pr-7" {...register("saPlatformFeePercent")} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                </div>
+              </FormField>
+              <FormField label="Cleaning cost per turnover (£)" hint="Typical £50-£150 depending on property size">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                  <Input type="number" className="pl-7" placeholder="80" {...register("saCleaningCostPerStay")} />
+                </div>
+              </FormField>
+              <FormField label="Avg stays per month" hint="Number of guest turnovers per month">
+                <Input type="number" placeholder="8" {...register("saAvgStaysPerMonth")} />
+              </FormField>
+              <FormField label="Monthly rent or lease (£)" hint="Leave as 0 if you own the property">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                  <Input type="number" className="pl-7" placeholder="0" {...register("saMonthlyLease")} />
+                </div>
+              </FormField>
+              <FormField label="Utilities (Monthly)" hint="Electric, gas, water, WiFi, council tax">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                  <Input type="number" className="pl-7" {...register("saUtilitiesMonthly")} />
+                </div>
+              </FormField>
+              <FormField label="Insurance (Annual)" hint="SA-specific insurance">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                  <Input type="number" className="pl-7" {...register("saInsuranceAnnual")} />
+                </div>
+              </FormField>
+              <FormField label="SA management fee (%)" hint="If using a management company (typically 15-25%)">
+                <div className="relative">
+                  <Input type="number" step="0.5" className="pr-7" {...register("saManagementFeePercent")} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                </div>
+              </FormField>
+              <FormField label="Maintenance (% of revenue)" hint="Ongoing repairs and replacements">
+                <div className="relative">
+                  <Input type="number" step="0.5" className="pr-7" {...register("saMaintenancePercent")} />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                </div>
+              </FormField>
+            </div>
+          </div>
+
+          {/* SA Financing — only if owned */}
+          {saOwnershipType === "own" && (
+            <div className="flex flex-col gap-4">
+              <h3 className="text-base font-semibold text-foreground">Financing</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Purchase Price (£)">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                    <Input type="number" className="pl-7" {...register("purchasePrice")} />
+                  </div>
+                </FormField>
+                <FormField label="Deposit (%)">
+                  <div className="relative">
+                    <Input type="number" step="1" className="pr-7" {...register("depositPercentage")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
+                <FormField label="Mortgage Rate (%)">
+                  <div className="relative">
+                    <Input type="number" step="0.1" className="pr-7" {...register("interestRate")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
               </div>
-            </FormField>
+            </div>
+          )}
+
+          {/* Setup costs */}
+          <div className="flex flex-col gap-4">
+            <h3 className="text-base font-semibold text-foreground">Setup</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Setup / Furnishing Costs" hint="One-off cost to furnish the property for SA">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">£</span>
+                  <Input type="number" className="pl-7" placeholder="5000" {...register("saSetupCosts")} />
+                </div>
+              </FormField>
+            </div>
           </div>
         </div>
       )}
