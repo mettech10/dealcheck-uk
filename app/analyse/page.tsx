@@ -636,6 +636,14 @@ export default function AnalysePage() {
     const scoreMatch = aiText.match(/SCORE:\s*(\d+)/i) || aiText.match(/⭐ SCORE:\s*(\d+)/i)
     const dealScore = scoreMatch ? parseInt(scoreMatch[1]) : null
 
+    // Always increment the global deal counter (no auth required)
+    fetch("/api/stats/increment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ts: Date.now() }),
+    }).catch(() => {})
+
+    // Save full analysis to user's account (requires auth — fails silently if not logged in)
     fetch("/api/analyses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

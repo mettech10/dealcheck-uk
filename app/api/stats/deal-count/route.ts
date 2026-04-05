@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-// Simple in-memory cache (5 min TTL)
+// Simple in-memory cache (30s TTL — short enough to feel "live")
 let cachedCount: number | null = null
 let cachedAt = 0
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL = 30 * 1000 // 30 seconds
 
 /**
  * GET /api/stats/deal-count
