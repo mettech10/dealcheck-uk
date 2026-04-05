@@ -792,122 +792,6 @@ function RegionalBenchmarkPanel({ benchmark }: { benchmark?: RegionalBenchmark }
   )
 }
 
-// ── Postcode Benchmark Panel (Metalyzi Benchmark Database) ──────────────────
-
-interface PostcodeBenchmark {
-  postcode_district: string
-  property_type: string
-  bedrooms: number | null
-  median_sold_price: number | null
-  avg_sold_price: number | null
-  transaction_count_12m: number | null
-  price_growth_5yr_pct: number | null
-  median_monthly_rent: number | null
-  lower_quartile_rent: number | null
-  upper_quartile_rent: number | null
-  gross_yield_median: number | null
-  gross_yield_lower: number | null
-  gross_yield_upper: number | null
-  void_rate_pct: number | null
-  data_month: string | null
-  _match: string
-}
-
-function PostcodeBenchmarkPanel({
-  benchmark,
-  results,
-}: {
-  benchmark: PostcodeBenchmark
-  results: CalculationResults
-}) {
-  const district = benchmark.postcode_district
-  const medYield = benchmark.gross_yield_median ? Number(benchmark.gross_yield_median) : null
-  const dealYield = results.grossYield
-  const medPrice = benchmark.median_sold_price ? Number(benchmark.median_sold_price) : null
-  const medRent = benchmark.median_monthly_rent ? Number(benchmark.median_monthly_rent) : null
-  const txnCount = benchmark.transaction_count_12m
-  const growth = benchmark.price_growth_5yr_pct ? Number(benchmark.price_growth_5yr_pct) : null
-  const voidRate = benchmark.void_rate_pct ? Number(benchmark.void_rate_pct) : null
-
-  let yieldVerdict = "No benchmark yield data"
-  let yieldColor = "text-muted-foreground"
-  if (medYield && dealYield) {
-    if (dealYield > medYield * 1.1) {
-      yieldVerdict = "Above average yield for this area"
-      yieldColor = "text-green-600"
-    } else if (dealYield < medYield * 0.9) {
-      yieldVerdict = "Below average yield for this area"
-      yieldColor = "text-red-600"
-    } else {
-      yieldVerdict = "In line with area average"
-      yieldColor = "text-blue-600"
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <BarChart2 className="size-4 text-primary" />
-          <CardTitle className="text-sm">Benchmark Comparison — {district}</CardTitle>
-        </div>
-        <CardDescription>
-          Government data: Land Registry + VOA · Updated {benchmark.data_month || "N/A"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {medYield != null && (
-            <div className="rounded-lg border border-border/50 p-3 text-center">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">District Yield</p>
-              <p className="text-lg font-bold text-foreground">{medYield.toFixed(1)}%</p>
-              <p className="text-[10px] text-muted-foreground">median gross</p>
-            </div>
-          )}
-          {medPrice != null && (
-            <div className="rounded-lg border border-border/50 p-3 text-center">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Median Price</p>
-              <p className="text-lg font-bold text-foreground">£{Math.round(medPrice).toLocaleString()}</p>
-              <p className="text-[10px] text-muted-foreground">sold (24m)</p>
-            </div>
-          )}
-          {medRent != null && (
-            <div className="rounded-lg border border-border/50 p-3 text-center">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Median Rent</p>
-              <p className="text-lg font-bold text-foreground">£{Math.round(medRent).toLocaleString()}</p>
-              <p className="text-[10px] text-muted-foreground">pcm</p>
-            </div>
-          )}
-          {growth != null && (
-            <div className="rounded-lg border border-border/50 p-3 text-center">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">5yr Growth</p>
-              <p className={`text-lg font-bold ${growth >= 0 ? "text-green-600" : "text-red-600"}`}>{growth.toFixed(1)}%</p>
-              <p className="text-[10px] text-muted-foreground">per annum</p>
-            </div>
-          )}
-          {txnCount != null && (
-            <div className="rounded-lg border border-border/50 p-3 text-center">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Sales Volume</p>
-              <p className="text-lg font-bold text-foreground">{txnCount}</p>
-              <p className="text-[10px] text-muted-foreground">12 months</p>
-            </div>
-          )}
-        </div>
-
-        {voidRate != null && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Average void rate: {voidRate.toFixed(1)}%
-          </p>
-        )}
-
-        <div className={`mt-3 rounded-md px-3 py-2 text-xs font-medium ${yieldColor} bg-muted/30`}>
-          {yieldVerdict}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 // ── Sensitivity Analysis Panel ──────────────────────────────────────────────
 
 function SensitivityAnalysisPanel({
@@ -1662,11 +1546,6 @@ export function AnalysisResults({
 
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
-
-      {/* ── Postcode Benchmark Comparison (from Metalyzi Benchmark Database) */}
-      {backendData?.postcode_benchmark && (
-        <PostcodeBenchmarkPanel benchmark={backendData.postcode_benchmark} results={results} />
-      )}
 
       {/* ── Sensitivity Analysis ────────────────────────────────────── */}
       <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
