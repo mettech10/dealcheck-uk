@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ExternalLink, Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react"
+import { ExternalLink, Loader2, TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react"
 
 interface RoomListing {
   title: string
@@ -16,6 +16,16 @@ interface RoomListing {
   image_url?: string
   distance_km?: number | null
   source?: string
+}
+
+interface RoomSummary {
+  roomType: string
+  avgWeekly: number
+  avgMonthly: number
+  range70: [number, number]
+  range100: [number, number]
+  count: number
+  radius: string
 }
 
 interface HmoAnalysis {
@@ -53,28 +63,30 @@ function DemandBadge({ demand }: { demand: "strong" | "moderate" | "weak" }) {
   )
 }
 
-function HmoSummaryLine({ listings }: { listings: RoomListing[] }) {
-  const rents = listings
-    .filter((l) => l.monthly_rent && l.monthly_rent > 0)
-    .map((l) => l.monthly_rent!)
-  if (rents.length === 0) return null
-  const avg = Math.round(rents.reduce((a, b) => a + b, 0) / rents.length)
-  const min = Math.min(...rents)
-  const max = Math.max(...rents)
-  return (
-    <div className="text-xs text-muted-foreground text-center pt-2 border-t border-border/30 mt-1">
-      {listings.length} room{listings.length !== 1 ? "s" : ""} found
-      {" · "}Average: £{avg.toLocaleString()} pcm
-      {" · "}Range: £{min.toLocaleString()} – £{max.toLocaleString()} pcm
-    </div>
-  )
+/** Derive demand from PropertyData stats */
+function deriveDemand(summaries: RoomSummary[]): "strong" | "moderate" | "weak" {
+  if (summaries.length === 0) return "weak"
+  // Strong: 4 room types found with tight radius (< 1km avg)
+  const avgRadius = summaries.reduce((s, r) => s + parseFloat(r.radius), 0) / summaries.length
+  const totalPoints = summaries.reduce((s, r) => s + r.count, 0)
+  if (summaries.length >= 4 && avgRadius < 1.0) return "strong"
+  if (summaries.length >= 3 && avgRadius < 2.0) return "moderate"
+  if (totalPoints >= 40) return "moderate"
+  return "weak"
+}
+
+/** Weekly to monthly for display */
+function wkToMo(weekly: number): number {
+  return Math.round((weekly * 52) / 12)
 }
 
 export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [listings, setListings] = useState<RoomListing[]>([])
+  const [roomSummaries, setRoomSummaries] = useState<RoomSummary[]>([])
   const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
   const [searchArea, setSearchArea] = useState<string>("")
   const [manualSearch, setManualSearch] = useState<ManualSearchInfo | null>(null)
+  const [dataSource, setDataSource] = useState<string>("unknown")
   const [loadingListings, setLoadingListings] = useState(true)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -87,28 +99,90 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
       setError(null)
 
       try {
-        console.log("[HMO] SPAREROOM CALL TRIGGERED - postcode:", postcode)
-        const spareRoomPayload = { postcode, maxResults: 12 }
-        console.log("[HMO] SPAREROOM INPUT PAYLOAD:", JSON.stringify(spareRoomPayload, null, 2))
+        console.log("[HMO] Fetching HMO data - postcode:", postcode)
 
         const res = await fetch("/api/comparables/spareroom", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(spareRoomPayload),
+          body: JSON.stringify({ postcode, maxResults: 20 }),
         })
-        console.log("[HMO] SPAREROOM RESPONSE STATUS:", res.status)
         const data = await res.json()
-        console.log("[HMO] SPAREROOM RAW RESPONSE:", JSON.stringify(data, null, 2))
         if (cancelled) return
 
         if (!data.success) {
-          console.log("[HMO] SPAREROOM FAILED:", data.message)
-          setError(data.message || "Unable to fetch room listing data. Please try again.")
+          setError(data.message || "Unable to fetch room listing data.")
           setLoadingListings(false)
           return
         }
 
-        // Normalize listing fields from either OpenRent or SpareRoom format
+        const source = data.source || "unknown"
+        setDataSource(source)
+        const area = data.searchArea || postcode.split(" ")[0] || postcode
+        setSearchArea(area)
+
+        // PropertyData returns roomSummaries (structured averages by room type)
+        if (data.roomSummaries && data.roomSummaries.length > 0) {
+          setRoomSummaries(data.roomSummaries)
+          console.log("[HMO] PropertyData room summaries:", data.roomSummaries.length, "types")
+
+          // Also set listings for backwards compat
+          const rawListings = (data.listings || []).map((l: Record<string, unknown>) => ({
+            title: (l.title as string) || "Room to rent",
+            address: (l.address as string) || (l.postcode as string) || "",
+            postcode: (l.postcode as string) || "",
+            monthly_rent: (l.monthly_rent as number) ?? null,
+            bills_included: (l.bills_included as string) || "Unknown",
+            num_rooms: null,
+            room_type: (l.room_type as string) || "Unknown",
+            available_from: "Now",
+            listing_url: (l.listing_url as string) || "",
+            image_url: "",
+            distance_km: (l.distance_km as number) ?? null,
+            source: "propertydata",
+          }))
+          setListings(rawListings)
+          setLoadingListings(false)
+
+          // Build analysis from PropertyData stats (no AI call needed)
+          const demand = deriveDemand(data.roomSummaries)
+          const rents = data.roomSummaries.map((r: RoomSummary) => r.avgMonthly)
+          const minRent = Math.min(...rents)
+          const maxRent = Math.max(...rents)
+          const types = data.roomSummaries.map((r: RoomSummary) => r.roomType).join(", ")
+          const totalPoints = data.roomSummaries.reduce((s: number, r: RoomSummary) => s + r.count, 0)
+
+          setAnalysis({
+            demand,
+            rentRange: `£${minRent} – £${maxRent} pcm`,
+            roomTypes: types,
+            patterns: `${totalPoints} data points analysed across ${data.roomSummaries.length} room types. ` +
+              (data.hmoAttributes?.bills_inc
+                ? `${data.hmoAttributes.bills_inc}% of rooms include bills. `
+                : "") +
+              (data.hmoAttributes?.furnished
+                ? `${data.hmoAttributes.furnished}% are furnished.`
+                : ""),
+            verdict: demand === "strong"
+              ? "Strong HMO market with good availability of data. Room rents are well-established in this area."
+              : demand === "moderate"
+                ? "Moderate HMO activity. Sufficient data to support investment decisions but check local Article 4 restrictions."
+                : "Limited HMO data in this area. Consider whether demand supports an HMO conversion.",
+          })
+          return
+        }
+
+        // If backend returned a manual search fallback
+        if (data.manualSearch && data.searchUrl) {
+          setManualSearch({
+            searchUrl: data.searchUrl,
+            openrentUrl: data.openrentUrl || "",
+            message: data.message || "",
+          })
+          setLoadingListings(false)
+          return
+        }
+
+        // Legacy path: individual listings from SpareRoom/OpenRent actors
         const rawListings = data.listings || []
         const fetchedListings: RoomListing[] = rawListings.map((l: Record<string, unknown>) => ({
           title: (l.title as string) || (l.ad_title as string) || "Room to rent",
@@ -122,40 +196,21 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           listing_url: (l.listingUrl as string) || (l.listing_url as string) || "",
           image_url: (l.imageUrl as string) || (l.image_url as string) || "",
           distance_km: (l.distanceKm as number) ?? null,
-          source: (l.source as string) || data.source || "unknown",
+          source: (l.source as string) || source,
         }))
-        const area = data.searchArea || postcode.split(" ")[0] || postcode
-        const dataSource = data.source || "unknown"
-        console.log("[HMO] RESULTS:", fetchedListings.length, "source:", dataSource, "searchArea:", area, "manualSearch:", data.manualSearch)
-        if (fetchedListings.length > 0) {
-          console.log("[HMO] SPAREROOM FIRST RESULT:", JSON.stringify(fetchedListings[0], null, 2))
-        }
         setListings(fetchedListings)
-        setSearchArea(area)
         setLoadingListings(false)
-
-        // If backend returned a manual search fallback, show that instead
-        if (data.manualSearch && data.searchUrl) {
-          setManualSearch({
-            searchUrl: data.searchUrl,
-            openrentUrl: data.openrentUrl || "",
-            message: data.message || "",
-          })
-          return
-        }
 
         if (fetchedListings.length === 0) return
 
-        // Run HMO area analysis
+        // Run HMO area analysis via AI
         setLoadingAnalysis(true)
-        console.log("[HMO] HMO-ANALYSIS CALL - postcode:", postcode, "listings count:", fetchedListings.length)
         const aiRes = await fetch("/api/comparables/hmo-analysis", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ postcode, listings: fetchedListings }),
         })
         const aiData = await aiRes.json()
-        console.log("[HMO] HMO-ANALYSIS RESPONSE:", JSON.stringify(aiData, null, 2).slice(0, 500))
         if (cancelled) return
 
         if (aiData.success && aiData.analysis) {
@@ -163,8 +218,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
         }
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err)
-        const errStack = err instanceof Error ? err.stack : ""
-        console.log("[HMO] ERROR TRIGGERED:", errMsg, errStack)
+        console.error("[HMO] ERROR:", errMsg)
         if (!cancelled) setError("Unable to fetch room listing data. Please try again.")
       } finally {
         if (!cancelled) {
@@ -183,7 +237,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
       <div className="flex flex-col gap-6">
         <div className="flex items-center gap-3 py-8">
           <Loader2 className="size-5 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Fetching live room listings near {postcode}…</p>
+          <p className="text-sm text-muted-foreground">Fetching HMO room data near {postcode}…</p>
         </div>
       </div>
     )
@@ -197,118 +251,159 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
     )
   }
 
+  const district = (searchArea || postcode.split(" ")[0]).toLowerCase()
+
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Rental Comparables ─────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h3 className="text-base font-semibold text-foreground">
-            Rental Comparables — {searchArea || postcode.split(" ")[0]} area
-          </h3>
-          <span className="text-xs text-muted-foreground">
-            Live room listings · searching {searchArea || postcode.split(" ")[0]}
-          </span>
-        </div>
+      {/* ── Room Rent Summaries (PropertyData) ──────────────────────────── */}
+      {roomSummaries.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="text-base font-semibold text-foreground">
+              HMO Room Rents — {searchArea || postcode.split(" ")[0]}
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              PropertyData · UK Rental Market Data
+            </span>
+          </div>
 
-        {manualSearch ? (
-          <div className="rounded-xl border border-border/50 bg-card p-5 flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              No automated room listing data available for{" "}
-              <span className="font-medium text-foreground">{searchArea || postcode.split(" ")[0]}</span>.
-              Search manually on SpareRoom or OpenRent to gauge HMO demand.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <a
-                href={manualSearch.searchUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors px-4 py-2.5 text-sm font-medium"
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {roomSummaries.map((room) => (
+              <div
+                key={room.roomType}
+                className="rounded-xl border border-border/50 bg-card p-4 flex flex-col gap-2"
               >
-                Search SpareRoom
-                <ExternalLink className="size-4" />
-              </a>
-              {manualSearch.openrentUrl && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">{room.roomType}</span>
+                  <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">
+                    {room.count} data points
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold text-foreground">£{room.avgMonthly}</span>
+                  <span className="text-xs text-muted-foreground">pcm avg</span>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  70% range: £{wkToMo(room.range70[0])} – £{wkToMo(room.range70[1])} pcm
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Full range: £{wkToMo(room.range100[0])} – £{wkToMo(room.range100[1])} pcm
+                </div>
+                <div className="text-[10px] text-muted-foreground/70">
+                  {room.radius}km search radius
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Browse live link */}
+          <div className="flex flex-wrap gap-2 pt-1">
+            <a
+              href={`https://www.spareroom.co.uk/flatshare/${district}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              Browse live HMO rooms on SpareRoom <ExternalLink className="size-3" />
+            </a>
+            <a
+              href={`https://www.openrent.co.uk/properties-to-rent/${district}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              OpenRent <ExternalLink className="size-3" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* ── Individual Listings (legacy SpareRoom/OpenRent or PropertyData samples) */}
+      {roomSummaries.length === 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="text-base font-semibold text-foreground">
+              Rental Comparables — {searchArea || postcode.split(" ")[0]} area
+            </h3>
+            <span className="text-xs text-muted-foreground">
+              {dataSource === "propertydata" ? "PropertyData" : "Live room listings"} · {searchArea || postcode.split(" ")[0]}
+            </span>
+          </div>
+
+          {manualSearch ? (
+            <div className="rounded-xl border border-border/50 bg-card p-5 flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                No automated room listing data available for{" "}
+                <span className="font-medium text-foreground">{searchArea || postcode.split(" ")[0]}</span>.
+                Search manually on SpareRoom or OpenRent to gauge HMO demand.
+              </p>
+              <div className="flex flex-wrap gap-2">
                 <a
-                  href={manualSearch.openrentUrl}
+                  href={manualSearch.searchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 text-foreground hover:bg-muted transition-colors px-4 py-2.5 text-sm font-medium"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors px-4 py-2.5 text-sm font-medium"
                 >
-                  Search OpenRent
-                  <ExternalLink className="size-4" />
+                  Search SpareRoom <ExternalLink className="size-4" />
                 </a>
-              )}
+                {manualSearch.openrentUrl && (
+                  <a
+                    href={manualSearch.openrentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 text-foreground hover:bg-muted transition-colors px-4 py-2.5 text-sm font-medium"
+                  >
+                    Search OpenRent <ExternalLink className="size-4" />
+                  </a>
+                )}
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Tip: Check how many rooms are available and at what price to gauge HMO demand in this area.
+          ) : listings.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              No room listings found in the {searchArea || postcode.split(" ")[0]} area.
             </p>
-          </div>
-        ) : listings.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-2">
-            No room listings found in the {searchArea || postcode.split(" ")[0]} area.
-            This may indicate low HMO demand in this location.
-          </p>
-        ) : (
-          <>
-            <div className="flex flex-col divide-y divide-border/50 rounded-xl border border-border/50 overflow-hidden">
-              {listings.map((lst, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-3 bg-card hover:bg-muted/30 transition-colors">
-                  {/* Thumbnail */}
-                  {lst.image_url && (
-                    <div className="shrink-0 w-16 h-12 rounded overflow-hidden bg-muted">
-                      <img
-                        src={lst.image_url}
-                        alt=""
-                        className="w-full h-full object-cover"
-                        loading="lazy"
-                      />
+          ) : (
+            <>
+              <div className="flex flex-col divide-y divide-border/50 rounded-xl border border-border/50 overflow-hidden">
+                {listings.map((lst, i) => (
+                  <div key={i} className="flex items-start gap-3 px-4 py-3 bg-card hover:bg-muted/30 transition-colors">
+                    {lst.image_url && (
+                      <div className="shrink-0 w-16 h-12 rounded overflow-hidden bg-muted">
+                        <img src={lst.image_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <p className="text-sm font-medium text-foreground truncate">{lst.title}</p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>{lst.postcode || lst.address}</span>
+                        {lst.distance_km != null && <span>{lst.distance_km}km away</span>}
+                        {lst.room_type && lst.room_type !== "Unknown" && (
+                          <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">{lst.room_type}</span>
+                        )}
+                        {lst.bills_included === "Yes" && (
+                          <span className="text-[10px] rounded bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5">Bills incl.</span>
+                        )}
+                      </div>
                     </div>
-                  )}
-
-                  <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-                    <p className="text-sm font-medium text-foreground truncate">{lst.title}</p>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                      <span>{lst.postcode || lst.address}</span>
-                      {lst.distance_km != null && (
-                        <span>{lst.distance_km}km away</span>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {lst.monthly_rent ? (
+                        <span className="text-sm font-semibold text-foreground">£{lst.monthly_rent.toLocaleString()} pcm</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">POA</span>
                       )}
-                      {lst.room_type && lst.room_type !== "Unknown" && (
-                        <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">{lst.room_type}</span>
-                      )}
-                      {lst.bills_included === "Yes" && (
-                        <span className="text-[10px] rounded bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5">Bills incl.</span>
-                      )}
-                      {lst.available_from && lst.available_from !== "Now" && (
-                        <span>· Available {lst.available_from}</span>
+                      {lst.listing_url && (
+                        <a href={lst.listing_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-primary hover:underline">
+                          View <ExternalLink className="size-3" />
+                        </a>
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    {lst.monthly_rent ? (
-                      <span className="text-sm font-semibold text-foreground">£{lst.monthly_rent.toLocaleString()} pcm</span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">POA</span>
-                    )}
-                    {lst.listing_url && (
-                      <a
-                        href={lst.listing_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-primary hover:underline"
-                      >
-                        View <ExternalLink className="size-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Summary line */}
-            <HmoSummaryLine listings={listings} />
-          </>
-        )}
-      </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* ── Area HMO Analysis ──────────────────────────────────────────── */}
       {(analysis || loadingAnalysis) && (
@@ -331,13 +426,13 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
                   <p className="font-medium text-foreground">{analysis.rentRange}</p>
                 </div>
                 <div className="rounded-lg bg-muted/50 px-3 py-2">
-                  <p className="text-xs text-muted-foreground mb-0.5">Common Room Types</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">Room Types Available</p>
                   <p className="font-medium text-foreground">{analysis.roomTypes}</p>
                 </div>
               </div>
               {analysis.patterns && (
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Notable Patterns</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Market Insights</p>
                   <p className="text-muted-foreground leading-relaxed">{analysis.patterns}</p>
                 </div>
               )}

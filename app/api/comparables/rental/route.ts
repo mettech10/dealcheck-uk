@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server"
+import { getRents, weeklyToMonthly } from "@/lib/propertydata"
 
-const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
-
+/**
+ * Rental Valuation Estimate — /api/comparables/rental
+ *
+ * Primary: PropertyData /rents (live asking rents)
+ * Returns: monthly rent estimate, confidence range, source data
+ */
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -14,42 +19,50 @@ export async function POST(req: Request) {
       )
     }
 
-    // Call Flask backend for rental valuation
-    const response = await fetch(`${FLASK_URL}/api/propertydata/rental-valuation`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        postcode: postcode.toUpperCase(),
-        bedrooms: bedrooms || 3
-      })
-    })
+    console.log("[RENTAL-ROUTE] Fetching rental estimate - postcode:", postcode, "bedrooms:", bedrooms)
 
-    const data = await response.json()
-    
-    // Format the response for frontend
-    if (data.success && data.data) {
-      const estimate = data.data.estimate
+    const pdRents = await getRents(postcode, bedrooms || undefined)
+
+    if (pdRents && pdRents.status === "success" && pdRents.data?.long_let) {
+      const ll = pdRents.data.long_let
+      const monthlyAvg = weeklyToMonthly(ll.average)
+      const range70 = ll["70pc_range"]
+      const range100 = ll["100pc_range"]
+
+      // Determine confidence based on radius — smaller = more data nearby = higher confidence
+      const radius = parseFloat(ll.radius)
+      const confidence = radius <= 0.5 ? "high" : radius <= 1.5 ? "medium" : "low"
+
+      console.log("[RENTAL-ROUTE] PropertyData success - avg £" + monthlyAvg + "/mo, radius:", ll.radius + "km,", ll.points_analysed, "points")
+
       return NextResponse.json({
         success: true,
+        source: "propertydata",
         data: {
-          monthly: estimate?.monthly || 0,
-          confidence: data.data.confidence || 'medium',
-          range: data.data.range ? {
-            low: Math.round(data.data.range.low_weekly * 4.33),
-            high: Math.round(data.data.range.high_weekly * 4.33)
-          } : undefined
-        }
+          monthly: monthlyAvg,
+          confidence,
+          range: {
+            low: weeklyToMonthly(range70[0]),
+            high: weeklyToMonthly(range70[1]),
+          },
+          fullRange: {
+            low: weeklyToMonthly(range100[0]),
+            high: weeklyToMonthly(range100[1]),
+          },
+          pointsAnalysed: ll.points_analysed,
+          radius: ll.radius,
+        },
       })
     }
-    
-    // If PropertyData not configured, return mock/estimated data
+
+    console.log("[RENTAL-ROUTE] PropertyData failed — no rental data available")
+
     return NextResponse.json({
       success: false,
-      message: "Rental data not available - PropertyData API not configured"
+      message: "Rental data not available for this postcode",
     })
-
   } catch (error) {
-    console.error("[API] Rental comparables error:", error)
+    console.error("[RENTAL-ROUTE] Error:", error)
     return NextResponse.json(
       { success: false, message: "Failed to fetch rental estimates" },
       { status: 500 }
