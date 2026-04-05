@@ -25,24 +25,33 @@ export async function GET() {
 
     const supabase = await createClient()
 
-    // Count all analyses (no auth required — this is a public stat)
-    const { count, error } = await supabase
-      .from("analyses")
-      .select("*", { count: "exact", head: true })
+    // Read the deal_count from global_stats (auto-incremented by DB trigger, base = 10)
+    const { data, error } = await supabase
+      .from("global_stats")
+      .select("deal_count")
+      .eq("id", 1)
+      .single()
 
-    if (error) {
+    if (error || !data) {
       console.error("[Stats] Database error:", error)
       // If cache exists, serve stale
       if (cachedCount !== null) {
         return NextResponse.json({ count: cachedCount, cached: true, stale: true })
       }
-      return NextResponse.json(
-        { error: "Failed to fetch stats" },
-        { status: 500 }
-      )
+      // Fallback: count saved_analyses rows + 10
+      const { count: rowCount } = await supabase
+        .from("saved_analyses")
+        .select("*", { count: "exact", head: true })
+      cachedCount = (rowCount || 0) + 10
+      cachedAt = now
+      return NextResponse.json({
+        count: cachedCount,
+        cached: false,
+        timestamp: new Date().toISOString(),
+      })
     }
 
-    cachedCount = count || 0
+    cachedCount = data.deal_count
     cachedAt = now
 
     return NextResponse.json({
