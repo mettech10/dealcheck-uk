@@ -221,7 +221,7 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
   return formatted
 }
 
-type InputMode = "url" | "manual" | "pdf"
+type InputMode = "url" | "manual"
 
 export default function AnalysePage() {
   const [inputMode, setInputMode] = useState<InputMode>("url")
@@ -1128,18 +1128,6 @@ export default function AnalysePage() {
               <ClipboardEdit className="size-4" />
               Enter Details Manually
             </button>
-            <button
-              type="button"
-              onClick={() => setInputMode("pdf")}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all ${
-                inputMode === "pdf"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <FileUp className="size-4" />
-              Upload Deal PDF
-            </button>
           </div>
         )}
 
@@ -1204,21 +1192,22 @@ export default function AnalysePage() {
                 </p>
               </div>
             </form>
-          </div>
-        )}
 
-        {/* PDF Upload Mode */}
-        {inputMode === "pdf" && !hasResults && (
-          <div className="mb-8 max-w-3xl">
-            <div className="flex flex-col gap-4">
-              <label className="text-sm font-medium text-foreground">
-                Upload Deal PDF
-              </label>
-              <div className="rounded-xl border-2 border-dashed border-border/60 bg-card/50 p-8 text-center">
-                <FileUp className="mx-auto size-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground mb-4">
-                  Upload a property deal PDF to extract details automatically
-                </p>
+            {/* Divider */}
+            <div className="relative my-5">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-border/40" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-background px-3 text-xs text-muted-foreground/60">or</span>
+              </div>
+            </div>
+
+            {/* Compact PDF upload row */}
+            {!pdfFile ? (
+              <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-card/30 px-4 py-3">
+                <FileUp className="size-4 shrink-0 text-muted-foreground/60" />
+                <span className="text-xs text-muted-foreground">Upload a deal PDF instead</span>
                 <input
                   type="file"
                   accept=".pdf"
@@ -1238,43 +1227,36 @@ export default function AnalysePage() {
                 />
                 <label
                   htmlFor="pdf-upload"
-                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-muted px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted/80 transition-colors"
+                  className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/50 bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
-                  Choose PDF file
+                  Choose file
                 </label>
-                <p className="text-xs text-muted-foreground mt-2">PDF only, max 10MB</p>
               </div>
-
-              {pdfFile && (
-                <div className="flex items-center justify-between rounded-lg border border-border/50 bg-card px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <FileUp className="size-5 text-primary" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{pdfFile.name}</p>
-                      <p className="text-xs text-muted-foreground">{(pdfFile.size / 1024).toFixed(0)} KB</p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={handlePdfUpload}
-                    disabled={pdfProcessing}
-                    size="sm"
-                  >
-                    {pdfProcessing ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin mr-1" />
-                        Processing...
-                      </>
-                    ) : (
-                      "Process PDF"
-                    )}
-                  </Button>
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-card/30 px-4 py-3">
+                <FileUp className="size-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-foreground">{pdfFile.name}</p>
+                  <p className="text-[10px] text-muted-foreground">{(pdfFile.size / 1024).toFixed(0)} KB</p>
                 </div>
-              )}
-
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
-            </div>
+                <Button
+                  onClick={handlePdfUpload}
+                  disabled={pdfProcessing}
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 text-xs"
+                >
+                  {pdfProcessing ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin mr-1" />
+                      Processing...
+                    </>
+                  ) : (
+                    "Process PDF"
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

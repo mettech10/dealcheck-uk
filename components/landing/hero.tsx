@@ -6,45 +6,27 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { motion } from "framer-motion"
 import { HeroText, PulseElement } from "@/components/animations"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 
-function AnimatedCounter({ target }: { target: number }) {
-  const [display, setDisplay] = useState(Math.max(0, target - 20))
-  const rafRef = useRef<number | null>(null)
+/** Format a count for display: round down to nearest 10, minimum 10, with "+" suffix */
+function formatDealCount(n: number): string {
+  const floored = Math.max(10, Math.floor(n / 10) * 10)
+  return `${floored.toLocaleString()}+`
+}
 
-  useEffect(() => {
-    const start = Math.max(0, target - 20)
-    const duration = 1200 // ms
-    const startTime = performance.now()
-
-    const tick = (now: number) => {
-      const elapsed = now - startTime
-      const progress = Math.min(elapsed / duration, 1)
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3)
-      setDisplay(Math.round(start + (target - start) * eased))
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(tick)
-      }
-    }
-
-    rafRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    }
-  }, [target])
-
-  return <>{display.toLocaleString()}+</>
+function AnimatedCounter({ target }: { target: string }) {
+  // Simple fade-in for the formatted string
+  return <>{target}</>
 }
 
 export function Hero() {
-  const [dealCount, setDealCount] = useState<number | null>(null)
+  const [dealCount, setDealCount] = useState("10+")
 
   useEffect(() => {
     fetch("/api/stats/deal-count")
       .then((r) => r.json())
-      .then((d) => setDealCount(d.count ?? 10))
-      .catch(() => setDealCount(10))
+      .then((d) => setDealCount(formatDealCount(d.count ?? 10)))
+      .catch(() => setDealCount("10+"))
   }, [])
 
   return (
@@ -143,7 +125,7 @@ export function Hero() {
           className="mt-20 grid w-full max-w-3xl grid-cols-1 gap-8 rounded-xl border border-border/50 bg-card/50 px-8 py-6 backdrop-blur-sm sm:grid-cols-3"
         >
           {[
-            { value: dealCount !== null ? <AnimatedCounter target={dealCount} /> : "…", label: "Deals Analysed" },
+            { value: <AnimatedCounter target={dealCount} />, label: "Deals Analysed" },
             { value: "98%", label: "Calculation Accuracy" },
             { value: "4+ hrs", label: "Saved Per Deal" },
           ].map((stat, i) => (
