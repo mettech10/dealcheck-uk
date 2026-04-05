@@ -21,7 +21,82 @@ import {
   ExternalLink,
   FileDown,
   FileUp,
+  AlertTriangle,
+  X,
 } from "lucide-react"
+
+// ─── Rental vs Sale Detection ────────────────────────────────────────────────
+type RentalDetection = "rental" | "sale" | "uncertain"
+
+function detectRentalListing(
+  url: string,
+  scraped: Record<string, any>
+): RentalDetection {
+  const lowerUrl = url.toLowerCase()
+
+  // ── URL pattern checks ──
+  // Rightmove: /properties/... is sale, /rental/... or /property-to-rent/ is rental
+  if (lowerUrl.includes("rightmove.co.uk")) {
+    if (
+      lowerUrl.includes("/property-to-rent/") ||
+      lowerUrl.includes("/rental/") ||
+      lowerUrl.includes("/lettings/") ||
+      lowerUrl.includes("/rent/")
+    )
+      return "rental"
+    if (
+      lowerUrl.includes("/property-for-sale/") ||
+      lowerUrl.includes("/properties/")
+    )
+      return "sale"
+  }
+
+  // Zoopla: /to-rent/ is rental, /for-sale/ is sale
+  if (lowerUrl.includes("zoopla.co.uk")) {
+    if (lowerUrl.includes("/to-rent/") || lowerUrl.includes("/to-rent?"))
+      return "rental"
+    if (lowerUrl.includes("/for-sale/") || lowerUrl.includes("/for-sale?"))
+      return "sale"
+  }
+
+  // OnTheMarket: /to-rent/ is rental, /for-sale/ is sale
+  if (lowerUrl.includes("onthemarket.com")) {
+    if (lowerUrl.includes("/to-rent/") || lowerUrl.includes("/to-rent?"))
+      return "rental"
+    if (lowerUrl.includes("/for-sale/") || lowerUrl.includes("/for-sale?"))
+      return "sale"
+  }
+
+  // SpareRoom — always rental
+  if (lowerUrl.includes("spareroom.co.uk")) return "rental"
+
+  // OpenRent — always rental
+  if (lowerUrl.includes("openrent.com")) return "rental"
+
+  // ── Scraped data field checks ──
+  const priceText = String(
+    scraped.priceLabel || scraped.priceType || scraped.price || ""
+  ).toLowerCase()
+  if (
+    priceText.includes("pcm") ||
+    priceText.includes("per month") ||
+    priceText.includes("pw") ||
+    priceText.includes("per week") ||
+    priceText.includes("to let") ||
+    priceText.includes("to rent")
+  )
+    return "rental"
+
+  const listingType = String(
+    scraped.listingType || scraped.transactionType || ""
+  ).toLowerCase()
+  if (listingType.includes("rent") || listingType.includes("let"))
+    return "rental"
+  if (listingType.includes("sale") || listingType.includes("buy"))
+    return "sale"
+
+  return "uncertain"
+}
 
 // Helper to format analysis results from backend
 // overridePostcode: use the user's actual form postcode instead of any AI-hallucinated one
@@ -240,6 +315,9 @@ export default function AnalysePage() {
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfProcessing, setPdfProcessing] = useState(false)
   const [pdfNotice, setPdfNotice] = useState<{ fieldsFound: string[]; fieldsMissing: string[] } | null>(null)
+  // Rental detection — auto-switch to SA when a rental listing is pasted
+  const [rentalDetected, setRentalDetected] = useState(false)
+  const [rentalMonthlyRent, setRentalMonthlyRent] = useState<number | null>(null)
 
   // Call the Flask backend API and handle the response
   const callAnalysisAPI = useCallback(
@@ -490,6 +568,35 @@ export default function AnalysePage() {
         // Track where floor size came from (listing vs EPC)
         setSqftSource(scraped.sqftSource || (scraped.sqft ? "listing" : undefined))
 
+        // ── Rental listing detection ──────────────────────────────
+        const detection = detectRentalListing(listingUrl, scraped)
+
+        if (detection === "rental") {
+          // Extract monthly rent from the scraped price
+          const rawPrice = Number(scraped.purchasePrice) || 0
+          // Rental prices scraped as purchasePrice are typically monthly rent
+          const monthlyRent = rawPrice > 0 && rawPrice < 20000 ? rawPrice : 0
+          const suggestedNightly = monthlyRent > 0 ? Math.round(monthlyRent / 30) : 0
+
+          // Auto-switch to SA (Rent-to-SA) with pre-filled fields
+          mapped.investmentType = "r2sa"
+          mapped.purchasePrice = 0 // not purchasing — it's a rental
+          mapped.saOwnershipType = "rent-to-sa"
+          if (monthlyRent > 0) {
+            mapped.saMonthlyLease = monthlyRent
+            mapped.monthlyRent = 0 // not applicable for R2SA
+          }
+          if (suggestedNightly > 0) {
+            mapped.saNightlyRate = suggestedNightly
+          }
+
+          setRentalDetected(true)
+          setRentalMonthlyRent(monthlyRent)
+        } else {
+          setRentalDetected(false)
+          setRentalMonthlyRent(null)
+        }
+
         // Transition to manual form with pre-filled data
         setPrefillData(mapped)
         setScrapedFromUrl(true)
@@ -643,6 +750,8 @@ export default function AnalysePage() {
     setPrefillData(null)
     setScrapedFromUrl(false)
     setScrapedListing(null)
+    setRentalDetected(false)
+    setRentalMonthlyRent(null)
     savedKeyRef.current = null
   }
 
@@ -1263,6 +1372,66 @@ export default function AnalysePage() {
         {/* Manual Input Mode */}
         {inputMode === "manual" && !hasResults && (
           <div className="max-w-4xl">
+            {/* Rental detection notice */}
+            {rentalDetected && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-50 px-4 py-3 dark:bg-amber-950/20">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    Rental listing detected — switched to Serviced Accommodation
+                  </p>
+                  <p className="mt-0.5 text-xs text-amber-700/80 dark:text-amber-400/70">
+                    This looks like a rental listing
+                    {rentalMonthlyRent
+                      ? ` at £${rentalMonthlyRent.toLocaleString("en-GB")}/month`
+                      : ""}
+                    . We've pre-filled the Rent-to-SA form. You can adjust the
+                    nightly rate, occupancy, and costs below.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Switch to BTL instead — reset SA fields, set as BTL
+                        if (prefillData) {
+                          const btlData = { ...prefillData }
+                          btlData.investmentType = "btl"
+                          btlData.saOwnershipType = undefined
+                          btlData.saMonthlyLease = undefined
+                          btlData.saNightlyRate = undefined
+                          // Use the rental price as monthly rent for BTL
+                          if (rentalMonthlyRent && rentalMonthlyRent > 0) {
+                            btlData.monthlyRent = rentalMonthlyRent
+                            btlData.purchasePrice = 0
+                          }
+                          setPrefillData(btlData)
+                          setScrapedFromUrl(true)
+                        }
+                        setRentalDetected(false)
+                      }}
+                      className="rounded-md border border-amber-500/30 bg-white px-3 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                    >
+                      Switch to BTL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRentalDetected(false)}
+                      className="rounded-md px-3 py-1 text-xs text-amber-700/70 transition-colors hover:text-amber-800 dark:text-amber-400/60 dark:hover:text-amber-300"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRentalDetected(false)}
+                  className="shrink-0 text-amber-600/50 hover:text-amber-800 dark:text-amber-400/40 dark:hover:text-amber-300"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            )}
+
             {/* Form Panel */}
             <div className="rounded-xl border border-border/50 bg-card p-6">
               <PropertyForm
