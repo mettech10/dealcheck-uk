@@ -391,13 +391,41 @@ function StrategySuitability({
 function HouseValuationCard({
   valuation,
   purchasePrice,
+  avgSoldPrice,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
+  avgSoldPrice?: number
 }) {
   if (!valuation) return null
 
-  const estimate = valuation.estimate
+  // Use valuation estimate, falling back to avg sold price from Land Registry comparables
+  const rawEstimate = valuation.estimate
+  const estimate = rawEstimate && rawEstimate > 0 ? rawEstimate : (avgSoldPrice && avgSoldPrice > 0 ? avgSoldPrice : null)
+  const isFallback = (!rawEstimate || rawEstimate <= 0) && estimate !== null
+  const source = isFallback ? "Land Registry area average" : valuation.source
+  const confidence = isFallback ? "Low" : valuation.confidence
+
+  // If no estimate at all, show a helpful message instead of £0
+  if (!estimate) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Home className="size-4 text-primary" />
+            <CardTitle className="text-sm">House Valuation</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            No external valuation available. Check the sold comparables below for area pricing,
+            or commission a RICS survey for an accurate figure.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
   const diff = purchasePrice ? estimate - purchasePrice : null
   const pct =
     purchasePrice && purchasePrice > 0
@@ -407,9 +435,9 @@ function HouseValuationCard({
   const isOver = diff !== null && diff < 0
 
   const confidenceColor =
-    valuation.confidence === "High"
+    confidence === "High"
       ? "text-success"
-      : valuation.confidence === "Medium"
+      : confidence === "Medium"
         ? "text-warning"
         : "text-muted-foreground"
 
@@ -419,9 +447,9 @@ function HouseValuationCard({
         <div className="flex items-center gap-2">
           <Home className="size-4 text-primary" />
           <CardTitle className="text-sm">House Valuation</CardTitle>
-          {valuation.source && (
+          {source && (
             <span className="ml-auto text-xs text-muted-foreground">
-              {valuation.source}
+              {source}
             </span>
           )}
         </div>
@@ -434,7 +462,7 @@ function HouseValuationCard({
               {formatCurrency(estimate)}
             </p>
             <p className={`text-xs font-medium ${confidenceColor}`}>
-              {valuation.confidence} confidence
+              {confidence} confidence
             </p>
           </div>
           {diff !== null && pct !== null && (
@@ -463,7 +491,12 @@ function HouseValuationCard({
             </div>
           )}
         </div>
-        {valuation.note && (
+        {isFallback && (
+          <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
+            Based on recent sold prices in the postcode area — not property-specific.
+          </p>
+        )}
+        {!isFallback && valuation.note && (
           <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
             {valuation.note}
           </p>
@@ -1020,7 +1053,7 @@ export function AnalysisResults({
     Object.keys(backendData.strategy_recommendations).length > 0
   const hasArticle4 = !!backendData?.article_4
   const hasLocation = !!(backendData?.location?.council || backendData?.location?.region)
-  const hasValuation = !!backendData?.house_valuation
+  const hasValuation = !!backendData?.house_valuation || (backendData?.avg_sold_price && backendData.avg_sold_price > 0)
   const hasAIInsights = !!(
     backendData?.ai_strengths?.length ||
     backendData?.ai_risks?.length ||
@@ -1157,6 +1190,7 @@ export function AnalysisResults({
         <HouseValuationCard
           valuation={backendData?.house_valuation}
           purchasePrice={data.purchasePrice}
+          avgSoldPrice={backendData?.avg_sold_price}
         />
       )}
 
