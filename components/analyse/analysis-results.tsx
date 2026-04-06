@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import Link from "next/link"
 import {
   Card,
@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
-import { PropertyComparables } from "./property-comparables"
+import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { HmoComparables } from "./hmo-comparables"
 import {
@@ -392,21 +392,57 @@ function HouseValuationCard({
   valuation,
   purchasePrice,
   avgSoldPrice,
+  comparables,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
   avgSoldPrice?: number
+  comparables?: ComparablesLoadedData | null
 }) {
-  if (!valuation) return null
+  // Priority: backend valuation estimate → backend avg_sold_price → frontend comparables average
+  const backendEstimate = valuation?.estimate && valuation.estimate > 0 ? valuation.estimate : null
+  const backendAvg = avgSoldPrice && avgSoldPrice > 0 ? avgSoldPrice : null
+  const frontendAvg = comparables?.avgSoldPrice && comparables.avgSoldPrice > 0 ? comparables.avgSoldPrice : null
 
-  // Use valuation estimate, falling back to avg sold price from Land Registry comparables
-  const rawEstimate = valuation.estimate
-  const estimate = rawEstimate && rawEstimate > 0 ? rawEstimate : (avgSoldPrice && avgSoldPrice > 0 ? avgSoldPrice : null)
-  const isFallback = (!rawEstimate || rawEstimate <= 0) && estimate !== null
-  const source = isFallback ? "Land Registry area average" : valuation.source
-  const confidence = isFallback ? "Low" : valuation.confidence
+  const estimate = backendEstimate ?? backendAvg ?? frontendAvg
+  const isFromComparables = !backendEstimate && !backendAvg && !!frontendAvg
+  const isLoading = !valuation && !comparables // Neither data source has loaded yet
 
-  // If no estimate at all, show a helpful message instead of £0
+  // Rental data from comparables
+  const estRent = comparables?.estimatedRent ?? null
+  const rentRange = comparables?.rentRange ?? null
+  const grossYield = comparables?.grossYield ?? null
+  const soldCount = comparables?.soldCount ?? 0
+
+  // Source label
+  const sourceLabel = backendEstimate
+    ? (valuation?.source || "PropertyData API")
+    : soldCount > 0
+      ? `HM Land Registry · ${soldCount} sales in last 24 months`
+      : "HM Land Registry"
+
+  // Loading state — comparables haven't loaded yet
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Home className="size-4 text-primary" />
+            <CardTitle className="text-sm">House Valuation</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-3">
+            <div className="h-6 w-32 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-48 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-40 animate-pulse rounded bg-muted" />
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // No data at all — sold comparables returned 0 results
   if (!estimate) {
     return (
       <Card>
@@ -418,28 +454,20 @@ function HouseValuationCard({
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            No external valuation available. Check the sold comparables below for area pricing,
-            or commission a RICS survey for an accurate figure.
+            No external valuation available. Commission a RICS survey for an accurate figure.
           </p>
         </CardContent>
       </Card>
     )
   }
 
-  const diff = purchasePrice ? estimate - purchasePrice : null
-  const pct =
-    purchasePrice && purchasePrice > 0
-      ? ((estimate - purchasePrice) / purchasePrice) * 100
-      : null
-  const isUnder = diff !== null && diff > 0
-  const isOver = diff !== null && diff < 0
-
-  const confidenceColor =
-    confidence === "High"
-      ? "text-success"
-      : confidence === "Medium"
-        ? "text-warning"
-        : "text-muted-foreground"
+  // vs Purchase Price calculation
+  const diff = purchasePrice && purchasePrice > 0 ? estimate - purchasePrice : null
+  const pct = purchasePrice && purchasePrice > 0
+    ? ((estimate - purchasePrice) / purchasePrice) * 100
+    : null
+  const isAbove = diff !== null && diff > 0
+  const isBelow = diff !== null && diff < 0
 
   return (
     <Card>
@@ -447,59 +475,71 @@ function HouseValuationCard({
         <div className="flex items-center gap-2">
           <Home className="size-4 text-primary" />
           <CardTitle className="text-sm">House Valuation</CardTitle>
-          {source && (
-            <span className="ml-auto text-xs text-muted-foreground">
-              {source}
-            </span>
-          )}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {sourceLabel}
+          </span>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-end gap-8">
+      <CardContent className="flex flex-col gap-4">
+        {/* Row 1: Estimated value + vs purchase price */}
+        <div className="flex flex-wrap items-end gap-8">
           <div>
-            <p className="text-xs text-muted-foreground">Estimated Value</p>
+            <p className="text-xs text-muted-foreground">Estimated Market Value</p>
             <p className="text-2xl font-bold text-foreground">
               {formatCurrency(estimate)}
             </p>
-            <p className={`text-xs font-medium ${confidenceColor}`}>
-              {confidence} confidence
-            </p>
+            {soldCount > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Based on {soldCount} recent sales in {comparables?.postcode?.split(" ")[0] || "area"}
+              </p>
+            )}
           </div>
           {diff !== null && pct !== null && (
             <div>
               <p className="text-xs text-muted-foreground">vs Purchase Price</p>
               <p
                 className={`text-lg font-semibold ${
-                  isUnder
-                    ? "text-success"
-                    : isOver
-                      ? "text-destructive"
-                      : "text-foreground"
+                  isAbove ? "text-success" : isBelow ? "text-warning" : "text-foreground"
                 }`}
               >
-                {diff > 0 ? "+" : ""}
-                {formatCurrency(diff)} ({pct > 0 ? "+" : ""}
-                {pct.toFixed(1)}%)
+                {pct > 0 ? "+" : ""}{pct.toFixed(1)}% {isAbove ? "above" : isBelow ? "below" : "at"} asking price
               </p>
               <p className="text-xs text-muted-foreground">
-                {isUnder
-                  ? "Below market — potential uplift"
-                  : isOver
-                    ? "Above market estimate"
-                    : "At market value"}
+                {isAbove
+                  ? `Sold prices average ${formatCurrency(diff)} above your offer`
+                  : isBelow
+                    ? `Sold prices average ${formatCurrency(Math.abs(diff!))} below your offer`
+                    : "In line with market"}
               </p>
             </div>
           )}
         </div>
-        {isFallback && (
-          <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
-            Based on recent sold prices in the postcode area — not property-specific.
-          </p>
-        )}
-        {!isFallback && valuation.note && (
-          <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
-            {valuation.note}
-          </p>
+
+        {/* Row 2: Rent & Yield stats */}
+        {(estRent || grossYield) && (
+          <div className="flex flex-wrap gap-6 border-t border-border/40 pt-3">
+            {estRent && (
+              <div>
+                <p className="text-xs text-muted-foreground">Estimated Monthly Rent</p>
+                <p className="text-base font-semibold text-foreground">
+                  {formatCurrency(estRent)}/mo
+                </p>
+                {rentRange && (
+                  <p className="text-xs text-muted-foreground">
+                    Range: {formatCurrency(rentRange.low)} – {formatCurrency(rentRange.high)}
+                  </p>
+                )}
+              </div>
+            )}
+            {grossYield !== null && (
+              <div>
+                <p className="text-xs text-muted-foreground">Gross Yield (area avg)</p>
+                <p className={`text-base font-semibold ${grossYield >= 6 ? "text-success" : grossYield >= 4 ? "text-warning" : "text-destructive"}`}>
+                  {grossYield.toFixed(2)}%
+                </p>
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -1010,6 +1050,8 @@ export function AnalysisResults({
   aiLoading,
   backendData,
 }: AnalysisResultsProps) {
+  const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
+
   const parsedAI = parseAIAnalysis(aiText)
   const dealScore =
     backendData?.deal_score ??
@@ -1053,7 +1095,8 @@ export function AnalysisResults({
     Object.keys(backendData.strategy_recommendations).length > 0
   const hasArticle4 = !!backendData?.article_4
   const hasLocation = !!(backendData?.location?.council || backendData?.location?.region)
-  const hasValuation = !!backendData?.house_valuation || (backendData?.avg_sold_price && backendData.avg_sold_price > 0)
+  // Always show valuation card — it handles its own loading/empty states
+  const hasValuation = true
   const hasAIInsights = !!(
     backendData?.ai_strengths?.length ||
     backendData?.ai_risks?.length ||
@@ -1191,6 +1234,7 @@ export function AnalysisResults({
           valuation={backendData?.house_valuation}
           purchasePrice={data.purchasePrice}
           avgSoldPrice={backendData?.avg_sold_price}
+          comparables={comparablesData}
         />
       )}
 
@@ -1399,6 +1443,7 @@ export function AnalysisResults({
                 propertyTypeDetail={data.propertyTypeDetail}
                 tenureType={data.tenureType}
                 investmentType={data.investmentType}
+                onDataLoaded={setComparablesData}
               />
             )}
           </TabsContent>

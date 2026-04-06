@@ -56,6 +56,17 @@ interface RentalEstimate {
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────
+/** Data lifted to parent when sold/rental comparables finish loading */
+export interface ComparablesLoadedData {
+  avgSoldPrice: number | null
+  soldCount: number
+  radiusMiles: number | null
+  estimatedRent: number | null
+  rentRange: { low: number; high: number } | null
+  grossYield: number | null
+  postcode: string
+}
+
 interface PropertyComparablesProps {
   postcode: string
   bedrooms: number
@@ -64,6 +75,7 @@ interface PropertyComparablesProps {
   propertyTypeDetail?: string
   tenureType?: string
   investmentType?: string
+  onDataLoaded?: (data: ComparablesLoadedData) => void
 }
 
 // Strategies that should show rental comparables
@@ -77,6 +89,7 @@ export function PropertyComparables({
   propertyTypeDetail,
   tenureType,
   investmentType,
+  onDataLoaded,
 }: PropertyComparablesProps) {
   const [soldData, setSoldData] = useState<SoldData | null>(null)
   const [rentalEstimate, setRentalEstimate] = useState<RentalEstimate | null>(null)
@@ -118,6 +131,9 @@ export function PropertyComparables({
         const soldJson = await soldRes.json()
         const rentalJson = await rentalRes.json()
 
+        let loadedSold: SoldData | null = null
+        let loadedRental: RentalEstimate | null = null
+
         if (soldJson.success) {
           const d = soldJson.data || {
             sales: soldJson.sales || [],
@@ -125,10 +141,31 @@ export function PropertyComparables({
             count: soldJson.count || 0,
           }
           setSoldData(d)
+          loadedSold = d
         }
 
         if (rentalJson.success && rentalJson.data) {
           setRentalEstimate(rentalJson.data)
+          loadedRental = rentalJson.data
+        }
+
+        // Lift data to parent for House Valuation card
+        if (onDataLoaded) {
+          const avgSold = loadedSold?.average ?? null
+          const rentEst = loadedRental?.monthly ?? null
+          const grossYield =
+            avgSold && avgSold > 0 && rentEst
+              ? ((rentEst * 12) / avgSold) * 100
+              : null
+          onDataLoaded({
+            avgSoldPrice: avgSold,
+            soldCount: loadedSold?.count ?? 0,
+            radiusMiles: loadedSold?.radiusMiles ?? null,
+            estimatedRent: rentEst,
+            rentRange: loadedRental?.range ?? null,
+            grossYield,
+            postcode,
+          })
         }
 
         if (!soldJson.success && !rentalJson.success) {
@@ -269,7 +306,7 @@ export function PropertyComparables({
               {propertyTypeDetail ? ` · ${propertyTypeDetail.replace(/-/g, " ")}` : ""}
               {tenureType ? ` · ${tenureType}` : ""}
               {soldData && soldData.radiusMiles && soldData.radiusMiles > 0
-                ? ` · within ${soldData.radiusMiles} mile${soldData.radiusMiles !== 1 ? "s" : ""}`
+                ? ` · within ${soldData.radiusMiles.toFixed(1)} mile${soldData.radiusMiles.toFixed(1) === "1.0" ? "" : "s"}`
                 : ""}
             </CardDescription>
 
@@ -380,9 +417,10 @@ export function PropertyComparables({
         {activeTab === "rental" && showRentals && (
           <>
             <CardDescription className="text-xs">
-              Live rental listings from Rightmove · {bedrooms} bed
+              Rental comparables · {bedrooms} bed
               {propertyTypeDetail ? ` · ${propertyTypeDetail.replace(/-/g, " ")}` : ""}
-              {rentalListings?.searchArea ? ` · searching ${rentalListings.searchArea}` : ""}
+              {rentalListings?.searchArea ? ` · ${rentalListings.searchArea}` : ""}
+              {rentalListings && ` · ${rentalListings.count} found`}
             </CardDescription>
 
             {rentalLoading && (
@@ -423,17 +461,19 @@ export function PropertyComparables({
                       key={i}
                       className="flex gap-3 p-2 rounded bg-muted/50 text-sm"
                     >
-                      {/* Thumbnail */}
-                      {listing.imageUrl && (
-                        <div className="shrink-0 w-16 h-12 rounded overflow-hidden bg-muted">
+                      {/* Thumbnail or placeholder */}
+                      <div className="shrink-0 w-20 h-14 rounded overflow-hidden bg-muted/80 flex items-center justify-center">
+                        {listing.imageUrl ? (
                           <img
                             src={listing.imageUrl}
                             alt=""
                             className="w-full h-full object-cover"
                             loading="lazy"
                           />
-                        </div>
-                      )}
+                        ) : (
+                          <Home className="size-5 text-muted-foreground/40" />
+                        )}
+                      </div>
 
                       {/* Details */}
                       <div className="flex-1 min-w-0">
@@ -446,7 +486,7 @@ export function PropertyComparables({
                             <div className="text-xs text-muted-foreground truncate">
                               {listing.address}
                             </div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="flex items-center gap-1.5 mt-1">
                               {listing.bedrooms && (
                                 <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">
                                   {listing.bedrooms} bed
@@ -457,12 +497,12 @@ export function PropertyComparables({
                                   {listing.propertyType}
                                 </span>
                               )}
+                              {(listing as Record<string, unknown>).distance != null && (
+                                <span className="text-[10px] rounded bg-muted text-muted-foreground px-1.5 py-0.5">
+                                  {Number((listing as Record<string, unknown>).distance).toFixed(1)}km
+                                </span>
+                              )}
                             </div>
-                            {listing.rentLabel && (
-                              <div className="text-[10px] text-amber-600 mt-0.5">
-                                {listing.rentLabel}
-                              </div>
-                            )}
                           </div>
 
                           {/* External link */}
@@ -483,11 +523,33 @@ export function PropertyComparables({
                   ))}
                 </div>
 
-                {/* Summary line */}
+                {/* Summary bar */}
                 <div className="text-xs text-muted-foreground text-center pt-2 border-t">
                   {rentalListings.count} rental comparable{rentalListings.count !== 1 ? "s" : ""} found
                   {" · "}Average rent: {formatCurrency(rentalListings.averageRent)} pcm
                   {" · "}Range: {formatCurrency(rentalListings.minRent)} – {formatCurrency(rentalListings.maxRent)} pcm
+                </div>
+
+                {/* Browse links */}
+                <div className="flex items-center justify-center gap-4 pt-1">
+                  <a
+                    href={`https://www.rightmove.co.uk/property-to-rent/find.html?searchLocation=${encodeURIComponent(postcode)}&minBedrooms=${bedrooms}&maxBedrooms=${bedrooms}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                  >
+                    Browse rentals on Rightmove
+                    <ExternalLink className="size-3" />
+                  </a>
+                  <a
+                    href={`https://www.zoopla.co.uk/to-rent/details/${postcode.replace(/\s+/g, "-").toLowerCase()}/?beds_min=${bedrooms}&beds_max=${bedrooms}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                  >
+                    Browse on Zoopla
+                    <ExternalLink className="size-3" />
+                  </a>
                 </div>
 
                 {investmentType === "r2sa" && (
