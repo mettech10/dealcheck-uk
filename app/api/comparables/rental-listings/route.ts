@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { getRents, weeklyToMonthly, mapPropertyType } from "@/lib/propertydata"
+import { weeklyToMonthly, mapPropertyType } from "@/lib/propertydata"
+import { cachedGetRents } from "@/lib/propertydata-cache"
 
 const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     console.log("[RENTAL-LISTINGS] Fetching - postcode:", postcode, "bedrooms:", bedrooms)
 
     // ── Primary: PropertyData /rents ────────────────────────────────────────
-    const pdRents = await getRents(postcode, bedrooms || undefined)
+    const pdRents = await cachedGetRents(postcode, bedrooms || undefined)
 
     if (pdRents && pdRents.status === "success" && pdRents.data?.long_let) {
       const ll = pdRents.data.long_let

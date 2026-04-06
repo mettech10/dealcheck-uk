@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { getSoldPrices, getAskingPrices, mapPropertyType, weeklyToMonthly } from "@/lib/propertydata"
+import { mapPropertyType, weeklyToMonthly } from "@/lib/propertydata"
+import { cachedGetSoldPrices, cachedGetAskingPrices } from "@/lib/propertydata-cache"
 
 const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     console.log("[SOLD-ROUTE] Fetching sold prices - postcode:", postcode, "bedrooms:", bedrooms)
 
     // ── Primary: PropertyData /sold-prices ──────────────────────────────────
-    const pdSold = await getSoldPrices(postcode, bedrooms)
+    const pdSold = await cachedGetSoldPrices(postcode, bedrooms)
 
     if (pdSold && pdSold.status === "success" && pdSold.data) {
       const raw = pdSold.data.raw_data || []
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
       // Also fetch asking prices for valuation estimate (non-blocking)
       let valuationEstimate: { average: number; range: [number, number]; count: number } | null = null
       try {
-        const pdPrices = await getAskingPrices(postcode, bedrooms)
+        const pdPrices = await cachedGetAskingPrices(postcode, bedrooms)
         if (pdPrices && pdPrices.status === "success" && pdPrices.data) {
           valuationEstimate = {
             average: pdPrices.data.average,

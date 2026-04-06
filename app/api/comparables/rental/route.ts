@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
-import { getRents, weeklyToMonthly } from "@/lib/propertydata"
+import { weeklyToMonthly } from "@/lib/propertydata"
+import { cachedGetRents } from "@/lib/propertydata-cache"
 
 /**
  * Rental Valuation Estimate — /api/comparables/rental
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
 
     console.log("[RENTAL-ROUTE] Fetching rental estimate - postcode:", postcode, "bedrooms:", bedrooms)
 
-    const pdRents = await getRents(postcode, bedrooms || undefined)
+    const pdRents = await cachedGetRents(postcode, bedrooms || undefined)
 
     if (pdRents && pdRents.status === "success" && pdRents.data?.long_let) {
       const ll = pdRents.data.long_let

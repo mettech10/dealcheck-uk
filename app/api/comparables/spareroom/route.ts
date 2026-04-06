@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server"
 import {
-  getHmoRents,
   weeklyToMonthly,
   mapRoomType,
   type HmoRentsResponse,
 } from "@/lib/propertydata"
+import { cachedGetHmoRents } from "@/lib/propertydata-cache"
 
 const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     console.log("[HMO-ROUTE] Fetching HMO rents - postcode:", postcode)
 
     // ── Primary: PropertyData API ──────────────────────────────────────────
-    const pdData = await getHmoRents(postcode, 15)
+    const pdData = await cachedGetHmoRents(postcode, 15)
 
     if (pdData && pdData.status === "success" && pdData.data) {
       const result = mapPropertyDataToHmoResponse(pdData, postcode)
