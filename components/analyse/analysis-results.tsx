@@ -56,6 +56,10 @@ import {
   BarChart2,
   SlidersHorizontal,
   Info,
+  Globe,
+  Activity,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react"
 
 interface AnalysisResultsProps {
@@ -250,6 +254,243 @@ function LocationCard({ location }: { location?: BackendResults["location"] }) {
             </div>
           )}
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Unified Area Analysis Card ─────────────────────────────────────────────
+// Combines: Location & Council, Risk Flags, Regional/Postcode Benchmarks
+function AreaAnalysisCard({
+  location,
+  riskFlags,
+  benchmark,
+  postcodeBenchmark,
+}: {
+  location?: BackendResults["location"]
+  riskFlags?: RiskFlag[]
+  benchmark?: RegionalBenchmark
+  postcodeBenchmark?: BackendResults["postcode_benchmark"]
+}) {
+  const hasLocation = !!(location?.council || location?.region)
+  const hasFlags = (riskFlags?.length ?? 0) > 0
+  const hasBenchmark = !!benchmark
+  const hasPostcode = !!postcodeBenchmark
+  const hasAnything = hasLocation || hasFlags || hasBenchmark || hasPostcode
+
+  if (!hasAnything) return null
+
+  // Risk summary
+  const highRisks = riskFlags?.filter((f) => f.severity === "HIGH") ?? []
+  const medRisks = riskFlags?.filter((f) => f.severity === "MEDIUM") ?? []
+  const lowRisks = riskFlags?.filter((f) => f.severity === "LOW") ?? []
+
+  const overallRiskLevel =
+    highRisks.length > 0
+      ? "high"
+      : medRisks.length > 0
+        ? "medium"
+        : hasFlags
+          ? "low"
+          : "none"
+
+  const riskBadge = {
+    high: { cls: "bg-destructive/15 text-destructive border-destructive/30", label: "High Risk" },
+    medium: { cls: "bg-warning/15 text-warning border-warning/30", label: "Medium Risk" },
+    low: { cls: "bg-success/15 text-success border-success/30", label: "Low Risk" },
+    none: { cls: "bg-muted text-muted-foreground border-border", label: "No Flags" },
+  }[overallRiskLevel]
+
+  const severityConfig = {
+    HIGH: { dot: "bg-destructive", text: "text-destructive" },
+    MEDIUM: { dot: "bg-warning", text: "text-warning" },
+    LOW: { dot: "bg-success", text: "text-success" },
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Globe className="size-4 text-primary" />
+          <CardTitle className="text-sm">Area Analysis</CardTitle>
+          {hasFlags && (
+            <span className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-medium ${riskBadge.cls}`}>
+              {riskBadge.label}
+            </span>
+          )}
+        </div>
+        {hasLocation && (
+          <p className="text-xs text-muted-foreground">
+            {[location?.region, location?.council, location?.country]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+
+        {/* ── Benchmark Stats Row ────────────────────────────────── */}
+        {hasBenchmark && (
+          <div>
+            <div className="mb-2 flex items-center gap-1.5">
+              <BarChart2 className="size-3.5 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Regional Benchmarks
+              </span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {benchmark.region_name} · {benchmark.postcode_area}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {/* Yield */}
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                <p className="mb-1 text-xs text-muted-foreground">Gross Yield vs Median</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className={`text-lg font-bold ${benchmark.yield_difference >= 0 ? "text-success" : "text-destructive"}`}>
+                    {benchmark.your_yield.toFixed(1)}%
+                  </span>
+                  <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                    {benchmark.yield_difference >= 0
+                      ? <ArrowUpRight className="size-3 text-success" />
+                      : <ArrowDownRight className="size-3 text-destructive" />
+                    }
+                    {Math.abs(benchmark.yield_difference).toFixed(1)}pp vs {benchmark.regional_median_yield.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="mt-1.5 overflow-hidden rounded-full bg-muted/40 h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full ${benchmark.yield_difference >= 0 ? "bg-success" : "bg-destructive"}`}
+                    style={{ width: `${Math.min(100, benchmark.yield_percentile)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Top {(100 - benchmark.yield_percentile).toFixed(0)}% of area</p>
+              </div>
+
+              {/* Cashflow */}
+              <div className="rounded-lg border border-border/50 bg-muted/20 p-3">
+                <p className="mb-1 text-xs text-muted-foreground">Cashflow vs Average</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className={`text-lg font-bold ${benchmark.cashflow_difference >= 0 ? "text-success" : "text-destructive"}`}>
+                    £{Math.round(benchmark.your_cashflow).toLocaleString()}/mo
+                  </span>
+                  <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                    {benchmark.cashflow_difference >= 0
+                      ? <ArrowUpRight className="size-3 text-success" />
+                      : <ArrowDownRight className="size-3 text-destructive" />
+                    }
+                    £{Math.abs(Math.round(benchmark.cashflow_difference)).toLocaleString()}
+                  </span>
+                </div>
+                <div className="mt-1.5 overflow-hidden rounded-full bg-muted/40 h-1.5">
+                  <div
+                    className={`h-1.5 rounded-full ${benchmark.cashflow_difference >= 0 ? "bg-success" : "bg-destructive"}`}
+                    style={{ width: `${Math.min(100, benchmark.cashflow_percentile)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">Beats {benchmark.cashflow_percentile.toFixed(0)}% of properties</p>
+              </div>
+            </div>
+            {benchmark.summary && (
+              <p className="mt-2 rounded-md bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                {benchmark.summary}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Postcode Benchmark Stats ───────────────────────────── */}
+        {hasPostcode && postcodeBenchmark && (
+          <div>
+            <div className="mb-2 flex items-center gap-1.5">
+              <MapPin className="size-3.5 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Postcode Data — {postcodeBenchmark.postcode_district}
+              </span>
+              {postcodeBenchmark.data_month && (
+                <span className="ml-auto text-xs text-muted-foreground">{postcodeBenchmark.data_month}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+              {postcodeBenchmark.median_sold_price != null && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Median Price </span>
+                  <span className="font-medium">£{postcodeBenchmark.median_sold_price.toLocaleString()}</span>
+                </div>
+              )}
+              {postcodeBenchmark.median_monthly_rent != null && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Median Rent </span>
+                  <span className="font-medium">£{postcodeBenchmark.median_monthly_rent.toLocaleString()}/mo</span>
+                </div>
+              )}
+              {postcodeBenchmark.gross_yield_median != null && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Median Yield </span>
+                  <span className="font-medium">{postcodeBenchmark.gross_yield_median.toFixed(1)}%</span>
+                </div>
+              )}
+              {postcodeBenchmark.transaction_count_12m != null && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Sales (12m) </span>
+                  <span className="font-medium">{postcodeBenchmark.transaction_count_12m}</span>
+                </div>
+              )}
+              {postcodeBenchmark.price_growth_5yr_pct != null && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">5yr Growth </span>
+                  <span className={`font-medium ${postcodeBenchmark.price_growth_5yr_pct >= 0 ? "text-success" : "text-destructive"}`}>
+                    {postcodeBenchmark.price_growth_5yr_pct > 0 ? "+" : ""}{postcodeBenchmark.price_growth_5yr_pct.toFixed(1)}%
+                  </span>
+                </div>
+              )}
+              {postcodeBenchmark.void_rate_pct != null && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Void Rate </span>
+                  <span className="font-medium">{postcodeBenchmark.void_rate_pct.toFixed(1)}%</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Risk Flags ─────────────────────────────────────────── */}
+        {hasFlags && (
+          <div>
+            <div className="mb-2 flex items-center gap-1.5">
+              <Activity className="size-3.5 text-primary" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Risk Assessment
+              </span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {riskFlags!.length} flag{riskFlags!.length !== 1 ? "s" : ""} detected
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {riskFlags!.map((flag) => {
+                const cfg = severityConfig[flag.severity] ?? severityConfig.LOW
+                return (
+                  <div
+                    key={flag.id}
+                    className="rounded-lg border border-border/50 bg-muted/10 px-3 py-2.5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`size-2 shrink-0 rounded-full ${cfg.dot}`} />
+                      <span className="text-sm font-medium text-foreground">{flag.name}</span>
+                      <span className={`ml-auto text-xs font-medium ${cfg.text}`}>{flag.severity}</span>
+                    </div>
+                    <p className="mt-1 pl-4 text-xs leading-relaxed text-muted-foreground">{flag.description}</p>
+                    {flag.mitigation && (
+                      <div className="mt-1 flex items-start gap-1.5 pl-4">
+                        <Info className="mt-0.5 size-3 shrink-0 text-primary" />
+                        <p className="text-xs text-primary/80">{flag.mitigation}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -1184,6 +1425,14 @@ export function AnalysisResults({
 
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}
+
+      {/* ── Area Analysis (rich summary: location + benchmarks + risk flags) */}
+      <AreaAnalysisCard
+        location={backendData?.location}
+        riskFlags={backendData?.risk_flags}
+        benchmark={backendData?.regional_benchmark}
+        postcodeBenchmark={backendData?.postcode_benchmark}
+      />
 
       {/* ── House Valuation ─────────────────────────────────────────── */}
       {hasValuation && (
