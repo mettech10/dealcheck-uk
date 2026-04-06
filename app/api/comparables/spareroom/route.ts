@@ -131,6 +131,27 @@ function mapPropertyDataToHmoResponse(pd: HmoRentsResponse, postcode: string) {
     }
   }
 
+  // Sense check: warn if single room rents exceed double room rents for same bath type
+  const findAvg = (type: string) => roomSummaries.find((r) => r.roomType === type)?.avgMonthly ?? 0
+  const doubleEnsuite = findAvg("Double (Ensuite)")
+  const singleEnsuite = findAvg("Single (Ensuite)")
+  const doubleShared = findAvg("Double (Shared Bath)")
+  const singleShared = findAvg("Single (Shared Bath)")
+
+  if (singleEnsuite > 0 && doubleEnsuite > 0 && singleEnsuite > doubleEnsuite) {
+    console.warn(
+      `[HMO-ROUTE] SENSE CHECK FAILED: Single ensuite (£${singleEnsuite}) > Double ensuite (£${doubleEnsuite}) — check PropertyData field mapping for ${postcode}`
+    )
+  }
+  if (singleShared > 0 && doubleShared > 0 && singleShared > doubleShared) {
+    console.warn(
+      `[HMO-ROUTE] SENSE CHECK FAILED: Single shared (£${singleShared}) > Double shared (£${doubleShared}) — check PropertyData field mapping for ${postcode}`
+    )
+  }
+
+  // Sort room summaries: highest rent first (expected: double ensuite > single ensuite > double shared > single shared)
+  roomSummaries.sort((a, b) => b.avgMonthly - a.avgMonthly)
+
   // Calculate overall stats
   const allRents = listings
     .filter((l) => (l.monthly_rent as number) > 0)

@@ -512,7 +512,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     : data.maintenance
   const monthlyMaintenance = maintenanceAnnual / 12
   const monthlyGroundRent = data.groundRent / 12
-  const monthlyBills = data.bills / 12
+  const monthlyBills = data.bills // Bills is entered as a monthly figure
 
   const monthlyRunningCosts =
     Math.round(
