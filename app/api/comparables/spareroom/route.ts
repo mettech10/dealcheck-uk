@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     console.log("[HMO-ROUTE] Fetching HMO rents - postcode:", postcode)
 
     // ── Primary: PropertyData API ──────────────────────────────────────────
-    const pdData = await getHmoRents(postcode, maxResults || 20)
+    const pdData = await getHmoRents(postcode, 15)
 
     if (pdData && pdData.status === "success" && pdData.data) {
       const result = mapPropertyDataToHmoResponse(pdData, postcode)
@@ -91,35 +91,15 @@ function mapPropertyDataToHmoResponse(pd: HmoRentsResponse, postcode: string) {
     range100: [number, number]
     count: number
     radius: string
-    limitedData: boolean
   }> = []
-
-  // Max radius in km — data beyond 1 mile (1.6km) is from a different market
-  const MAX_RADIUS_KM = 1.6
 
   for (const roomType of roomTypes) {
     const room = pd.data[roomType]
     if (!room) continue
 
-    const radiusKm = parseFloat(room.radius) || 0
     const avgMonthly = weeklyToMonthly(room.average)
     const range70 = room["70pc_range"]
     const range100 = room["100pc_range"]
-
-    if (radiusKm > MAX_RADIUS_KM) {
-      // Data gathered from too far away — flag as limited, don't include in averages
-      roomSummaries.push({
-        roomType: mapRoomType(roomType),
-        avgWeekly: room.average,
-        avgMonthly,
-        range70,
-        range100,
-        count: room.points_analysed,
-        radius: room.radius,
-        limitedData: true,
-      })
-      continue
-    }
 
     roomSummaries.push({
       roomType: mapRoomType(roomType),
@@ -129,11 +109,9 @@ function mapPropertyDataToHmoResponse(pd: HmoRentsResponse, postcode: string) {
       range100,
       count: room.points_analysed,
       radius: room.radius,
-      limitedData: false,
     })
 
     // Map raw data points to the listing format hmo-comparables.tsx expects
-    // Only include listings from room types within the radius cap
     for (const point of room.raw_data.slice(0, 3)) {
       const monthlyRent = weeklyToMonthly(point.price)
       listings.push({
@@ -153,7 +131,7 @@ function mapPropertyDataToHmoResponse(pd: HmoRentsResponse, postcode: string) {
     }
   }
 
-  // Calculate overall stats (only from room types within radius cap)
+  // Calculate overall stats
   const allRents = listings
     .filter((l) => (l.monthly_rent as number) > 0)
     .map((l) => l.monthly_rent as number)

@@ -26,7 +26,6 @@ interface RoomSummary {
   range100: [number, number]
   count: number
   radius: string
-  limitedData?: boolean
 }
 
 interface HmoAnalysis {
@@ -144,24 +143,19 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           setListings(rawListings)
           setLoadingListings(false)
 
-          // Build analysis from local room types only (exclude limited data)
-          const localSummaries = data.roomSummaries.filter((r: RoomSummary) => !r.limitedData)
-          const demand = deriveDemand(localSummaries)
-          const rents = localSummaries.map((r: RoomSummary) => r.avgMonthly)
-          const minRent = rents.length > 0 ? Math.min(...rents) : 0
-          const maxRent = rents.length > 0 ? Math.max(...rents) : 0
-          const types = localSummaries.map((r: RoomSummary) => r.roomType).join(", ")
-          const totalPoints = localSummaries.reduce((s: number, r: RoomSummary) => s + r.count, 0)
-          const limitedCount = data.roomSummaries.length - localSummaries.length
+          // Build analysis from PropertyData stats (no AI call needed)
+          const demand = deriveDemand(data.roomSummaries)
+          const rents = data.roomSummaries.map((r: RoomSummary) => r.avgMonthly)
+          const minRent = Math.min(...rents)
+          const maxRent = Math.max(...rents)
+          const types = data.roomSummaries.map((r: RoomSummary) => r.roomType).join(", ")
+          const totalPoints = data.roomSummaries.reduce((s: number, r: RoomSummary) => s + r.count, 0)
 
           setAnalysis({
             demand,
             rentRange: `£${minRent} – £${maxRent} pcm`,
             roomTypes: types,
-            patterns: `${totalPoints} data points analysed across ${localSummaries.length} local room type${localSummaries.length !== 1 ? "s" : ""}. ` +
-              (limitedCount > 0
-                ? `${limitedCount} room type${limitedCount !== 1 ? "s" : ""} excluded — data only available beyond 1 mile. `
-                : "") +
+            patterns: `${totalPoints} data points analysed across ${data.roomSummaries.length} room types. ` +
               (data.hmoAttributes?.bills_inc
                 ? `${data.hmoAttributes.bills_inc}% of rooms include bills. `
                 : "") +
@@ -275,47 +269,30 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {roomSummaries.map((room) => (
-              room.limitedData ? (
-                <div
-                  key={room.roomType}
-                  className="rounded-xl border border-border/30 bg-muted/30 p-4 flex flex-col gap-2 opacity-60"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-muted-foreground">{room.roomType}</span>
-                    <span className="text-[10px] rounded bg-muted text-muted-foreground px-1.5 py-0.5">
-                      Limited data
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Insufficient local data — nearest data {room.radius}km away
-                  </p>
+              <div
+                key={room.roomType}
+                className="rounded-xl border border-border/50 bg-card p-4 flex flex-col gap-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-foreground">{room.roomType}</span>
+                  <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">
+                    {room.count} data points
+                  </span>
                 </div>
-              ) : (
-                <div
-                  key={room.roomType}
-                  className="rounded-xl border border-border/50 bg-card p-4 flex flex-col gap-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">{room.roomType}</span>
-                    <span className="text-[10px] rounded bg-primary/10 text-primary px-1.5 py-0.5">
-                      {room.count} data points
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xl font-bold text-foreground">£{room.avgMonthly}</span>
-                    <span className="text-xs text-muted-foreground">pcm avg</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    70% range: £{wkToMo(room.range70[0])} – £{wkToMo(room.range70[1])} pcm
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Full range: £{wkToMo(room.range100[0])} – £{wkToMo(room.range100[1])} pcm
-                  </div>
-                  <div className="text-[10px] text-muted-foreground/70">
-                    {room.radius}km search radius
-                  </div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xl font-bold text-foreground">£{room.avgMonthly}</span>
+                  <span className="text-xs text-muted-foreground">pcm avg</span>
                 </div>
-              )
+                <div className="text-xs text-muted-foreground">
+                  70% range: £{wkToMo(room.range70[0])} – £{wkToMo(room.range70[1])} pcm
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Full range: £{wkToMo(room.range100[0])} – £{wkToMo(room.range100[1])} pcm
+                </div>
+                <div className="text-[10px] text-muted-foreground/70">
+                  {room.radius}km search radius
+                </div>
+              </div>
             ))}
           </div>
 
