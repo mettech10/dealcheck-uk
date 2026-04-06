@@ -42,13 +42,13 @@ export async function GET(request: Request) {
   const next = searchParams.get("next") ?? "/analyse"
 
   const supabase = await createClient()
-  let sessionData: Awaited<ReturnType<typeof supabase.auth.exchangeCodeForSession>>["data"] | null = null
+  let sessionUser: { id: string; email?: string | null; email_confirmed_at?: string | null; user_metadata?: Record<string, any> } | null = null
   let authError: unknown = null
 
   if (code) {
     // OAuth / PKCE auth code flow
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-    sessionData = data
+    sessionUser = data?.user ?? null
     authError = error
   } else if (token_hash && type) {
     // Email OTP / magic-link verification flow (generateLink redirects here)
@@ -56,21 +56,19 @@ export async function GET(request: Request) {
       type: type as EmailOtpType,
       token_hash,
     })
-    sessionData = data
+    sessionUser = data?.user ?? null
     authError = error
   }
 
-  if (sessionData && !authError) {
+  if (sessionUser && !authError) {
     // Password reset flow — send user to the reset password page
     if (type === "recovery") {
       return NextResponse.redirect(`${origin}/reset-password`)
     }
 
-    const user = sessionData.user
-
     // Email verification (signup confirmation) — always show success page
     if (type === "signup" || type === "email" || source === "email_verify") {
-      await handleVerifiedUser(user)
+      await handleVerifiedUser(sessionUser)
       return NextResponse.redirect(`${origin}/auth/verified`)
     }
 

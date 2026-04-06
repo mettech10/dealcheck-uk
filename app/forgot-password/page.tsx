@@ -21,7 +21,7 @@ export default function ForgotPasswordPage() {
 
     startTransition(async () => {
       const result = await resetPasswordForEmail(formData)
-      if (result?.error) {
+      if (result && "error" in result && typeof result.error === "string") {
         setError(result.error)
       } else {
         setSubmitted(true)

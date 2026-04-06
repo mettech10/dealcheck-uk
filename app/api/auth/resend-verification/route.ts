@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     const { data, error } = await adminClient.auth.admin.generateLink({
       type: "signup",
       email,
+      password: crypto.randomUUID(),
       options: { redirectTo },
     })
 

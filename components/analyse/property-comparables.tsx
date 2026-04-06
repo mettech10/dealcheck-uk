@@ -36,6 +36,8 @@ interface RentalListing {
   agent?: string
   addedOn?: string
   priceFrequency?: string
+  distance?: string | number | null
+  source?: string
 }
 
 interface RentalData {
@@ -497,9 +499,9 @@ export function PropertyComparables({
                                   {listing.propertyType}
                                 </span>
                               )}
-                              {(listing as Record<string, unknown>).distance != null && (
+                              {listing.distance != null && (
                                 <span className="text-[10px] rounded bg-muted text-muted-foreground px-1.5 py-0.5">
-                                  {Number((listing as Record<string, unknown>).distance).toFixed(1)}km
+                                  {Number(listing.distance).toFixed(1)}km
                                 </span>
                               )}
                             </div>
