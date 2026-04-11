@@ -101,9 +101,12 @@ export function PropertyComparables({
   const [activeTab, setActiveTab] = useState<"sold" | "rental">("sold")
   const [error, setError] = useState<string | null>(null)
 
+  const isHMO = investmentType === "hmo"
   const showRentals = RENTAL_STRATEGIES.has(investmentType || "btl")
 
-  // Fetch sold comparables + rental estimate
+  // Fetch sold comparables + (single-let) rental estimate.
+  // For HMO we skip the single-let rental call entirely — HMO room rent
+  // data is fetched separately by <HmoComparables>.
   useEffect(() => {
     async function fetchComparables() {
       if (!postcode) return
@@ -111,7 +114,7 @@ export function PropertyComparables({
       setError(null)
 
       try {
-        const [soldRes, rentalRes] = await Promise.all([
+        const requests: Promise<Response>[] = [
           fetch("/api/comparables/sold", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -123,15 +126,20 @@ export function PropertyComparables({
               ...(tenureType ? { tenureType } : {}),
             }),
           }),
-          fetch("/api/comparables/rental", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ postcode, bedrooms }),
-          }),
-        ])
+        ]
+        if (!isHMO) {
+          requests.push(
+            fetch("/api/comparables/rental", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ postcode, bedrooms }),
+            })
+          )
+        }
 
-        const soldJson = await soldRes.json()
-        const rentalJson = await rentalRes.json()
+        const responses = await Promise.all(requests)
+        const soldJson = await responses[0].json()
+        const rentalJson = isHMO ? null : await responses[1].json()
 
         let loadedSold: SoldData | null = null
         let loadedRental: RentalEstimate | null = null
@@ -146,17 +154,22 @@ export function PropertyComparables({
           loadedSold = d
         }
 
-        if (rentalJson.success && rentalJson.data) {
+        if (rentalJson && rentalJson.success && rentalJson.data) {
           setRentalEstimate(rentalJson.data)
           loadedRental = rentalJson.data
+        } else {
+          // Ensure HMO mode never shows a stale single-let figure
+          setRentalEstimate(null)
         }
 
-        // Lift data to parent for House Valuation card
+        // Lift data to parent for House Valuation card.
+        // For HMO we deliberately do NOT pass single-let rent/yield —
+        // those come from HmoComparables instead.
         if (onDataLoaded) {
           const avgSold = loadedSold?.average ?? null
-          const rentEst = loadedRental?.monthly ?? null
+          const rentEst = isHMO ? null : (loadedRental?.monthly ?? null)
           const grossYield =
-            avgSold && avgSold > 0 && rentEst
+            !isHMO && avgSold && avgSold > 0 && rentEst
               ? ((rentEst * 12) / avgSold) * 100
               : null
           onDataLoaded({
@@ -164,13 +177,13 @@ export function PropertyComparables({
             soldCount: loadedSold?.count ?? 0,
             radiusMiles: loadedSold?.radiusMiles ?? null,
             estimatedRent: rentEst,
-            rentRange: loadedRental?.range ?? null,
+            rentRange: isHMO ? null : (loadedRental?.range ?? null),
             grossYield,
             postcode,
           })
         }
 
-        if (!soldJson.success && !rentalJson.success) {
+        if (!soldJson.success && (isHMO || !rentalJson?.success)) {
           setError("Could not fetch comparables for this postcode")
         }
       } catch {
@@ -181,7 +194,7 @@ export function PropertyComparables({
     }
 
     fetchComparables()
-  }, [postcode, bedrooms, propertyType, propertyTypeDetail, tenureType])
+  }, [postcode, bedrooms, propertyType, propertyTypeDetail, tenureType, isHMO])
 
   // Fetch live rental listings (separate call — only for rental strategies)
   useEffect(() => {
@@ -327,8 +340,11 @@ export function PropertyComparables({
               </div>
             )}
 
-            {/* Rental Estimate (from PropertyData / LR fallback) */}
-            {rentalEstimate && rentalEstimate.monthly > 0 && (
+            {/* Rental Estimate (from PropertyData / LR fallback)
+                Hidden for HMO — single-let rent figures are misleading
+                for room-by-room rentals. HMO data is shown in the
+                dedicated HMO Comparables section below. */}
+            {!isHMO && rentalEstimate && rentalEstimate.monthly > 0 && (
               <div className="rounded-lg bg-primary/5 p-3">
                 <div className="text-sm text-muted-foreground">Estimated Monthly Rent</div>
                 <div className="text-lg font-bold text-foreground">

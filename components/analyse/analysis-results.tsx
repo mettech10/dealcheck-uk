@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
   Card,
@@ -14,8 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
+import { HmoComparables, type HmoLoadedData } from "./hmo-comparables"
 import { SAComparables } from "./sa-comparables"
-import { HmoComparables } from "./hmo-comparables"
 import {
   BarChart,
   Bar,
@@ -393,26 +393,51 @@ function HouseValuationCard({
   purchasePrice,
   avgSoldPrice,
   comparables,
+  investmentType,
+  roomCount,
+  hmoData,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
   avgSoldPrice?: number
   comparables?: ComparablesLoadedData | null
+  investmentType?: string
+  roomCount?: number
+  hmoData?: HmoLoadedData | null
 }) {
+  const isHMO = investmentType === "hmo"
+
   // Priority: backend valuation estimate → backend avg_sold_price → frontend comparables average
   const backendEstimate = valuation?.estimate && valuation.estimate > 0 ? valuation.estimate : null
   const backendAvg = avgSoldPrice && avgSoldPrice > 0 ? avgSoldPrice : null
   const frontendAvg = comparables?.avgSoldPrice && comparables.avgSoldPrice > 0 ? comparables.avgSoldPrice : null
 
   const estimate = backendEstimate ?? backendAvg ?? frontendAvg
-  const isFromComparables = !backendEstimate && !backendAvg && !!frontendAvg
-  const isLoading = !valuation && !comparables // Neither data source has loaded yet
+  // For HMO, we also wait on hmoData; otherwise wait on comparables.
+  const isLoading = !valuation && !comparables && (isHMO ? !hmoData : true)
 
-  // Rental data from comparables
-  const estRent = comparables?.estimatedRent ?? null
-  const rentRange = comparables?.rentRange ?? null
-  const grossYield = comparables?.grossYield ?? null
+  // Rental data from single-let comparables (BTL/BRR/SA/etc.)
+  const singleLetRent = comparables?.estimatedRent ?? null
+  const singleLetRange = comparables?.rentRange ?? null
+  const singleLetYield = comparables?.grossYield ?? null
   const soldCount = comparables?.soldCount ?? 0
+
+  // ── HMO income & yield calculation ────────────────────────────────────
+  // Use the average across all room types if no specific room mix known.
+  const avgRoomRent = hmoData?.avgMonthlyRoomRent ?? null
+  const hmoRooms = roomCount && roomCount > 0 ? roomCount : null
+  const hmoMonthlyIncome =
+    isHMO && avgRoomRent && hmoRooms ? avgRoomRent * hmoRooms : null
+  const hmoGrossYield =
+    isHMO && hmoMonthlyIncome && estimate && estimate > 0
+      ? ((hmoMonthlyIncome * 12) / estimate) * 100
+      : null
+  const hmoDistrict = hmoData?.searchArea ?? comparables?.postcode?.split(" ")[0] ?? "area"
+
+  // Choose which figures to display based on strategy
+  const estRent = isHMO ? hmoMonthlyIncome : singleLetRent
+  const rentRange = isHMO ? null : singleLetRange
+  const grossYield = isHMO ? hmoGrossYield : singleLetYield
 
   // Source label
   const sourceLabel = backendEstimate
@@ -515,29 +540,60 @@ function HouseValuationCard({
           )}
         </div>
 
-        {/* Row 2: Rent & Yield stats */}
-        {(estRent || grossYield) && (
-          <div className="flex flex-wrap gap-6 border-t border-border/40 pt-3">
-            {estRent && (
-              <div>
-                <p className="text-xs text-muted-foreground">Estimated Monthly Rent</p>
-                <p className="text-base font-semibold text-foreground">
-                  {formatCurrency(estRent)}/mo
-                </p>
-                {rentRange && (
+        {/* Row 2: Rent & Yield stats
+            For HMO we always render this row so the user sees a
+            placeholder/loading hint until HMO room data arrives. */}
+        {(isHMO || estRent || grossYield !== null) && (
+          <div className="flex flex-col gap-3 border-t border-border/40 pt-3">
+            <div className="flex flex-wrap gap-6">
+              {estRent && (
+                <div>
                   <p className="text-xs text-muted-foreground">
-                    Range: {formatCurrency(rentRange.low)} – {formatCurrency(rentRange.high)}
+                    {isHMO
+                      ? "HMO Gross Monthly Income (estimated)"
+                      : "Estimated Monthly Rent"}
                   </p>
-                )}
-              </div>
+                  <p className="text-base font-semibold text-foreground">
+                    {formatCurrency(estRent)}/mo
+                  </p>
+                  {isHMO && hmoRooms && avgRoomRent ? (
+                    <p className="text-xs text-muted-foreground">
+                      {hmoRooms} rooms × {formatCurrency(avgRoomRent)} avg room rent
+                    </p>
+                  ) : rentRange ? (
+                    <p className="text-xs text-muted-foreground">
+                      Range: {formatCurrency(rentRange.low)} – {formatCurrency(rentRange.high)}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              {grossYield !== null && (
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {isHMO ? "Est. HMO Gross Yield" : "Gross Yield (area avg)"}
+                  </p>
+                  <p className={`text-base font-semibold ${grossYield >= 6 ? "text-success" : grossYield >= 4 ? "text-warning" : "text-destructive"}`}>
+                    {grossYield.toFixed(2)}%
+                  </p>
+                </div>
+              )}
+            </div>
+            {isHMO && hmoMonthlyIncome && (
+              <p className="text-xs text-muted-foreground">
+                Based on {hmoRooms} rooms at area average room rents for {hmoDistrict}.
+                Actual income depends on room mix and occupancy.
+              </p>
             )}
-            {grossYield !== null && (
-              <div>
-                <p className="text-xs text-muted-foreground">Gross Yield (area avg)</p>
-                <p className={`text-base font-semibold ${grossYield >= 6 ? "text-success" : grossYield >= 4 ? "text-warning" : "text-destructive"}`}>
-                  {grossYield.toFixed(2)}%
-                </p>
-              </div>
+            {isHMO && !hmoMonthlyIncome && !avgRoomRent && (
+              <p className="text-xs text-muted-foreground">
+                HMO room rent data loading — see HMO Comparables below for room-by-room rates.
+              </p>
+            )}
+            {isHMO && !hmoMonthlyIncome && avgRoomRent && !hmoRooms && (
+              <p className="text-xs text-muted-foreground">
+                Enter the number of rooms in the form to see estimated HMO income.
+                Area avg room rent: {formatCurrency(avgRoomRent)}/mo.
+              </p>
             )}
           </div>
         )}
@@ -1051,6 +1107,12 @@ export function AnalysisResults({
   backendData,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
+  const [hmoData, setHmoData] = useState<HmoLoadedData | null>(null)
+
+  // Reset HMO data if user switches strategy in the same session
+  useEffect(() => {
+    if (data.investmentType !== "hmo") setHmoData(null)
+  }, [data.investmentType])
 
   const parsedAI = parseAIAnalysis(aiText)
   const dealScore =
@@ -1235,6 +1297,9 @@ export function AnalysisResults({
           purchasePrice={data.purchasePrice}
           avgSoldPrice={backendData?.avg_sold_price}
           comparables={comparablesData}
+          investmentType={data.investmentType}
+          roomCount={data.roomCount}
+          hmoData={hmoData}
         />
       )}
 
@@ -1692,7 +1757,7 @@ export function AnalysisResults({
 
       {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
       {data.investmentType === "hmo" && data.postcode && (
-        <HmoComparables postcode={data.postcode} />
+        <HmoComparables postcode={data.postcode} onDataLoaded={setHmoData} />
       )}
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
