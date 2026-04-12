@@ -188,11 +188,17 @@ function VerdictBanner({
       desc: "",
     }
 
+  const displayScore = score ?? 0
+
   return (
-    <div className={`flex items-center gap-4 rounded-xl border px-5 py-4 ${config.bg}`}>
-      <div className={config.text}>{config.icon}</div>
+    <div className={`flex items-center gap-5 rounded-xl border px-6 py-5 ${config.bg}`}>
+      {/* Circular Score Dial */}
+      <DealScore score={displayScore} label={label} />
+
+      {/* Verdict text */}
       <div className="flex-1">
         <div className="flex items-center gap-2">
+          <div className={config.text}>{config.icon}</div>
           <span className={`text-lg font-bold ${config.text}`}>{config.title}</span>
           {label && (
             <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${config.badge}`}>
@@ -200,14 +206,8 @@ function VerdictBanner({
             </span>
           )}
         </div>
-        <p className="text-sm text-muted-foreground">{config.desc}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{config.desc}</p>
       </div>
-      {score !== undefined && (
-        <div className="text-right">
-          <div className={`text-3xl font-bold ${config.text}`}>{score}</div>
-          <div className="text-xs text-muted-foreground">/ 100</div>
-        </div>
-      )}
     </div>
   )
 }
