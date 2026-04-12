@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
-import Link from "next/link"
+import { useState, useCallback } from "react"
 import {
   Card,
   CardContent,
@@ -12,10 +11,10 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
-import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
-import { HmoComparables, type HmoLoadedData } from "./hmo-comparables"
-import { SAComparables } from "./sa-comparables"
+import { DealScore } from "./deal-score"
+import { PropertyComparables } from "./property-comparables"
+import { HmoComparables } from "./hmo-comparables"
+import { SaComparables } from "./sa-comparables"
 import {
   BarChart,
   Bar,
@@ -31,8 +30,8 @@ import {
   LineChart,
   Line,
 } from "recharts"
-import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark } from "@/lib/types"
-import { formatCurrency, formatPercent, calculateDealScore, calculateAll } from "@/lib/calculations"
+import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark, SensitivityResult } from "@/lib/types"
+import { formatCurrency, formatPercent, calculateDealScore } from "@/lib/calculations"
 import {
   TrendingUp,
   TrendingDown,
@@ -152,68 +151,63 @@ function VerdictBanner({
   score?: number
   label?: string
 }) {
-  if (!verdict && score === undefined) return null
+  if (!verdict) return null
 
   const config =
-    verdict
-      ? ({
-          PROCEED: {
-            bg: "bg-success/10 border-success/30",
-            text: "text-success",
-            icon: <CheckCircle2 className="size-5" />,
-            title: "Proceed",
-            desc: "This deal meets investment targets. Strong fundamentals.",
-          },
-          REVIEW: {
-            bg: "bg-warning/10 border-warning/30",
-            text: "text-warning",
-            icon: <AlertTriangle className="size-5" />,
-            title: "Review",
-            desc: "Borderline deal. Investigate further before committing.",
-          },
-          AVOID: {
-            bg: "bg-destructive/10 border-destructive/30",
-            text: "text-destructive",
-            icon: <ShieldAlert className="size-5" />,
-            title: "Avoid",
-            desc: "Numbers don't stack up. High risk or poor returns.",
-          },
-        }[verdict] ?? {
-          bg: "bg-muted/40 border-border/50",
-          text: "text-foreground",
-          icon: null,
-          title: verdict,
-          desc: "",
-        })
-      : {
-          bg: "bg-muted/40 border-border/50",
-          text: "text-foreground",
-          icon: null,
-          title: "",
-          desc: "",
-        }
-
-  const displayScore = score ?? 0
-  const scoreColor = getScoreColor(displayScore)
-  const displayLabel = label || getScoreLabel(displayScore)
+    {
+      PROCEED: {
+        bg: "bg-success/10 border-success/30",
+        text: "text-success",
+        badge: "bg-success/20 text-success border-success/30",
+        icon: <CheckCircle2 className="size-5" />,
+        title: "Proceed",
+        desc: "This deal meets investment targets. Strong fundamentals.",
+      },
+      REVIEW: {
+        bg: "bg-warning/10 border-warning/30",
+        text: "text-warning",
+        badge: "bg-warning/20 text-warning border-warning/30",
+        icon: <AlertTriangle className="size-5" />,
+        title: "Review",
+        desc: "Borderline deal. Investigate further before committing.",
+      },
+      AVOID: {
+        bg: "bg-destructive/10 border-destructive/30",
+        text: "text-destructive",
+        badge: "bg-destructive/20 text-destructive border-destructive/30",
+        icon: <ShieldAlert className="size-5" />,
+        title: "Avoid",
+        desc: "Numbers don't stack up. High risk or poor returns.",
+      },
+    }[verdict] ?? {
+      bg: "bg-muted/40 border-border/50",
+      text: "text-foreground",
+      badge: "bg-muted text-foreground border-border",
+      icon: null,
+      title: verdict,
+      desc: "",
+    }
 
   return (
-    <div className={`flex flex-col items-center gap-4 rounded-xl border px-6 py-6 ${config.bg}`}>
-      {/* Circular dial + verdict side by side */}
-      <div className="flex items-center gap-6">
-        <DealScore score={displayScore} label={displayLabel} />
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            {config.icon && <span className={config.text}>{config.icon}</span>}
-            <span className="text-xl font-bold" style={{ color: scoreColor }}>
-              {displayLabel}
+    <div className={`flex items-center gap-4 rounded-xl border px-5 py-4 ${config.bg}`}>
+      <div className={config.text}>{config.icon}</div>
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <span className={`text-lg font-bold ${config.text}`}>{config.title}</span>
+          {label && (
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${config.badge}`}>
+              {label}
             </span>
-          </div>
-          {config.desc && (
-            <p className="max-w-xs text-sm text-muted-foreground">{config.desc}</p>
           )}
         </div>
+        <p className="text-sm text-muted-foreground">{config.desc}</p>
       </div>
+      {score !== undefined && (
+        <div className="text-right">
+          <div className={`text-3xl font-bold ${config.text}`}>{score}</div>
+          <div className="text-xs text-muted-foreground">/ 100</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -391,108 +385,27 @@ function StrategySuitability({
 function HouseValuationCard({
   valuation,
   purchasePrice,
-  avgSoldPrice,
-  comparables,
-  investmentType,
-  roomCount,
-  hmoData,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
-  avgSoldPrice?: number
-  comparables?: ComparablesLoadedData | null
-  investmentType?: string
-  roomCount?: number
-  hmoData?: HmoLoadedData | null
 }) {
-  const isHMO = investmentType === "hmo"
+  if (!valuation) return null
 
-  // Priority: backend valuation estimate → backend avg_sold_price → frontend comparables average
-  const backendEstimate = valuation?.estimate && valuation.estimate > 0 ? valuation.estimate : null
-  const backendAvg = avgSoldPrice && avgSoldPrice > 0 ? avgSoldPrice : null
-  const frontendAvg = comparables?.avgSoldPrice && comparables.avgSoldPrice > 0 ? comparables.avgSoldPrice : null
-
-  const estimate = backendEstimate ?? backendAvg ?? frontendAvg
-  // For HMO, we also wait on hmoData; otherwise wait on comparables.
-  const isLoading = !valuation && !comparables && (isHMO ? !hmoData : true)
-
-  // Rental data from single-let comparables (BTL/BRR/SA/etc.)
-  const singleLetRent = comparables?.estimatedRent ?? null
-  const singleLetRange = comparables?.rentRange ?? null
-  const singleLetYield = comparables?.grossYield ?? null
-  const soldCount = comparables?.soldCount ?? 0
-
-  // ── HMO income & yield calculation ────────────────────────────────────
-  // Use the average across all room types if no specific room mix known.
-  const avgRoomRent = hmoData?.avgMonthlyRoomRent ?? null
-  const hmoRooms = roomCount && roomCount > 0 ? roomCount : null
-  const hmoMonthlyIncome =
-    isHMO && avgRoomRent && hmoRooms ? avgRoomRent * hmoRooms : null
-  const hmoGrossYield =
-    isHMO && hmoMonthlyIncome && estimate && estimate > 0
-      ? ((hmoMonthlyIncome * 12) / estimate) * 100
+  const estimate = valuation.estimate
+  const diff = purchasePrice ? estimate - purchasePrice : null
+  const pct =
+    purchasePrice && purchasePrice > 0
+      ? ((estimate - purchasePrice) / purchasePrice) * 100
       : null
-  const hmoDistrict = hmoData?.searchArea ?? comparables?.postcode?.split(" ")[0] ?? "area"
+  const isUnder = diff !== null && diff > 0
+  const isOver = diff !== null && diff < 0
 
-  // Choose which figures to display based on strategy
-  const estRent = isHMO ? hmoMonthlyIncome : singleLetRent
-  const rentRange = isHMO ? null : singleLetRange
-  const grossYield = isHMO ? hmoGrossYield : singleLetYield
-
-  // Source label
-  const sourceLabel = backendEstimate
-    ? (valuation?.source || "PropertyData API")
-    : soldCount > 0
-      ? `HM Land Registry · ${soldCount} sales in last 24 months`
-      : "HM Land Registry"
-
-  // Loading state — comparables haven't loaded yet
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Home className="size-4 text-primary" />
-            <CardTitle className="text-sm">House Valuation</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-3">
-            <div className="h-6 w-32 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-48 animate-pulse rounded bg-muted" />
-            <div className="h-4 w-40 animate-pulse rounded bg-muted" />
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // No data at all — sold comparables returned 0 results
-  if (!estimate) {
-    return (
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2">
-            <Home className="size-4 text-primary" />
-            <CardTitle className="text-sm">House Valuation</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            No external valuation available. Commission a RICS survey for an accurate figure.
-          </p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // vs Purchase Price calculation
-  const diff = purchasePrice && purchasePrice > 0 ? estimate - purchasePrice : null
-  const pct = purchasePrice && purchasePrice > 0
-    ? ((estimate - purchasePrice) / purchasePrice) * 100
-    : null
-  const isAbove = diff !== null && diff > 0
-  const isBelow = diff !== null && diff < 0
+  const confidenceColor =
+    valuation.confidence === "High"
+      ? "text-success"
+      : valuation.confidence === "Medium"
+        ? "text-warning"
+        : "text-muted-foreground"
 
   return (
     <Card>
@@ -500,112 +413,195 @@ function HouseValuationCard({
         <div className="flex items-center gap-2">
           <Home className="size-4 text-primary" />
           <CardTitle className="text-sm">House Valuation</CardTitle>
-          <span className="ml-auto text-xs text-muted-foreground">
-            {sourceLabel}
-          </span>
+          {valuation.source && (
+            <span className="ml-auto text-xs text-muted-foreground">
+              {valuation.source}
+            </span>
+          )}
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {/* Row 1: Estimated value + vs purchase price */}
-        <div className="flex flex-wrap items-end gap-8">
+      <CardContent>
+        <div className="flex items-end gap-8">
           <div>
-            <p className="text-xs text-muted-foreground">Estimated Market Value</p>
+            <p className="text-xs text-muted-foreground">Estimated Value</p>
             <p className="text-2xl font-bold text-foreground">
               {formatCurrency(estimate)}
             </p>
-            {soldCount > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Based on {soldCount} recent sales in {comparables?.postcode?.split(" ")[0] || "area"}
-              </p>
-            )}
+            <p className={`text-xs font-medium ${confidenceColor}`}>
+              {valuation.confidence} confidence
+            </p>
           </div>
           {diff !== null && pct !== null && (
             <div>
               <p className="text-xs text-muted-foreground">vs Purchase Price</p>
               <p
                 className={`text-lg font-semibold ${
-                  isAbove ? "text-success" : isBelow ? "text-warning" : "text-foreground"
+                  isUnder
+                    ? "text-success"
+                    : isOver
+                      ? "text-destructive"
+                      : "text-foreground"
                 }`}
               >
-                {pct > 0 ? "+" : ""}{pct.toFixed(1)}% {isAbove ? "above" : isBelow ? "below" : "at"} asking price
+                {diff > 0 ? "+" : ""}
+                {formatCurrency(diff)} ({pct > 0 ? "+" : ""}
+                {pct.toFixed(1)}%)
               </p>
               <p className="text-xs text-muted-foreground">
-                {isAbove
-                  ? `Sold prices average ${formatCurrency(diff)} above your offer`
-                  : isBelow
-                    ? `Sold prices average ${formatCurrency(Math.abs(diff!))} below your offer`
-                    : "In line with market"}
+                {isUnder
+                  ? "Below market — potential uplift"
+                  : isOver
+                    ? "Above market estimate"
+                    : "At market value"}
               </p>
             </div>
           )}
         </div>
-
-        {/* Row 2: Rent & Yield stats
-            For HMO we always render this row so the user sees a
-            placeholder/loading hint until HMO room data arrives. */}
-        {(isHMO || estRent || grossYield !== null) && (
-          <div className="flex flex-col gap-3 border-t border-border/40 pt-3">
-            <div className="flex flex-wrap gap-6">
-              {estRent && (
-                <div>
-                  <p className="text-xs text-muted-foreground">
-                    {isHMO
-                      ? "HMO Gross Monthly Income (estimated)"
-                      : "Estimated Monthly Rent"}
-                  </p>
-                  <p className="text-base font-semibold text-foreground">
-                    {formatCurrency(estRent)}/mo
-                  </p>
-                  {isHMO && hmoRooms && avgRoomRent ? (
-                    <p className="text-xs text-muted-foreground">
-                      {hmoRooms} rooms × {formatCurrency(avgRoomRent)} avg room rent
-                    </p>
-                  ) : rentRange ? (
-                    <p className="text-xs text-muted-foreground">
-                      Range: {formatCurrency(rentRange.low)} – {formatCurrency(rentRange.high)}
-                    </p>
-                  ) : null}
-                </div>
-              )}
-              {grossYield !== null && (
-                <div>
-                  <p className="text-xs text-muted-foreground">
-                    {isHMO ? "Est. HMO Gross Yield" : "Gross Yield (area avg)"}
-                  </p>
-                  <p className={`text-base font-semibold ${grossYield >= 6 ? "text-success" : grossYield >= 4 ? "text-warning" : "text-destructive"}`}>
-                    {grossYield.toFixed(2)}%
-                  </p>
-                </div>
-              )}
-            </div>
-            {isHMO && hmoMonthlyIncome && (
-              <p className="text-xs text-muted-foreground">
-                Based on {hmoRooms} rooms at area average room rents for {hmoDistrict}.
-                Actual income depends on room mix and occupancy.
-              </p>
-            )}
-            {isHMO && !hmoMonthlyIncome && !avgRoomRent && (
-              <p className="text-xs text-muted-foreground">
-                HMO room rent data loading — see HMO Comparables below for room-by-room rates.
-              </p>
-            )}
-            {isHMO && !hmoMonthlyIncome && avgRoomRent && !hmoRooms && (
-              <p className="text-xs text-muted-foreground">
-                Enter the number of rooms in the form to see estimated HMO income.
-                Area avg room rent: {formatCurrency(avgRoomRent)}/mo.
-              </p>
-            )}
-          </div>
+        {valuation.note && (
+          <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground">
+            {valuation.note}
+          </p>
         )}
       </CardContent>
     </Card>
   )
 }
 
-// ── Sold & Rent Comparables ────────────────────────────────────────────────
-// Removed: SoldComparablesTable and RentComparablesTable were duplicating
-// data already displayed in the PropertyComparables (Market Comparables)
-// tabbed section. Data is now shown only in that tabbed section.
+// ── Sold Comparables ───────────────────────────────────────────────────────
+function SoldComparablesTable({
+  comparables,
+}: {
+  comparables?: BackendResults["sold_comparables"]
+}) {
+  if (!comparables || comparables.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="size-4 text-primary" />
+          <CardTitle className="text-sm">Comparable Sold Prices</CardTitle>
+          <Badge variant="outline" className="ml-auto text-xs">
+            {comparables.length} sales
+          </Badge>
+        </div>
+        <CardDescription className="text-xs">
+          Recent sold prices in this postcode area
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/50 text-left">
+                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
+                  Address
+                </th>
+                <th className="pb-2 pr-4 text-right text-xs font-medium text-muted-foreground">
+                  Price
+                </th>
+                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
+                  Type
+                </th>
+                <th className="pb-2 text-right text-xs font-medium text-muted-foreground">
+                  Date
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparables.slice(0, 6).map((sale, i) => (
+                <tr key={i} className="border-b border-border/20 last:border-0">
+                  <td className="py-2 pr-4 text-foreground">
+                    <span className="line-clamp-1 block max-w-[180px]">
+                      {sale.address}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-right font-medium text-foreground">
+                    {formatCurrency(sale.price)}
+                  </td>
+                  <td className="py-2 pr-4 text-muted-foreground">
+                    {sale.type || "—"}
+                  </td>
+                  <td className="py-2 text-right text-muted-foreground">
+                    {sale.date || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Rent Comparables ───────────────────────────────────────────────────────
+function RentComparablesTable({
+  comparables,
+}: {
+  comparables?: BackendResults["rent_comparables"]
+}) {
+  if (!comparables || comparables.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Users className="size-4 text-primary" />
+          <CardTitle className="text-sm">Comparable Rental Prices</CardTitle>
+          <Badge variant="outline" className="ml-auto text-xs">
+            {comparables.length} listings
+          </Badge>
+        </div>
+        <CardDescription className="text-xs">
+          Current rental market in this area
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/50 text-left">
+                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
+                  Address
+                </th>
+                <th className="pb-2 pr-4 text-right text-xs font-medium text-muted-foreground">
+                  Rent/mo
+                </th>
+                <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
+                  Beds
+                </th>
+                <th className="pb-2 text-xs font-medium text-muted-foreground">
+                  Source
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparables.slice(0, 6).map((rent, i) => (
+                <tr key={i} className="border-b border-border/20 last:border-0">
+                  <td className="py-2 pr-4 text-foreground">
+                    <span className="line-clamp-1 block max-w-[180px]">
+                      {rent.address}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-right font-medium text-foreground">
+                    {formatCurrency(rent.monthly_rent)}/mo
+                  </td>
+                  <td className="py-2 pr-4 text-muted-foreground">
+                    {rent.bedrooms ?? "—"}
+                  </td>
+                  <td className="py-2 text-xs text-muted-foreground">
+                    {rent.source || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 // ── Refurb Estimates ───────────────────────────────────────────────────────
 function RefurbEstimatesCard({
@@ -923,6 +919,9 @@ function RegionalBenchmarkPanel({ benchmark }: { benchmark?: RegionalBenchmark }
 }
 
 // ── Sensitivity Analysis Panel ──────────────────────────────────────────────
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_API_URL ||
+  "https://metusa-deal-analyzer.onrender.com"
 
 function SensitivityAnalysisPanel({
   baseFormData,
@@ -931,41 +930,63 @@ function SensitivityAnalysisPanel({
   baseFormData: PropertyFormData
   baseResults: CalculationResults
 }) {
-  const basePurchasePrice = baseFormData.purchasePrice ?? 0
-  const [purchasePrice, setPurchasePrice] = useState<number>(basePurchasePrice)
   const [mortgageRate, setMortgageRate] = useState<number>(baseFormData.interestRate ?? 3.75)
   const [monthlyRent, setMonthlyRent] = useState<number>(baseFormData.monthlyRent ?? 0)
   const [vacancyRate, setVacancyRate] = useState<number>(
     baseFormData.voidWeeks ? Math.round((baseFormData.voidWeeks / 52) * 100 * 10) / 10 : 4.2
   )
-  const [scenarioResults, setScenarioResults] = useState<CalculationResults | null>(null)
-
-  const priceMin = Math.round(basePurchasePrice * 0.8 / 1000) * 1000
-  const priceMax = Math.round(basePurchasePrice * 1.2 / 1000) * 1000
+  const [sensitivityResult, setSensitivityResult] = useState<SensitivityResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const runSensitivity = useCallback(
-    (price: number, rate: number, rent: number, vacancy: number) => {
-      const voidWeeks = Math.round((vacancy / 100) * 52 * 10) / 10
-      const scenarioData: PropertyFormData = {
-        ...baseFormData,
-        purchasePrice: price,
-        interestRate: rate,
-        monthlyRent: rent,
-        voidWeeks,
+    async (rate: number, rent: number, vacancy: number) => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/sensitivity-analysis`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...baseFormData,
+            override_mortgage_rate: rate,
+            override_monthly_rent: rent,
+            override_vacancy_rate: vacancy,
+          }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => null)
+          throw new Error(err?.message || "Sensitivity analysis failed")
+        }
+        const data = await res.json()
+        if (data.success) {
+          setSensitivityResult({
+            applied: data.scenario,
+            deal_score: data.metrics?.deal_score ?? 0,
+            monthly_cashflow: data.metrics?.monthly_cashflow ?? 0,
+            gross_yield: data.metrics?.gross_yield ?? 0,
+            net_yield: data.metrics?.net_yield ?? 0,
+            cash_on_cash: data.metrics?.cash_on_cash ?? 0,
+            verdict: data.metrics?.verdict ?? "REVIEW",
+            risk_level: data.metrics?.risk_level ?? "MEDIUM",
+            risk_flags: data.risk_flags ?? [],
+            regional_benchmark: data.regional_benchmark ?? null,
+          })
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Request failed")
+      } finally {
+        setLoading(false)
       }
-      const newResults = calculateAll(scenarioData)
-      setScenarioResults(newResults)
     },
     [baseFormData]
   )
 
-  const active = scenarioResults ?? baseResults
-  const cashflow = active.monthlyCashFlow
-  const yield_ = active.grossYield
-  const coc = active.cashOnCashReturn
-  const totalCapital = active.totalCapitalRequired
-  const score = calculateDealScore(coc)
-  const verdict = score >= 75 ? "PROCEED" : score >= 50 ? "REVIEW" : "AVOID"
+  const scenario = sensitivityResult
+  const cashflow = scenario?.monthly_cashflow ?? baseResults.monthlyCashFlow
+  const yield_ = scenario?.gross_yield ?? baseResults.grossYield
+  const coc = scenario?.cash_on_cash ?? baseResults.cashOnCashReturn
+  const verdict = scenario?.verdict
 
   const verdictColor = verdict === "PROCEED" ? "text-success" : verdict === "AVOID" ? "text-destructive" : "text-warning"
 
@@ -982,25 +1003,6 @@ function SensitivityAnalysisPanel({
         <div className="flex flex-col gap-5">
           {/* ── Sliders ── */}
           <div className="flex flex-col gap-4">
-            {/* Purchase Price */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground">Purchase Price</label>
-                <span className="text-xs font-semibold text-primary">£{purchasePrice.toLocaleString()}</span>
-              </div>
-              <input
-                type="range"
-                min={priceMin}
-                max={priceMax}
-                step={1000}
-                value={purchasePrice}
-                onChange={(e) => setPurchasePrice(parseFloat(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>£{priceMin.toLocaleString()}</span><span>£{priceMax.toLocaleString()}</span></div>
-              <p className="mt-1 text-[10px] text-muted-foreground">Adjust to model negotiation scenarios or stress-test at different price points</p>
-            </div>
-
             {/* Mortgage Rate */}
             <div>
               <div className="mb-1.5 flex items-center justify-between">
@@ -1058,40 +1060,64 @@ function SensitivityAnalysisPanel({
 
           {/* ── Run Button ── */}
           <button
-            onClick={() => runSensitivity(purchasePrice, mortgageRate, monthlyRent, vacancyRate)}
-            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
+            onClick={() => runSensitivity(mortgageRate, monthlyRent, vacancyRate)}
+            disabled={loading}
+            className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
           >
-            <SlidersHorizontal className="size-4" />
-            Run Scenario
+            {loading ? <Loader2 className="size-4 animate-spin" /> : <SlidersHorizontal className="size-4" />}
+            {loading ? "Calculating..." : "Run Scenario"}
           </button>
 
+          {error && (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
+          )}
+
           {/* ── Scenario Results ── */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-              <p className="text-xs text-muted-foreground">Monthly Cashflow</p>
-              <p className={`mt-1 text-base font-bold ${cashflow >= 0 ? "text-success" : "text-destructive"}`}>
-                {cashflow >= 0 ? "+" : ""}£{Math.round(cashflow).toLocaleString()}
-              </p>
+          {(scenario || !loading) && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Monthly Cashflow</p>
+                <p className={`mt-1 text-base font-bold ${cashflow >= 0 ? "text-success" : "text-destructive"}`}>
+                  {cashflow >= 0 ? "+" : ""}£{Math.round(cashflow).toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Gross Yield</p>
+                <p className="mt-1 text-base font-bold text-foreground">{yield_.toFixed(2)}%</p>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Cash-on-Cash</p>
+                <p className="mt-1 text-base font-bold text-foreground">{coc.toFixed(2)}%</p>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
+                <p className="text-xs text-muted-foreground">Verdict</p>
+                <p className={`mt-1 text-base font-bold ${verdictColor}`}>
+                  {verdict ?? "—"}
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-              <p className="text-xs text-muted-foreground">Gross Yield</p>
-              <p className="mt-1 text-base font-bold text-foreground">{yield_.toFixed(2)}%</p>
+          )}
+
+          {/* Risk flags from scenario */}
+          {scenario?.risk_flags && scenario.risk_flags.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scenario Risk Flags</p>
+              <div className="flex flex-wrap gap-2">
+                {scenario.risk_flags.map((flag) => (
+                  <span
+                    key={flag.id}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                      flag.severity === "HIGH" ? "border-destructive/30 bg-destructive/10 text-destructive" :
+                      flag.severity === "MEDIUM" ? "border-warning/30 bg-warning/10 text-warning" :
+                      "border-success/30 bg-success/10 text-success"
+                    }`}
+                  >
+                    {flag.name}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-              <p className="text-xs text-muted-foreground">Cash-on-Cash</p>
-              <p className="mt-1 text-base font-bold text-foreground">{coc.toFixed(2)}%</p>
-            </div>
-            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-              <p className="text-xs text-muted-foreground">Total Capital</p>
-              <p className="mt-1 text-base font-bold text-foreground">£{Math.round(totalCapital).toLocaleString()}</p>
-            </div>
-            <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
-              <p className="text-xs text-muted-foreground">Verdict</p>
-              <p className={`mt-1 text-base font-bold ${verdictColor}`}>
-                {verdict}
-              </p>
-            </div>
-          </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -1106,14 +1132,6 @@ export function AnalysisResults({
   aiLoading,
   backendData,
 }: AnalysisResultsProps) {
-  const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
-  const [hmoData, setHmoData] = useState<HmoLoadedData | null>(null)
-
-  // Reset HMO data if user switches strategy in the same session
-  useEffect(() => {
-    if (data.investmentType !== "hmo") setHmoData(null)
-  }, [data.investmentType])
-
   const parsedAI = parseAIAnalysis(aiText)
   const dealScore =
     backendData?.deal_score ??
@@ -1149,16 +1167,18 @@ export function AnalysisResults({
     "Total Return": year.totalReturn,
   }))
 
-  const hasSoldComparables = true // Always show — PropertyComparables fetches from Land Registry
+  const hasSoldComparables = (backendData?.sold_comparables?.length ?? 0) > 0
   const hasRentComparables = (backendData?.rent_comparables?.length ?? 0) > 0
+  const isHmoStrategy = data.investmentType === "hmo"
+  const isSaStrategy = data.investmentType === "sa" || data.investmentType === "r2sa"
+  const hasAirroiData = !!(backendData?.airroi_market?.avg_nightly_rate || (backendData?.airroi_nearby_listings?.length ?? 0) > 0)
   const hasRefurb = !!backendData?.refurb_estimates && Object.keys(backendData.refurb_estimates).length > 0
   const hasStrategies =
     !!backendData?.strategy_recommendations &&
     Object.keys(backendData.strategy_recommendations).length > 0
   const hasArticle4 = !!backendData?.article_4
   const hasLocation = !!(backendData?.location?.council || backendData?.location?.region)
-  // Always show valuation card — it handles its own loading/empty states
-  const hasValuation = true
+  const hasValuation = !!backendData?.house_valuation
   const hasAIInsights = !!(
     backendData?.ai_strengths?.length ||
     backendData?.ai_risks?.length ||
@@ -1172,120 +1192,56 @@ export function AnalysisResults({
     <div className="flex flex-col gap-6">
 
       {/* ── Verdict Banner ──────────────────────────────────────────── */}
-      <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
-
-      {/* ── Key Metrics Grid ────────────────────────────────────────── */}
-      {data.investmentType === "flip" ? (
-        /* Flip-specific metrics */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Net Profit"
-            value={formatCurrency(results.flipNetProfit ?? 0)}
-            icon={(results.flipNetProfit ?? 0) >= 0 ? TrendingUp : TrendingDown}
-            positive={(results.flipNetProfit ?? 0) >= 0}
-          />
-          <MetricCard
-            label="Flip ROI"
-            value={formatPercent(results.flipROI ?? 0)}
-            icon={PoundSterling}
-            positive={(results.flipROI ?? 0) >= 20}
-          />
-          <MetricCard
-            label="Gross Profit"
-            value={formatCurrency(results.flipGrossProfit ?? 0)}
-            sub="ARV − Purchase − Refurb"
-            icon={TrendingUp}
-            positive={(results.flipGrossProfit ?? 0) >= 0}
-          />
-          <MetricCard
-            label="Selling Costs"
-            value={formatCurrency(results.flipSellingCosts ?? 0)}
-            sub="Agent fee + selling legal"
-            icon={Home}
-          />
-          <MetricCard
-            label="Finance Costs"
-            value={formatCurrency(results.flipFinanceCosts ?? 0)}
-            sub={results.bridgingLoanDetails ? `Bridging @ ${results.bridgingLoanDetails.monthlyInterestRate}%/mo` : "Interest during hold period"}
-            icon={Wallet}
-          />
-          <MetricCard
-            label="Total Capital Required"
-            value={formatCurrency(results.totalCapitalRequired)}
-            icon={Wallet}
-          />
-          <MetricCard
-            label="SDLT"
-            value={formatCurrency(results.sdltAmount)}
-            sub={data.buyerType === "additional" ? "Incl. 5% surcharge" : "First-time buyer rate"}
-            icon={Home}
-          />
-        </div>
+      {verdict ? (
+        <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
       ) : (
-        /* Standard metrics for BTL, BRRRR, HMO, SA */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Gross Yield"
-            value={formatPercent(results.grossYield)}
-            icon={Percent}
-            positive={results.grossYield >= 6}
-          />
-          <MetricCard
-            label="Net Yield"
-            value={formatPercent(results.netYield)}
-            icon={Percent}
-            positive={results.netYield >= 4}
-          />
-          <MetricCard
-            label="Monthly Cash Flow"
-            value={formatCurrency(results.monthlyCashFlow)}
-            icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
-            positive={results.monthlyCashFlow >= 0}
-          />
-          <MetricCard
-            label="Cash-on-Cash ROI"
-            value={formatPercent(results.cashOnCashReturn)}
-            icon={PoundSterling}
-            positive={results.cashOnCashReturn >= 5}
-          />
-          <MetricCard
-            label="Total Capital Required"
-            value={formatCurrency(results.totalCapitalRequired)}
-            sub={data.investmentType === "brr" && results.moneyLeftInDeal !== undefined
-              ? `Money left in deal after refinance`
-              : undefined}
-            icon={Wallet}
-          />
-          <MetricCard
-            label="SDLT"
-            value={formatCurrency(results.sdltAmount)}
-            sub={
-              data.buyerType === "additional"
-                ? "Incl. 5% surcharge"
-                : "First-time buyer rate"
-            }
-            icon={Home}
-          />
-          {/* BRRRR-specific extra cards */}
-          {data.investmentType === "brr" && results.refinancedMortgageAmount !== undefined && (
-            <>
-              <MetricCard
-                label="Refinanced Mortgage"
-                value={formatCurrency(results.refinancedMortgageAmount)}
-                sub={`${data.depositPercentage}% LTV on ARV ${formatCurrency(data.arv || 0)}`}
-                icon={Building2}
-              />
-              <MetricCard
-                label="Equity Gained"
-                value={formatCurrency(results.equityGained ?? 0)}
-                sub="Forced appreciation from refurb"
-                icon={TrendingUp}
-                positive={(results.equityGained ?? 0) > 0}
-              />
-            </>
-          )}
+        <div className="flex flex-col items-center gap-1 py-4">
+          <DealScore score={dealScore} />
         </div>
       )}
+
+      {/* ── Key Metrics Grid ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          label="Gross Yield"
+          value={formatPercent(results.grossYield)}
+          icon={Percent}
+          positive={results.grossYield >= 6}
+        />
+        <MetricCard
+          label="Net Yield"
+          value={formatPercent(results.netYield)}
+          icon={Percent}
+          positive={results.netYield >= 4}
+        />
+        <MetricCard
+          label="Monthly Cash Flow"
+          value={formatCurrency(results.monthlyCashFlow)}
+          icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
+          positive={results.monthlyCashFlow >= 0}
+        />
+        <MetricCard
+          label="Cash-on-Cash ROI"
+          value={formatPercent(results.cashOnCashReturn)}
+          icon={PoundSterling}
+          positive={results.cashOnCashReturn >= 5}
+        />
+        <MetricCard
+          label="Total Capital Required"
+          value={formatCurrency(results.totalCapitalRequired)}
+          icon={Wallet}
+        />
+        <MetricCard
+          label="SDLT"
+          value={formatCurrency(results.sdltAmount)}
+          sub={
+            data.buyerType === "additional"
+              ? "Incl. 5% surcharge"
+              : "First-time buyer rate"
+          }
+          icon={Home}
+        />
+      </div>
 
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}
@@ -1295,11 +1251,6 @@ export function AnalysisResults({
         <HouseValuationCard
           valuation={backendData?.house_valuation}
           purchasePrice={data.purchasePrice}
-          avgSoldPrice={backendData?.avg_sold_price}
-          comparables={comparablesData}
-          investmentType={data.investmentType}
-          roomCount={data.roomCount}
-          hmoData={hmoData}
         />
       )}
 
@@ -1307,13 +1258,13 @@ export function AnalysisResults({
       <Tabs defaultValue="cashflow" className="w-full">
         <TabsList
           className={`w-full grid ${
-            hasSoldComparables || hasRentComparables ? "grid-cols-4" : "grid-cols-3"
+            hasSoldComparables || hasRentComparables || isHmoStrategy || (isSaStrategy && hasAirroiData) ? "grid-cols-4" : "grid-cols-3"
           }`}
         >
           <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
           <TabsTrigger value="projection">5-Year</TabsTrigger>
-          {(hasSoldComparables || hasRentComparables) && (
+          {(hasSoldComparables || hasRentComparables || isHmoStrategy || (isSaStrategy && hasAirroiData)) && (
             <TabsTrigger value="comparables">Comparables</TabsTrigger>
           )}
         </TabsList>
@@ -1492,23 +1443,19 @@ export function AnalysisResults({
           </Card>
         </TabsContent>
 
-        {(hasSoldComparables || hasRentComparables) && (
+        {(hasSoldComparables || hasRentComparables || isHmoStrategy || (isSaStrategy && hasAirroiData)) && (
           <TabsContent value="comparables" className="mt-4">
-            {data.investmentType === "r2sa" ? (
-              <SAComparables
+            {isSaStrategy && hasAirroiData ? (
+              <SaComparables
                 postcode={data.postcode}
-                bedrooms={data.bedrooms}
+                backendData={backendData}
               />
             ) : (
               <PropertyComparables
                 postcode={data.postcode}
                 bedrooms={data.bedrooms}
                 currentPrice={data.purchasePrice}
-                propertyType={data.propertyType}
-                propertyTypeDetail={data.propertyTypeDetail}
-                tenureType={data.tenureType}
                 investmentType={data.investmentType}
-                onDataLoaded={setComparablesData}
               />
             )}
           </TabsContent>
@@ -1751,13 +1698,21 @@ export function AnalysisResults({
       )}
 
       {/* ── Sold & Rent Comparables ─────────────────────────────────── */}
-      {/* Removed: SoldComparablesTable and RentComparablesTable were
-          duplicating data already shown in the Market Comparables
-          tabbed section (PropertyComparables component). */}
+      {hasSoldComparables && (
+        <SoldComparablesTable comparables={backendData?.sold_comparables} />
+      )}
+      {hasRentComparables && (
+        <RentComparablesTable comparables={backendData?.rent_comparables} />
+      )}
 
       {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
       {data.investmentType === "hmo" && data.postcode && (
-        <HmoComparables postcode={data.postcode} onDataLoaded={setHmoData} />
+        <HmoComparables postcode={data.postcode} />
+      )}
+
+      {/* ── SA/R2SA Airbnb Market Comparables ──────────────────────── */}
+      {isSaStrategy && hasAirroiData && data.postcode && (
+        <SaComparables postcode={data.postcode} backendData={backendData} />
       )}
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
@@ -1769,10 +1724,8 @@ export function AnalysisResults({
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
 
-      {/* ── Sensitivity Analysis (not applicable for flip — no recurring income) */}
-      {data.investmentType !== "flip" && (
-        <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
-      )}
+      {/* ── Sensitivity Analysis ────────────────────────────────────── */}
+      <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
 
       {/* ── AI Insights (Strengths / Risks / Area / Next Steps) ─────── */}
       {hasAIInsights ? (
@@ -1831,16 +1784,6 @@ export function AnalysisResults({
           </CardContent>
         </Card>
       )}
-
-      {/* Disclaimer */}
-      <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground/70">
-        Metalyzi provides analytical information only, not regulated financial advice.
-        Always seek independent professional advice before making investment decisions.{" "}
-        <Link href="/disclaimer" className="underline hover:text-muted-foreground">
-          Full disclaimer
-        </Link>{" "}
-        — Metusa Property Ltd, Company No. 15651934.
-      </p>
     </div>
   )
 }
