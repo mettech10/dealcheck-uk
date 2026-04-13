@@ -18,7 +18,7 @@ interface RoomListing {
   source?: string
 }
 
-export interface RoomSummary {
+interface RoomSummary {
   roomType: string
   avgWeekly: number
   avgMonthly: number
@@ -26,17 +26,6 @@ export interface RoomSummary {
   range100: [number, number]
   count: number
   radius: string
-}
-
-/** Aggregate HMO room rent data lifted to parent for the House Valuation card */
-export interface HmoLoadedData {
-  roomSummaries: RoomSummary[]
-  /** Average monthly rent across all room types found */
-  avgMonthlyRoomRent: number
-  /** Total data points across all room types */
-  totalDataPoints: number
-  /** District searched (e.g. "M1") */
-  searchArea: string
 }
 
 interface HmoAnalysis {
@@ -55,8 +44,6 @@ interface ManualSearchInfo {
 
 interface HmoComparablesProps {
   postcode: string
-  /** Lift loaded HMO room rent data to parent for use in the House Valuation card */
-  onDataLoaded?: (data: HmoLoadedData) => void
 }
 
 const DEMAND_CONFIG = {
@@ -93,7 +80,7 @@ function wkToMo(weekly: number): number {
   return Math.round((weekly * 52) / 12)
 }
 
-export function HmoComparables({ postcode, onDataLoaded }: HmoComparablesProps) {
+export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [listings, setListings] = useState<RoomListing[]>([])
   const [roomSummaries, setRoomSummaries] = useState<RoomSummary[]>([])
   const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
@@ -137,21 +124,6 @@ export function HmoComparables({ postcode, onDataLoaded }: HmoComparablesProps) 
         if (data.roomSummaries && data.roomSummaries.length > 0) {
           setRoomSummaries(data.roomSummaries)
           console.log("[HMO] PropertyData room summaries:", data.roomSummaries.length, "types")
-
-          // Lift to parent for House Valuation card
-          if (onDataLoaded) {
-            const summaries = data.roomSummaries as RoomSummary[]
-            const totalPoints = summaries.reduce((s, r) => s + r.count, 0)
-            const avgMonthlyRoomRent = summaries.length > 0
-              ? Math.round(summaries.reduce((s, r) => s + r.avgMonthly, 0) / summaries.length)
-              : 0
-            onDataLoaded({
-              roomSummaries: summaries,
-              avgMonthlyRoomRent,
-              totalDataPoints: totalPoints,
-              searchArea: area,
-            })
-          }
 
           // Also set listings for backwards compat
           const rawListings = (data.listings || []).map((l: Record<string, unknown>) => ({
@@ -258,7 +230,6 @@ export function HmoComparables({ postcode, onDataLoaded }: HmoComparablesProps) 
 
     fetchData()
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postcode])
 
   if (loadingListings) {

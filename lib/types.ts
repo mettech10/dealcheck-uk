@@ -10,7 +10,7 @@ export type PropertyTypeDetail =
   | "other"
 export type TenureType = "freehold" | "leasehold"
 export type InvestmentType = "btl" | "brr" | "hmo" | "flip" | "r2sa" | "development"
-export type PropertyCondition = "excellent" | "good" | "fair" | "needs-work"
+export type PropertyCondition = "excellent" | "good" | "cosmetic" | "full-refurb" | "structural"
 export type PurchaseType = "mortgage" | "bridging-loan" | "cash"
 
 export interface PropertyFormData {
@@ -53,9 +53,20 @@ export interface PropertyFormData {
   roomCount?: number    // number of lettable rooms
   avgRoomRate?: number  // average monthly rent per room
 
-  // Rent-to-SA (R2SA)
-  saMonthlySARevenue?: number // expected gross monthly SA revenue
+  // Serviced Accommodation (SA / R2SA)
+  saMonthlySARevenue?: number // legacy field (kept for compat)
   saSetupCosts?: number       // one-off setup / furnishing costs
+  saOwnershipType?: "own" | "rent-to-sa"
+  saNightlyRate?: number      // average nightly rate £
+  saOccupancyRate?: number    // expected occupancy % (0-100)
+  saPlatformFeePercent?: number // Airbnb/Booking commission %
+  saCleaningCostPerStay?: number // cleaning cost per turnover £
+  saAvgStaysPerMonth?: number   // average stays/turnovers per month
+  saMonthlyLease?: number     // monthly rent/lease if rent-to-SA £
+  saUtilitiesMonthly?: number // monthly utilities £
+  saInsuranceAnnual?: number  // annual SA insurance £
+  saManagementFeePercent?: number // SA management company %
+  saMaintenancePercent?: number   // maintenance as % of revenue
 
   // Projections — user-supplied assumptions
   capitalGrowthRate?: number  // annual property appreciation %, default 4
@@ -68,7 +79,8 @@ export interface PropertyFormData {
   // Running Costs
   managementFeePercent: number
   insurance: number
-  maintenance: number
+  maintenance: number          // legacy flat annual £ — still used as fallback
+  maintenancePercent: number   // preferred: % of annual rent (default 10%)
   groundRent: number
   bills: number
 }
@@ -118,6 +130,18 @@ export interface CalculationResults {
   // Running Costs Breakdown
   annualRunningCosts: number
   monthlyRunningCosts: number
+
+  // BRRRR-specific
+  refinancedMortgageAmount?: number  // mortgage on ARV after refinance
+  moneyLeftInDeal?: number           // total invested minus capital returned at refinance
+  equityGained?: number              // ARV - purchase - refurb (forced appreciation)
+
+  // Flip-specific
+  flipGrossProfit?: number           // ARV - purchase - refurb
+  flipSellingCosts?: number          // agent fees + selling legal
+  flipFinanceCosts?: number          // bridging interest + fees
+  flipNetProfit?: number             // gross profit - selling costs - finance costs - SDLT - legal - survey
+  flipROI?: number                   // net profit / total capital invested (%)
 
   // Projections
   fiveYearProjection: YearProjection[]
@@ -250,28 +274,24 @@ export interface BackendResults {
   market_source?: string
   risk_flags?: RiskFlag[]
   regional_benchmark?: RegionalBenchmark
-
-  // Airroi SA/R2SA market intelligence
-  airroi_market?: {
-    avg_nightly_rate?: number
-    min_nightly_rate?: number
-    max_nightly_rate?: number
-    avg_occupancy?: number
-    avg_rating?: number
-    estimated_monthly_revenue?: number
-    listing_count?: number
-    revenue_validation?: {
-      user_entered: number
-      market_estimate: number
-      deviation_pct: number
-      direction: "above" | "below"
-      flag: string
-    }
+  postcode_benchmark?: {
+    postcode_district: string
+    property_type: string
+    bedrooms: number | null
+    median_sold_price: number | null
+    avg_sold_price: number | null
+    transaction_count_12m: number | null
+    price_growth_5yr_pct: number | null
+    median_monthly_rent: number | null
+    lower_quartile_rent: number | null
+    upper_quartile_rent: number | null
+    gross_yield_median: number | null
+    gross_yield_lower: number | null
+    gross_yield_upper: number | null
+    void_rate_pct: number | null
+    data_month: string | null
+    _match: string
   }
-  airroi_nearby_listings?: Array<Record<string, unknown>>
-  airroi_market_summary?: Record<string, unknown>
-  airroi_occupancy_trend?: Record<string, unknown>
-  airroi_adr_trend?: Record<string, unknown>
 }
 
 export interface RiskFlag {
