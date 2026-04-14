@@ -1691,9 +1691,7 @@ export function AnalysisResults({
           tabbed section (PropertyComparables component). */}
 
       {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
-      {data.investmentType === "hmo" && data.postcode && (
-        <HmoComparables postcode={data.postcode} />
-      )}
+      {/* Now rendered inside PropertyComparables "Room Listings" tab */}
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
       {hasRefurb && <RefurbEstimatesCard estimates={backendData?.refurb_estimates} />}

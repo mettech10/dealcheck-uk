@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/calculations"
-import { Home, PoundSterling, TrendingUp, MapPin, ExternalLink } from "lucide-react"
+import { Home, PoundSterling, TrendingUp, MapPin, ExternalLink, BedDouble } from "lucide-react"
+import { HmoComparables } from "./hmo-comparables"
 
 // ── Sold Comparables Types ────────────────────────────────────────────────
 interface ComparableSale {
@@ -98,10 +99,11 @@ export function PropertyComparables({
   const [rentalListings, setRentalListings] = useState<RentalData | null>(null)
   const [loading, setLoading] = useState(true)
   const [rentalLoading, setRentalLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<"sold" | "rental">("sold")
+  const [activeTab, setActiveTab] = useState<"sold" | "rental" | "rooms">("sold")
   const [error, setError] = useState<string | null>(null)
 
   const showRentals = RENTAL_STRATEGIES.has(investmentType || "btl")
+  const showRoomListings = investmentType === "hmo"
 
   // Fetch sold comparables + rental estimate
   useEffect(() => {
@@ -296,6 +298,19 @@ export function PropertyComparables({
               )}
             </button>
           )}
+          {showRoomListings && (
+            <button
+              onClick={() => setActiveTab("rooms")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                activeTab === "rooms"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <BedDouble className="inline size-3 mr-1" />
+              Room Listings
+            </button>
+          )}
         </div>
       </CardHeader>
 
@@ -413,6 +428,11 @@ export function PropertyComparables({
               </div>
             )}
           </>
+        )}
+
+        {/* ── ROOM LISTINGS TAB (HMO) ──────────────────────────────── */}
+        {activeTab === "rooms" && showRoomListings && (
+          <HmoComparables postcode={postcode} />
         )}
 
         {/* ── RENTAL TAB ───────────────────────────────────────────── */}
