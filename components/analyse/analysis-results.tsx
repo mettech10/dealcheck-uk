@@ -393,11 +393,17 @@ function HouseValuationCard({
   purchasePrice,
   avgSoldPrice,
   comparables,
+  investmentType,
+  userMonthlyRent,
+  bedrooms,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
   avgSoldPrice?: number
   comparables?: ComparablesLoadedData | null
+  investmentType?: string
+  userMonthlyRent?: number
+  bedrooms?: number
 }) {
   // Priority: backend valuation estimate → backend avg_sold_price → frontend comparables average
   const backendEstimate = valuation?.estimate && valuation.estimate > 0 ? valuation.estimate : null
@@ -408,10 +414,23 @@ function HouseValuationCard({
   const isFromComparables = !backendEstimate && !backendAvg && !!frontendAvg
   const isLoading = !valuation && !comparables // Neither data source has loaded yet
 
-  // Rental data from comparables
-  const estRent = comparables?.estimatedRent ?? null
-  const rentRange = comparables?.rentRange ?? null
-  const grossYield = comparables?.grossYield ?? null
+  const isHmo = investmentType === "hmo"
+
+  // Rental data — for HMO, use user's entered monthly rent (total HMO income)
+  const estRent = isHmo && userMonthlyRent && userMonthlyRent > 0
+    ? userMonthlyRent
+    : (comparables?.estimatedRent ?? null)
+  const rentRange = isHmo ? null : (comparables?.rentRange ?? null)
+  const rentLabel = isHmo ? "Est. HMO Monthly Income" : "Estimated Monthly Rent"
+  const rentSubtext = isHmo && userMonthlyRent && bedrooms
+    ? `${bedrooms} rooms × £${Math.round(userMonthlyRent / bedrooms)} avg room rent`
+    : null
+
+  // Gross yield — recalculate for HMO if we have the data
+  const grossYield = estRent && estimate && estimate > 0
+    ? ((estRent * 12) / estimate) * 100
+    : (comparables?.grossYield ?? null)
+  const yieldLabel = isHmo ? "Est. HMO Gross Yield" : "Gross Yield (area avg)"
   const soldCount = comparables?.soldCount ?? 0
 
   // Source label
@@ -520,10 +539,13 @@ function HouseValuationCard({
           <div className="flex flex-wrap gap-6 border-t border-border/40 pt-3">
             {estRent && (
               <div>
-                <p className="text-xs text-muted-foreground">Estimated Monthly Rent</p>
+                <p className="text-xs text-muted-foreground">{rentLabel}</p>
                 <p className="text-base font-semibold text-foreground">
                   {formatCurrency(estRent)}/mo
                 </p>
+                {rentSubtext && (
+                  <p className="text-xs text-muted-foreground">{rentSubtext}</p>
+                )}
                 {rentRange && (
                   <p className="text-xs text-muted-foreground">
                     Range: {formatCurrency(rentRange.low)} – {formatCurrency(rentRange.high)}
@@ -533,7 +555,7 @@ function HouseValuationCard({
             )}
             {grossYield !== null && (
               <div>
-                <p className="text-xs text-muted-foreground">Gross Yield (area avg)</p>
+                <p className="text-xs text-muted-foreground">{yieldLabel}</p>
                 <p className={`text-base font-semibold ${grossYield >= 6 ? "text-success" : grossYield >= 4 ? "text-warning" : "text-destructive"}`}>
                   {grossYield.toFixed(2)}%
                 </p>
@@ -1235,6 +1257,9 @@ export function AnalysisResults({
           purchasePrice={data.purchasePrice}
           avgSoldPrice={backendData?.avg_sold_price}
           comparables={comparablesData}
+          investmentType={data.investmentType}
+          userMonthlyRent={data.monthlyRent}
+          bedrooms={data.bedrooms}
         />
       )}
 
