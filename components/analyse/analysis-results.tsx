@@ -1450,6 +1450,11 @@ export function AnalysisResults({
         )}
       </Tabs>
 
+      {/* ── HMO Room Rents & Area HMO Analysis (standalone, below Market Comparables) */}
+      {data.investmentType === "hmo" && data.postcode && (
+        <HmoComparables postcode={data.postcode} />
+      )}
+
       {/* ── Full Financial Breakdown ─────────────────────────────────── */}
       {data.investmentType !== "r2sa" && (
         <Card>
@@ -1691,7 +1696,7 @@ export function AnalysisResults({
           tabbed section (PropertyComparables component). */}
 
       {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
-      {/* Now rendered inside PropertyComparables "Room Listings" tab */}
+      {/* Standalone HmoComparables now placed above Full Financial Breakdown */}
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
       {hasRefurb && <RefurbEstimatesCard estimates={backendData?.refurb_estimates} />}

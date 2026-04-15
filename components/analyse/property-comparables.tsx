@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/calculations"
 import { Home, PoundSterling, TrendingUp, MapPin, ExternalLink, BedDouble } from "lucide-react"
-import { HmoComparables } from "./hmo-comparables"
+import { SpareRoomListings } from "./spareroom-listings"
 
 // ── Sold Comparables Types ────────────────────────────────────────────────
 interface ComparableSale {
@@ -432,7 +432,7 @@ export function PropertyComparables({
 
         {/* ── ROOM LISTINGS TAB (HMO) ──────────────────────────────── */}
         {activeTab === "rooms" && showRoomListings && (
-          <HmoComparables postcode={postcode} />
+          <SpareRoomListings postcode={postcode} />
         )}
 
         {/* ── RENTAL TAB ───────────────────────────────────────────── */}
