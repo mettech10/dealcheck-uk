@@ -205,6 +205,17 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           ...propertyData,
+          // Flask backend reads `dealType` (uppercase) but the Next.js form
+          // carries `investmentType` (lowercase). Map the two so BRRRR deals
+          // actually reach the BRR branch of the AI prompt.
+          dealType: {
+            btl: "BTL",
+            brr: "BRR",
+            hmo: "HMO",
+            flip: "FLIP",
+            r2sa: "R2SA",
+            development: "DEV",
+          }[(propertyData?.investmentType as string) || "btl"] || "BTL",
           userEmail,
           // Pass the frontend's calculated metrics so benchmark comparison
           // uses the same figures shown in the headline metrics cards
@@ -219,6 +230,40 @@ export async function POST(req: Request) {
                 monthlyExpenses: calculationResults.monthlyExpenses,
               }
             : undefined,
+          // BRRRR-specific phase breakdown + 5-axis deal score. Flask AI
+          // prompt consumes these to give BRR-tailored strengths/risks,
+          // instead of generic BTL commentary.
+          _brrrrContext:
+            propertyData?.investmentType === "brr" && calculationResults
+              ? {
+                  arv: propertyData?.arv,
+                  arvBasis: propertyData?.arvBasis,
+                  // Phase costs
+                  acquisitionCost: calculationResults.brrrrAcquisitionCost,
+                  refurbBudget: calculationResults.brrrrRefurbBudget,
+                  refurbContingency: calculationResults.brrrrRefurbContingency,
+                  refurbHoldingCost: calculationResults.brrrrRefurbHoldingCost,
+                  refurbTotal: calculationResults.brrrrRefurbTotal,
+                  bridgingInterest: calculationResults.brrrrBridgingInterest,
+                  bridgingFees: calculationResults.brrrrBridgingFees,
+                  bridgingTotal: calculationResults.brrrrBridgingTotal,
+                  refinanceArrangementFee:
+                    calculationResults.brrrrRefinanceArrangementFee,
+                  refinanceFees: calculationResults.brrrrRefinanceFees,
+                  refinancedMortgage: calculationResults.refinancedMortgageAmount,
+                  postRefinanceRate: calculationResults.brrrrPostRefinanceRate,
+                  // Capital flow
+                  totalCashInvested: calculationResults.brrrrTotalCashInvested,
+                  capitalReturned: calculationResults.brrrrCapitalReturned,
+                  moneyLeftInDeal: calculationResults.moneyLeftInDeal,
+                  capitalRecycledPct:
+                    calculationResults.brrrrCapitalRecycledPct,
+                  // Uplift metrics
+                  equityGained: calculationResults.equityGained,
+                  refurbUpliftRatio:
+                    calculationResults.brrrrRefurbUpliftRatio,
+                }
+              : undefined,
         }),
       })
 
