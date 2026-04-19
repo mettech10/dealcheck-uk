@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
+import { BRRRRResults } from "./brrrr-results"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { HmoComparables } from "./hmo-comparables"
@@ -1245,6 +1246,11 @@ export function AnalysisResults({
             </>
           )}
         </div>
+      )}
+
+      {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
+      {data.investmentType === "brr" && (
+        <BRRRRResults data={data} results={results} />
       )}
 
       {/* ── Location & Council ──────────────────────────────────────── */}
