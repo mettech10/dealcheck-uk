@@ -42,12 +42,24 @@ const schema = z.object({
   interestRate: z.coerce.number().min(0).max(20),
   mortgageTerm: z.coerce.number().min(1).max(40),
   // Bridging loan fields
+  bridgingLTV: z.coerce.number().min(0).max(100).optional(),
   bridgingMonthlyRate: z.coerce.number().min(0).max(5).optional(),
   bridgingTermMonths: z.coerce.number().min(1).max(36).optional(),
   bridgingArrangementFee: z.coerce.number().min(0).max(5).optional(),
   bridgingExitFee: z.coerce.number().min(0).max(5).optional(),
   // BRR / Flip
   arv: z.coerce.number().min(0).optional(),
+  arvBasis: z.enum(["comparables", "surveyor", "agent", "manual"]).optional(),
+  // BRRRR refurb extras
+  refurbContingencyPercent: z.coerce.number().min(0).max(50).optional(),
+  refurbHoldingMonths: z.coerce.number().min(0).max(24).optional(),
+  refurbHoldingCostPerMonth: z.coerce.number().min(0).optional(),
+  // BRRRR refinance fields (separate from initial mortgage)
+  refinanceLTV: z.coerce.number().min(0).max(100).optional(),
+  refinanceRate: z.coerce.number().min(0).max(20).optional(),
+  refinanceTermYears: z.coerce.number().min(1).max(40).optional(),
+  refinanceArrangementFeePercent: z.coerce.number().min(0).max(5).optional(),
+  refinanceValuationFee: z.coerce.number().min(0).optional(),
   // HMO
   roomCount: z.coerce.number().min(0).max(20).optional(),
   avgRoomRate: z.coerce.number().min(0).optional(),
@@ -128,12 +140,22 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     interestRate: 5.5,
     mortgageTerm: 25,
     mortgageType: "interest-only",
+    bridgingLTV: 70,
     bridgingMonthlyRate: 0.75,
     bridgingTermMonths: 12,
     bridgingArrangementFee: 1.0,
     bridgingExitFee: 0.5,
     capitalGrowthRate: 4,
     arv: 0,
+    arvBasis: "comparables",
+    refurbContingencyPercent: 10,
+    refurbHoldingMonths: 6,
+    refurbHoldingCostPerMonth: 250,
+    refinanceLTV: 75,
+    refinanceRate: 5.5,
+    refinanceTermYears: 25,
+    refinanceArrangementFeePercent: 1,
+    refinanceValuationFee: 400,
     roomCount: 0,
     avgRoomRate: 0,
     saMonthlySARevenue: 0,
@@ -446,7 +468,83 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                 </div>
               </FormField>
             )}
+            {/* ARV Basis — only BRRRR */}
+            {isBRR && (
+              <FormField label="ARV Basis" hint="How the ARV was established">
+                <Controller
+                  control={control}
+                  name="arvBasis"
+                  render={({ field }) => (
+                    <Select value={field.value ?? "comparables"} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="comparables">Local comparables</SelectItem>
+                        <SelectItem value="surveyor">RICS surveyor</SelectItem>
+                        <SelectItem value="agent">Estate agent estimate</SelectItem>
+                        <SelectItem value="manual">Manual / other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
+            )}
           </div>
+
+          {/* ── BRRRR-specific block ─────────────────────────────── */}
+          {isBRR && (
+            <div className="mt-2 flex flex-col gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-foreground">BRRRR Refurb &amp; Refinance</h4>
+                <Info className="size-3.5 text-muted-foreground" />
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Refurb Contingency" hint="Buffer on top of refurb budget (10–15% typical)">
+                  <div className="relative">
+                    <Input type="number" step="1" className="pr-7" {...register("refurbContingencyPercent")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
+                <FormField label="Refurb Duration" hint="Months the property is vacant during works">
+                  <Input type="number" {...register("refurbHoldingMonths")} />
+                </FormField>
+                <FormField label="Holding Cost / month" hint="Insurance + utilities + council tax void">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                    <Input type="number" className="pl-7" {...register("refurbHoldingCostPerMonth")} />
+                  </div>
+                </FormField>
+                <FormField label="Refinance LTV" hint="Typical BTL remortgage LTV (75%)">
+                  <div className="relative">
+                    <Input type="number" step="0.5" className="pr-7" {...register("refinanceLTV")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
+                <FormField label="Refinance Rate" hint="Post-refurb BTL mortgage rate">
+                  <div className="relative">
+                    <Input type="number" step="0.1" className="pr-7" {...register("refinanceRate")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
+                <FormField label="Refinance Term" hint="Years of new mortgage">
+                  <Input type="number" {...register("refinanceTermYears")} />
+                </FormField>
+                <FormField label="Refinance Arrangement Fee" hint="Typical 1–2% of new loan">
+                  <div className="relative">
+                    <Input type="number" step="0.1" className="pr-7" {...register("refinanceArrangementFeePercent")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
+                <FormField label="Refinance Valuation Fee" hint="Lender valuation £300–£500">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                    <Input type="number" className="pl-7" {...register("refinanceValuationFee")} />
+                  </div>
+                </FormField>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -543,6 +641,17 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
             {/* Bridging Loan Detail Fields */}
             {isBridging && (
               <>
+                <FormField label="Bridging LTV" hint="% of purchase price bridging covers (typical 65–75%)">
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      step="0.5"
+                      className="pr-7"
+                      {...register("bridgingLTV")}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
                 <FormField label="Monthly Rate" hint="% per month (e.g. 0.75)">
                   <div className="relative">
                     <Input

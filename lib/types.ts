@@ -41,6 +41,7 @@ export interface PropertyFormData {
   mortgageType: "repayment" | "interest-only"
   
   // Bridging Loan (if applicable)
+  bridgingLTV?: number // loan-to-value % (typical 65-75%)
   bridgingMonthlyRate?: number // e.g., 0.75 for 0.75% per month
   bridgingTermMonths?: number // typically 3-18 months
   bridgingArrangementFee?: number // % of loan
@@ -48,6 +49,19 @@ export interface PropertyFormData {
 
   // BRR / Flip
   arv?: number // After Repair Value
+  arvBasis?: "comparables" | "surveyor" | "agent" | "manual"
+
+  // BRRRR Refurb detail
+  refurbContingencyPercent?: number  // typically 10-15% buffer on refurb
+  refurbHoldingMonths?: number       // months property is empty during refurb
+  refurbHoldingCostPerMonth?: number // insurance + utilities + council tax during void
+
+  // BRRRR Refinance (separate from initial mortgage)
+  refinanceLTV?: number             // typically 75%
+  refinanceRate?: number            // typical BTL mortgage rate
+  refinanceTermYears?: number       // typically 25 years
+  refinanceArrangementFeePercent?: number // typically 1-2%
+  refinanceValuationFee?: number    // typically £300-500
 
   // HMO
   roomCount?: number    // number of lettable rooms
