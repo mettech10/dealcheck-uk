@@ -150,6 +150,23 @@ export interface CalculationResults {
   moneyLeftInDeal?: number           // total invested minus capital returned at refinance
   equityGained?: number              // ARV - purchase - refurb (forced appreciation)
 
+  // BRRRR — phase cost breakdown
+  brrrrAcquisitionCost?: number      // purchase + SDLT + legal + survey
+  brrrrRefurbBudget?: number         // user-entered refurb
+  brrrrRefurbContingency?: number    // refurb × contingency %
+  brrrrRefurbHoldingCost?: number    // months × holding cost/month
+  brrrrRefurbTotal?: number          // refurb + contingency + holding
+  brrrrBridgingInterest?: number     // total interest over bridging term
+  brrrrBridgingFees?: number         // arrangement + exit fees on bridging loan
+  brrrrBridgingTotal?: number        // bridging interest + fees
+  brrrrRefinanceArrangementFee?: number  // % of new loan
+  brrrrRefinanceFees?: number        // arrangement + valuation
+  brrrrTotalCashInvested?: number    // sum of all outflows before refinance
+  brrrrCapitalReturned?: number      // refinance minus bridging/mortgage payoff
+  brrrrCapitalRecycledPct?: number   // capitalReturned / totalCashInvested * 100
+  brrrrRefurbUpliftRatio?: number    // (ARV - purchase) / refurbBudget
+  brrrrPostRefinanceRate?: number    // echo of refinance rate used
+
   // Flip-specific
   flipGrossProfit?: number           // ARV - purchase - refurb
   flipSellingCosts?: number          // agent fees + selling legal

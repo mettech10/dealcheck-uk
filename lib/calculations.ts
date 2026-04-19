@@ -531,7 +531,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     Math.round((monthlyMortgagePayment + monthlyRunningCosts) * 100) / 100
 
   // ── BRRRR Refinance Logic ──────────────────────────────────────────────
-  // For BRR strategy: refinance based on ARV, recalculate mortgage & ROI
+  // For BRR strategy: 6-phase model — acquisition / refurb / bridging / refinance / capital / metrics
   let refinancedMortgageAmount: number | undefined
   let moneyLeftInDeal: number | undefined
   let equityGained: number | undefined
@@ -540,38 +540,96 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   let finalAnnualMortgage = annualMortgageCost
   let finalTotalCapital = totalCapitalRequired
 
-  if (data.investmentType === "brr" && data.arv && data.arv > 0) {
-    // Refinance: new mortgage based on ARV at the same LTV as deposit%
-    const refinanceLTV = (100 - data.depositPercentage) / 100
-    refinancedMortgageAmount = Math.round(data.arv * refinanceLTV)
+  // BRRRR phase breakdown (undefined for non-BRRRR)
+  let brrrrAcquisitionCost: number | undefined
+  let brrrrRefurbBudget: number | undefined
+  let brrrrRefurbContingency: number | undefined
+  let brrrrRefurbHoldingCost: number | undefined
+  let brrrrRefurbTotal: number | undefined
+  let brrrrBridgingInterest: number | undefined
+  let brrrrBridgingFees: number | undefined
+  let brrrrBridgingTotal: number | undefined
+  let brrrrRefinanceArrangementFee: number | undefined
+  let brrrrRefinanceFees: number | undefined
+  let brrrrTotalCashInvested: number | undefined
+  let brrrrCapitalReturned: number | undefined
+  let brrrrCapitalRecycledPct: number | undefined
+  let brrrrRefurbUpliftRatio: number | undefined
+  let brrrrPostRefinanceRate: number | undefined
 
-    // New monthly mortgage payment on the refinanced amount
-    // Always calculated for BRRRR — even if initial purchase was cash,
-    // the refinance creates a new mortgage
+  if (data.investmentType === "brr" && data.arv && data.arv > 0) {
+    // Phase 1 — Acquisition cost (cash-equivalent upfront before finance)
+    brrrrAcquisitionCost = Math.round(
+      data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts
+    )
+
+    // Phase 2 — Refurb total (budget + contingency + holding during void)
+    const contingencyPct = Math.min(Math.max(data.refurbContingencyPercent ?? 10, 0), 50)
+    const holdingMonths = Math.min(Math.max(data.refurbHoldingMonths ?? 0, 0), 24)
+    const holdingPerMonth = Math.max(data.refurbHoldingCostPerMonth ?? 0, 0)
+    brrrrRefurbBudget = Math.round(data.refurbishmentBudget)
+    brrrrRefurbContingency = Math.round(brrrrRefurbBudget * (contingencyPct / 100))
+    brrrrRefurbHoldingCost = Math.round(holdingMonths * holdingPerMonth)
+    brrrrRefurbTotal = brrrrRefurbBudget + brrrrRefurbContingency + brrrrRefurbHoldingCost
+
+    // Phase 3 — Bridging cost (if bridging was used)
+    if (data.purchaseType === "bridging-loan") {
+      const bridgingLoanPct = Math.min(Math.max(data.bridgingLTV ?? 70, 0), 100) / 100
+      const bridgingLoanAmount = data.purchasePrice * bridgingLoanPct
+      const monthlyRate = Math.max(data.bridgingMonthlyRate ?? 0, 0) / 100
+      const termMonths = Math.max(data.bridgingTermMonths ?? 0, 0)
+      const arrFeePct = Math.max(data.bridgingArrangementFee ?? 0, 0) / 100
+      const exitFeePct = Math.max(data.bridgingExitFee ?? 0, 0) / 100
+      brrrrBridgingInterest = Math.round(bridgingLoanAmount * monthlyRate * termMonths)
+      brrrrBridgingFees = Math.round(bridgingLoanAmount * (arrFeePct + exitFeePct))
+      brrrrBridgingTotal = brrrrBridgingInterest + brrrrBridgingFees
+    } else {
+      brrrrBridgingInterest = 0
+      brrrrBridgingFees = 0
+      brrrrBridgingTotal = 0
+    }
+
+    // Phase 4 — Refinance: new BTL mortgage on ARV with dedicated LTV/rate/term
+    const refinanceLTVPct = Math.min(Math.max(data.refinanceLTV ?? 75, 0), 100) / 100
+    const refinanceRate = Math.max(data.refinanceRate ?? data.interestRate, 0)
+    const refinanceTerm = Math.max(data.refinanceTermYears ?? 25, 1)
+    const refinanceArrPct = Math.max(data.refinanceArrangementFeePercent ?? 1, 0) / 100
+    const refinanceValFee = Math.max(data.refinanceValuationFee ?? 0, 0)
+    refinancedMortgageAmount = Math.round(data.arv * refinanceLTVPct)
+    brrrrRefinanceArrangementFee = Math.round(refinancedMortgageAmount * refinanceArrPct)
+    brrrrRefinanceFees = brrrrRefinanceArrangementFee + Math.round(refinanceValFee)
+    brrrrPostRefinanceRate = refinanceRate
+
     finalMonthlyMortgage = calculateMortgagePayment(
       refinancedMortgageAmount,
-      data.interestRate,
-      data.mortgageTerm,
+      refinanceRate,
+      refinanceTerm,
       data.mortgageType
     )
     finalAnnualMortgage = finalMonthlyMortgage * 12
     finalMortgageAmount = refinancedMortgageAmount
 
-    // Total cash invested upfront (before refinance returns capital)
-    // Includes: purchase price + SDLT + legal + survey + refurb (full amount, whether cash or bridging)
-    const totalCashInvested = data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget
-
-    // Capital returned at refinance: the refinanced mortgage pays off the original loan,
-    // and any excess is returned to the investor
-    const originalLoanPayoff = mortgageAmount // bridging or original mortgage to repay
-    const capitalReturned = Math.max(0, refinancedMortgageAmount - originalLoanPayoff)
-
-    // Money left in deal = what you put in minus what you get back
-    moneyLeftInDeal = Math.max(0, totalCapitalRequired - capitalReturned)
+    // Phase 5 — Capital flow
+    brrrrTotalCashInvested = Math.round(
+      brrrrAcquisitionCost +
+      brrrrRefurbTotal +
+      brrrrBridgingTotal +
+      brrrrRefinanceFees
+    )
+    // Capital returned at refinance = new loan - original debt payoff
+    const originalLoanPayoff = mortgageAmount
+    brrrrCapitalReturned = Math.max(0, refinancedMortgageAmount - originalLoanPayoff)
+    moneyLeftInDeal = Math.max(0, brrrrTotalCashInvested - brrrrCapitalReturned)
     finalTotalCapital = moneyLeftInDeal
+    brrrrCapitalRecycledPct = brrrrTotalCashInvested > 0
+      ? Math.round((brrrrCapitalReturned / brrrrTotalCashInvested) * 10000) / 100
+      : 0
 
-    // Equity gained through forced appreciation (refurb uplift)
-    equityGained = data.arv - data.purchasePrice - data.refurbishmentBudget
+    // Phase 6 — Equity & uplift metrics
+    equityGained = Math.round(data.arv - data.purchasePrice - (brrrrRefurbBudget + brrrrRefurbContingency))
+    brrrrRefurbUpliftRatio = brrrrRefurbBudget > 0
+      ? Math.round(((data.arv - data.purchasePrice) / brrrrRefurbBudget) * 100) / 100
+      : 0
   }
 
   // Recalculate expenses & cash flow with final (possibly refinanced) mortgage
@@ -627,6 +685,21 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     refinancedMortgageAmount,
     moneyLeftInDeal,
     equityGained,
+    brrrrAcquisitionCost,
+    brrrrRefurbBudget,
+    brrrrRefurbContingency,
+    brrrrRefurbHoldingCost,
+    brrrrRefurbTotal,
+    brrrrBridgingInterest,
+    brrrrBridgingFees,
+    brrrrBridgingTotal,
+    brrrrRefinanceArrangementFee,
+    brrrrRefinanceFees,
+    brrrrTotalCashInvested,
+    brrrrCapitalReturned,
+    brrrrCapitalRecycledPct,
+    brrrrRefurbUpliftRatio,
+    brrrrPostRefinanceRate,
     fiveYearProjection,
   }
 }
