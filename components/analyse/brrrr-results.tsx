@@ -40,7 +40,9 @@ import {
   Target,
   Layers,
   RefreshCw,
+  Download,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface BRRRRResultsProps {
   data: PropertyFormData
@@ -77,8 +79,50 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
       ? "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400"
       : "bg-red-500/15 text-red-700 border-red-500/30 dark:text-red-400"
 
+  // Browser print-to-PDF: toggle body class so @media print CSS hides
+  // all non-BRRRR chrome, then call window.print(). Users save as PDF
+  // via the browser's print dialog.
+  const handlePrintReport = () => {
+    if (typeof document === "undefined") return
+    document.body.classList.add("print-brrrr")
+    const cleanup = () => {
+      document.body.classList.remove("print-brrrr")
+      window.removeEventListener("afterprint", cleanup)
+    }
+    window.addEventListener("afterprint", cleanup)
+    // Give the class a beat to apply before triggering print
+    setTimeout(() => window.print(), 50)
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print-brrrr-root">
+      {/* ── Download report button (hidden in print) ──────────────── */}
+      <div className="flex items-center justify-between gap-3 no-print">
+        <div>
+          <h2 className="text-lg font-semibold">BRRRR Deal Report</h2>
+          <p className="text-xs text-muted-foreground">
+            Print or save the below as PDF for lenders, brokers, or your JV partner.
+          </p>
+        </div>
+        <Button
+          onClick={handlePrintReport}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <Download className="size-4" />
+          Download BRRRR Report
+        </Button>
+      </div>
+
+      {/* ── Print-only header (visible only in print) ─────────────── */}
+      <div className="hidden print:block print-header">
+        <h1 className="text-2xl font-bold">BRRRR Deal Analysis Report</h1>
+        <p className="text-sm text-muted-foreground">
+          {data.address || "Property"} — {data.postcode} · {new Date().toLocaleDateString("en-GB")}
+        </p>
+      </div>
+
       {/* ── 1. Headline BRRRR Metrics ───────────────────────────────── */}
       <Card>
         <CardHeader>

@@ -135,3 +135,83 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Print styles for BRRRR report ─────────────────────────────────────
+   When the user hits "Download BRRRR Report" we toggle .print-brrrr on
+   <body> and call window.print(). The CSS below isolates the BRRRR
+   panel: everything is hidden, then the panel and its descendants are
+   re-shown and absolutely positioned at the top of the page.
+*/
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Default utility: hide anywhere */
+  .no-print {
+    display: none !important;
+  }
+
+  /* BRRRR-report mode: hide everything except the BRRRR panel subtree */
+  body.print-brrrr * {
+    visibility: hidden;
+  }
+  body.print-brrrr .print-brrrr-root,
+  body.print-brrrr .print-brrrr-root * {
+    visibility: visible;
+  }
+  body.print-brrrr .print-brrrr-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  /* Hide the no-print button/header inside the panel even in print mode */
+  body.print-brrrr .print-brrrr-root .no-print,
+  body.print-brrrr .print-brrrr-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Light theme overrides so colours print well on white paper */
+  body.print-brrrr .print-brrrr-root,
+  body.print-brrrr .print-brrrr-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.print-brrrr .print-brrrr-root [class*="card"],
+  body.print-brrrr .print-brrrr-root .rounded-md,
+  body.print-brrrr .print-brrrr-root .rounded-lg {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-brrrr .print-brrrr-root .text-muted-foreground,
+  body.print-brrrr .print-brrrr-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-brrrr .print-brrrr-root h1,
+  body.print-brrrr .print-brrrr-root h2,
+  body.print-brrrr .print-brrrr-root h3 {
+    page-break-after: avoid;
+  }
+  body.print-brrrr .print-brrrr-root table {
+    page-break-inside: auto;
+  }
+  body.print-brrrr .print-brrrr-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
