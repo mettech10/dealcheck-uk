@@ -744,6 +744,150 @@ export function calculateDealScore(cashOnCashReturn: number): number {
 }
 
 /**
+ * BRRRR-specific deal score (0-100) built from 5 weighted axes:
+ *
+ *   Capital Recycling  (30 pts) — % of cash pulled back at refinance
+ *   Cashflow           (25 pts) — monthly cashflow post-refinance
+ *   Refurb Uplift      (20 pts) — (ARV - purchase) / refurb budget
+ *   Net Yield on ARV   (15 pts) — post-refinance yield vs target
+ *   ROCE               (10 pts) — annual cashflow / money left in deal
+ *
+ * Returns the total score plus a per-axis breakdown so the UI can render
+ * a radar/bar chart, and a qualitative label ("Excellent" ... "Poor").
+ */
+export interface BRRRRDealScore {
+  total: number
+  label: "Excellent" | "Strong" | "Decent" | "Marginal" | "Poor"
+  breakdown: {
+    capitalRecycling: { score: number; max: 30; value: number; note: string }
+    cashflow:         { score: number; max: 25; value: number; note: string }
+    refurbUplift:     { score: number; max: 20; value: number; note: string }
+    yieldOnARV:       { score: number; max: 15; value: number; note: string }
+    roce:             { score: number; max: 10; value: number; note: string }
+  }
+}
+
+export function calculateBRRRRDealScore(
+  results: CalculationResults,
+  arv?: number
+): BRRRRDealScore {
+  // ── Axis 1: Capital recycling (30 pts) ──────────────────────────────
+  // 100% recycled = full 30. Linear 0-100% → 0-30.
+  const recycledPct = results.brrrrCapitalRecycledPct ?? 0
+  const capitalRecyclingScore = Math.round(
+    Math.min(Math.max(recycledPct, 0), 100) * 0.3
+  )
+
+  // ── Axis 2: Cashflow (25 pts) ───────────────────────────────────────
+  //   ≥ £500/mo     → 25
+  //   £300-500      → 18-25 (linear)
+  //   £150-300      → 10-18
+  //   £0-150        →  0-10
+  //   < £0          →  0
+  const mcf = results.monthlyCashFlow ?? 0
+  let cashflowScore: number
+  if (mcf >= 500)      cashflowScore = 25
+  else if (mcf >= 300) cashflowScore = Math.round(18 + ((mcf - 300) / 200) * 7)
+  else if (mcf >= 150) cashflowScore = Math.round(10 + ((mcf - 150) / 150) * 8)
+  else if (mcf >= 0)   cashflowScore = Math.round((mcf / 150) * 10)
+  else                 cashflowScore = 0
+
+  // ── Axis 3: Refurb uplift ratio (20 pts) ────────────────────────────
+  // ratio = (ARV - purchase) / refurb. 2.0x+ is exceptional.
+  //   ≥ 2.5  → 20
+  //   1.5-2.5→ 12-20
+  //   1.0-1.5→  6-12
+  //   0.5-1.0→  2-6
+  //   < 0.5  →  0
+  const uplift = results.brrrrRefurbUpliftRatio ?? 0
+  let upliftScore: number
+  if (uplift >= 2.5)      upliftScore = 20
+  else if (uplift >= 1.5) upliftScore = Math.round(12 + ((uplift - 1.5) / 1.0) * 8)
+  else if (uplift >= 1.0) upliftScore = Math.round(6  + ((uplift - 1.0) / 0.5) * 6)
+  else if (uplift >= 0.5) upliftScore = Math.round(2  + ((uplift - 0.5) / 0.5) * 4)
+  else                    upliftScore = 0
+
+  // ── Axis 4: Net yield on ARV (15 pts) ───────────────────────────────
+  // Recompute yield against ARV (not purchase) since refinance uses ARV.
+  // Target bands:
+  //   ≥ 7%    → 15
+  //   5-7%    → 10-15
+  //   3-5%    →  5-10
+  //   0-3%    →  0-5
+  const annualCashflow = results.annualCashFlow ?? 0
+  const annualNetRentalIncome =
+    annualCashflow + (results.annualMortgageCost ?? 0)
+  const yieldOnARV =
+    arv && arv > 0 ? (annualNetRentalIncome / arv) * 100 : 0
+  let yieldScore: number
+  if (yieldOnARV >= 7)      yieldScore = 15
+  else if (yieldOnARV >= 5) yieldScore = Math.round(10 + ((yieldOnARV - 5) / 2) * 5)
+  else if (yieldOnARV >= 3) yieldScore = Math.round(5  + ((yieldOnARV - 3) / 2) * 5)
+  else if (yieldOnARV >= 0) yieldScore = Math.round((yieldOnARV / 3) * 5)
+  else                      yieldScore = 0
+
+  // ── Axis 5: ROCE (10 pts) ───────────────────────────────────────────
+  // Return on Capital Employed = cashflow / money left in deal.
+  // If moneyLeftInDeal ≈ 0 (infinite ROCE = perfect recycle), award full 10.
+  //   moneyLeft = 0   → 10 (bonus for perfect recycle)
+  //   ROCE ≥ 30%      → 10
+  //   ROCE 15-30%     → 6-10
+  //   ROCE 5-15%      → 2-6
+  //   ROCE < 5%       → 0-2
+  const moneyLeft = results.moneyLeftInDeal ?? results.totalCapitalRequired ?? 0
+  const roceValue = moneyLeft > 500
+    ? (annualCashflow / moneyLeft) * 100
+    : 999 // sentinel — perfect recycle
+  let roceScore: number
+  if (moneyLeft <= 500)     roceScore = 10
+  else if (roceValue >= 30) roceScore = 10
+  else if (roceValue >= 15) roceScore = Math.round(6 + ((roceValue - 15) / 15) * 4)
+  else if (roceValue >= 5)  roceScore = Math.round(2 + ((roceValue - 5)  / 10) * 4)
+  else if (roceValue >= 0)  roceScore = Math.round((roceValue / 5) * 2)
+  else                      roceScore = 0
+
+  const total =
+    capitalRecyclingScore + cashflowScore + upliftScore + yieldScore + roceScore
+
+  const label: BRRRRDealScore["label"] =
+    total >= 85 ? "Excellent" :
+    total >= 70 ? "Strong"    :
+    total >= 50 ? "Decent"    :
+    total >= 30 ? "Marginal"  :
+                  "Poor"
+
+  return {
+    total: Math.min(100, Math.max(0, total)),
+    label,
+    breakdown: {
+      capitalRecycling: {
+        score: capitalRecyclingScore, max: 30, value: recycledPct,
+        note: `${recycledPct.toFixed(1)}% of cash recycled`,
+      },
+      cashflow: {
+        score: cashflowScore, max: 25, value: mcf,
+        note: `£${Math.round(mcf)}/mo post-refinance`,
+      },
+      refurbUplift: {
+        score: upliftScore, max: 20, value: uplift,
+        note: `${uplift.toFixed(2)}× uplift on refurb`,
+      },
+      yieldOnARV: {
+        score: yieldScore, max: 15, value: yieldOnARV,
+        note: `${yieldOnARV.toFixed(2)}% yield on ARV`,
+      },
+      roce: {
+        score: roceScore, max: 10,
+        value: moneyLeft <= 500 ? 100 : roceValue,
+        note: moneyLeft <= 500
+          ? "Perfect capital recycle"
+          : `${roceValue.toFixed(1)}% return on money left`,
+      },
+    },
+  }
+}
+
+/**
  * Estimate refurbishment cost based on floor area and condition.
  * Rates are per sq metre, adjusted for London postcodes and property type.
  *
