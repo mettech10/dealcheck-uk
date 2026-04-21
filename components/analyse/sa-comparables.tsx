@@ -243,12 +243,24 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
 
           {!loading && listings.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-6">
-              <p className="text-sm text-muted-foreground">
-                {message || "No Airbnb listings found for this area."}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                The Airbnb actor requires a paid Apify subscription ($30/month).
-              </p>
+              {airroiListings.length > 0 ? (
+                // Airroi already populated the card above — this panel is
+                // redundant, so show a soft pointer rather than the Apify
+                // "paid subscription" scare message.
+                <p className="text-sm text-muted-foreground text-center">
+                  Using Airroi market data above. Direct Airbnb listings are
+                  optional — search live if you need them.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {message || "No Airbnb listings found for this area."}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    The Airbnb actor requires a paid Apify subscription ($30/month).
+                  </p>
+                </>
+              )}
               <a
                 href={fallbackUrl}
                 target="_blank"
