@@ -63,6 +63,38 @@ export interface PropertyFormData {
   refinanceArrangementFeePercent?: number // typically 1-2%
   refinanceValuationFee?: number    // typically £300-500
 
+  // ── Flip-specific ────────────────────────────────────────────────
+  // Refurb cost builder — line items sum into refurbishmentBudget.
+  // All optional; user can also ignore the builder and enter refurb total directly.
+  refurbKitchen?: number
+  refurbBathroom?: number
+  refurbFlooring?: number
+  refurbDecoration?: number
+  refurbElectrical?: number
+  refurbPlumbing?: number
+  refurbExterior?: number
+  refurbStructural?: number         // extension / underpinning / major works
+
+  // Flip holding (during works + marketing until completion).
+  flipHoldingMonths?: number        // total months held — default 6
+  flipCouncilTaxMonthly?: number    // council tax on empty / unoccupied
+  flipInsuranceMonthly?: number     // unoccupied property insurance
+  flipUtilitiesMonthly?: number     // standing charges + site electric
+  flipServiceChargeMonthly?: number // leasehold flats only
+
+  // Flip exit strategy.
+  flipAgentFeePercent?: number      // sale estate-agent fee, typical 1-2%
+  flipSaleLegalFees?: number        // solicitor on sale (separate from purchase legal)
+  flipMarketingCosts?: number       // photos, staging, virtual tour
+  flipSaleMonths?: number           // expected time on market + completion (default 3)
+
+  // Flip tax — CGT (individual) or Corporation Tax (Ltd).
+  flipOwnershipStructure?: "individual" | "limited-company"
+  flipTaxBand?: "basic" | "higher"  // individuals — determines 18% / 24% CGT
+  flipCGTAllowanceRemaining?: number // £ of annual CGT allowance unused (cap £3,000 24/25)
+  flipCorporationTaxRate?: number   // Ltd co — 19 (small), 25 (main), or marginal
+  flipOtherGainsThisYear?: number   // individuals — other taxable gains in same year
+
   // HMO
   roomCount?: number    // number of lettable rooms
   avgRoomRate?: number  // average monthly rent per room

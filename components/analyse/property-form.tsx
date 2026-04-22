@@ -61,6 +61,33 @@ const schema = z.object({
   refinanceTermYears: z.coerce.number().min(1).max(40).optional(),
   refinanceArrangementFeePercent: z.coerce.number().min(0).max(5).optional(),
   refinanceValuationFee: z.coerce.number().min(0).optional(),
+  // ── Flip-specific ──────────────────────────────────────────────
+  // Refurb line items — summed into refurbishmentBudget when builder is used.
+  refurbKitchen: z.coerce.number().min(0).optional(),
+  refurbBathroom: z.coerce.number().min(0).optional(),
+  refurbFlooring: z.coerce.number().min(0).optional(),
+  refurbDecoration: z.coerce.number().min(0).optional(),
+  refurbElectrical: z.coerce.number().min(0).optional(),
+  refurbPlumbing: z.coerce.number().min(0).optional(),
+  refurbExterior: z.coerce.number().min(0).optional(),
+  refurbStructural: z.coerce.number().min(0).optional(),
+  // Flip holding during works + marketing.
+  flipHoldingMonths: z.coerce.number().min(0).max(36).optional(),
+  flipCouncilTaxMonthly: z.coerce.number().min(0).optional(),
+  flipInsuranceMonthly: z.coerce.number().min(0).optional(),
+  flipUtilitiesMonthly: z.coerce.number().min(0).optional(),
+  flipServiceChargeMonthly: z.coerce.number().min(0).optional(),
+  // Flip exit strategy.
+  flipAgentFeePercent: z.coerce.number().min(0).max(10).optional(),
+  flipSaleLegalFees: z.coerce.number().min(0).optional(),
+  flipMarketingCosts: z.coerce.number().min(0).optional(),
+  flipSaleMonths: z.coerce.number().min(0).max(24).optional(),
+  // Flip tax.
+  flipOwnershipStructure: z.enum(["individual", "limited-company"]).optional(),
+  flipTaxBand: z.enum(["basic", "higher"]).optional(),
+  flipCGTAllowanceRemaining: z.coerce.number().min(0).max(3000).optional(),
+  flipCorporationTaxRate: z.coerce.number().min(0).max(40).optional(),
+  flipOtherGainsThisYear: z.coerce.number().min(0).optional(),
   // HMO
   roomCount: z.coerce.number().min(0).max(20).optional(),
   avgRoomRate: z.coerce.number().min(0).optional(),
@@ -157,6 +184,32 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     refinanceTermYears: 25,
     refinanceArrangementFeePercent: 1,
     refinanceValuationFee: 400,
+    // Flip defaults — refurb builder line items blank by default so user opts in
+    refurbKitchen: 0,
+    refurbBathroom: 0,
+    refurbFlooring: 0,
+    refurbDecoration: 0,
+    refurbElectrical: 0,
+    refurbPlumbing: 0,
+    refurbExterior: 0,
+    refurbStructural: 0,
+    // Flip holding
+    flipHoldingMonths: 6,
+    flipCouncilTaxMonthly: 150,
+    flipInsuranceMonthly: 40,
+    flipUtilitiesMonthly: 80,
+    flipServiceChargeMonthly: 0,
+    // Flip exit
+    flipAgentFeePercent: 1.5,
+    flipSaleLegalFees: 1500,
+    flipMarketingCosts: 500,
+    flipSaleMonths: 3,
+    // Flip tax — sensible individual higher-rate defaults (most BTL investors)
+    flipOwnershipStructure: "individual",
+    flipTaxBand: "higher",
+    flipCGTAllowanceRemaining: 3000,
+    flipCorporationTaxRate: 25,
+    flipOtherGainsThisYear: 0,
     roomCount: 0,
     avgRoomRate: 0,
     saMonthlySARevenue: 0,
@@ -208,6 +261,22 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const avgRoomRateValue = watch("avgRoomRate")
   const bedroomsValue = watch("bedrooms")
   const arvValue = watch("arv")
+
+  // Flip refurb builder line items — when any are set, auto-sum into refurbishmentBudget.
+  const flipOwnership       = watch("flipOwnershipStructure")
+  const flipHoldingMonths   = watch("flipHoldingMonths") || 0
+  const flipSaleMonths      = watch("flipSaleMonths") || 0
+  const refurbKitchen       = watch("refurbKitchen") || 0
+  const refurbBathroom      = watch("refurbBathroom") || 0
+  const refurbFlooring      = watch("refurbFlooring") || 0
+  const refurbDecoration    = watch("refurbDecoration") || 0
+  const refurbElectrical    = watch("refurbElectrical") || 0
+  const refurbPlumbing      = watch("refurbPlumbing") || 0
+  const refurbExterior      = watch("refurbExterior") || 0
+  const refurbStructural    = watch("refurbStructural") || 0
+  const refurbBuilderSum =
+    refurbKitchen + refurbBathroom + refurbFlooring + refurbDecoration +
+    refurbElectrical + refurbPlumbing + refurbExterior + refurbStructural
 
   // Auto-map the granular property type to the broad type used by calculations.
   useEffect(() => {
@@ -576,6 +645,240 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                     <Input type="number" className="pl-7" {...register("refinanceValuationFee")} />
                   </div>
                 </FormField>
+              </div>
+            </div>
+          )}
+
+          {/* ── Flip-specific block ──────────────────────────────── */}
+          {isFLIP && (
+            <div className="mt-2 flex flex-col gap-6 rounded-xl border border-border/60 bg-muted/20 p-4">
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-semibold text-foreground">Flip — Detailed Costs &amp; Exit</h4>
+                <Info className="size-3.5 text-muted-foreground" />
+              </div>
+
+              {/* ── Refurb cost builder ──────────────────────── */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Refurb Cost Builder
+                  </h5>
+                  {refurbBuilderSum > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setValue("refurbishmentBudget", refurbBuilderSum, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      className="text-[11px] underline text-primary hover:text-primary/80"
+                    >
+                      Apply £{refurbBuilderSum.toLocaleString()} to Refurb Budget
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Break down your refurb by trade — sum appears below and you can one-click it into the Refurb Budget field above.
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField label="Kitchen" hint="Fit-out + appliances">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="6000" {...register("refurbKitchen")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Bathroom(s)" hint="Fit-out + sanitaryware">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="4000" {...register("refurbBathroom")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Flooring" hint="Carpets / laminate / tiles">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="2500" {...register("refurbFlooring")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Decoration" hint="Paint + plastering">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="3000" {...register("refurbDecoration")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Electrical" hint="Rewire + fittings">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="3500" {...register("refurbElectrical")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Plumbing &amp; Heating" hint="New boiler / radiators / pipework">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="3000" {...register("refurbPlumbing")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Exterior" hint="Roof / windows / pointing / garden">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="2000" {...register("refurbExterior")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Structural / Extension" hint="Underpinning, loft conversion, extension">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" placeholder="0" {...register("refurbStructural")} />
+                    </div>
+                  </FormField>
+                </div>
+                <FormField label="Refurb Contingency" hint="Buffer on top of refurb budget (10–15% typical)">
+                  <div className="relative">
+                    <Input type="number" step="1" className="pr-7" {...register("refurbContingencyPercent")} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                </FormField>
+              </div>
+
+              {/* ── Holding costs during works ─────────────────── */}
+              <div className="flex flex-col gap-3">
+                <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Holding Costs (during works &amp; marketing)
+                </h5>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField label="Total Holding Months" hint="From completion to sale completion (works + on-market)">
+                    <Input type="number" {...register("flipHoldingMonths")} />
+                  </FormField>
+                  <FormField label="Council Tax (Monthly)" hint="Unoccupied / void rate — check with local council">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" {...register("flipCouncilTaxMonthly")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Unoccupied Insurance (Monthly)" hint="Specialist vacant-property cover">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" {...register("flipInsuranceMonthly")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Utilities (Monthly)" hint="Standing charges for electric / gas / water during works">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" {...register("flipUtilitiesMonthly")} />
+                    </div>
+                  </FormField>
+                  {tenureTypeValue === "leasehold" && (
+                    <FormField label="Service Charge (Monthly)" hint="Leasehold flats only — portioned monthly">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                        <Input type="number" className="pl-7" {...register("flipServiceChargeMonthly")} />
+                      </div>
+                    </FormField>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Exit strategy ─────────────────────────────── */}
+              <div className="flex flex-col gap-3">
+                <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Exit Strategy
+                </h5>
+                <p className="text-[11px] text-muted-foreground">
+                  ARV is set above — use the Auto-Calculate button to pull comps from Land Registry.
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField label="Estate Agent Fee" hint="Sale commission, typical 1–2% + VAT">
+                    <div className="relative">
+                      <Input type="number" step="0.1" className="pr-7" {...register("flipAgentFeePercent")} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                    </div>
+                  </FormField>
+                  <FormField label="Sale Legal Fees" hint="Solicitor for the sale (separate from purchase legal)">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" {...register("flipSaleLegalFees")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Marketing Costs" hint="Photography, staging, floorplans, virtual tour">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                      <Input type="number" className="pl-7" {...register("flipMarketingCosts")} />
+                    </div>
+                  </FormField>
+                  <FormField label="Time to Sell" hint="Months from listing to completion (typical 2–4)">
+                    <Input type="number" {...register("flipSaleMonths")} />
+                  </FormField>
+                </div>
+                {(flipHoldingMonths > 0 || flipSaleMonths > 0) && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Total project timeline: <strong>{flipHoldingMonths + flipSaleMonths} months</strong>{" "}
+                    ({flipHoldingMonths} holding + {flipSaleMonths} on-market)
+                  </p>
+                )}
+              </div>
+
+              {/* ── Tax & ownership ───────────────────────────── */}
+              <div className="flex flex-col gap-3">
+                <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Tax &amp; Ownership Structure
+                </h5>
+                <FormField label="Ownership" hint="Individual owners pay CGT; Ltd companies pay Corporation Tax">
+                  <Controller
+                    control={control}
+                    name="flipOwnershipStructure"
+                    render={({ field }) => (
+                      <Select value={field.value ?? "individual"} onValueChange={field.onChange}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="individual">Individual (Capital Gains Tax)</SelectItem>
+                          <SelectItem value="limited-company">Limited Company (Corporation Tax)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                </FormField>
+                {flipOwnership === "individual" && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <FormField label="Tax Band" hint="Basic: 18% CGT · Higher/Additional: 24% CGT on residential (2024/25)">
+                      <Controller
+                        control={control}
+                        name="flipTaxBand"
+                        render={({ field }) => (
+                          <Select value={field.value ?? "higher"} onValueChange={field.onChange}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="basic">Basic Rate (under £50,270 income)</SelectItem>
+                              <SelectItem value="higher">Higher / Additional Rate</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </FormField>
+                    <FormField label="CGT Allowance Remaining" hint="£3,000 total for 2024/25 — subtract any gains already used this tax year">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                        <Input type="number" className="pl-7" {...register("flipCGTAllowanceRemaining")} />
+                      </div>
+                    </FormField>
+                    <FormField label="Other Gains This Year" hint="Other taxable gains in same tax year (stocks, second property)">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                        <Input type="number" className="pl-7" {...register("flipOtherGainsThisYear")} />
+                      </div>
+                    </FormField>
+                  </div>
+                )}
+                {flipOwnership === "limited-company" && (
+                  <FormField label="Corporation Tax Rate" hint="19% up to £50k profit · 25% over £250k · marginal relief between (2024/25)">
+                    <div className="relative">
+                      <Input type="number" step="1" className="pr-7" {...register("flipCorporationTaxRate")} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                    </div>
+                  </FormField>
+                )}
               </div>
             </div>
           )}
