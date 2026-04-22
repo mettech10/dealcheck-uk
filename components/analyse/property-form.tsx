@@ -17,6 +17,7 @@ import {
 import { Loader2, Link2, Info } from "lucide-react"
 import type { PropertyFormData, PropertyTypeDetail, TenureType } from "@/lib/types"
 import { estimateRefurbCost } from "@/lib/calculations"
+import { AutoArvButton, type ArvEstimate } from "./auto-arv"
 
 const schema = z.object({
   address: z.string().min(1, "Address is required"),
@@ -205,6 +206,8 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const propertyTypeDetailValue = watch("propertyTypeDetail")
   const roomCountValue = watch("roomCount")
   const avgRoomRateValue = watch("avgRoomRate")
+  const bedroomsValue = watch("bedrooms")
+  const arvValue = watch("arv")
 
   // Auto-map the granular property type to the broad type used by calculations.
   useEffect(() => {
@@ -456,17 +459,48 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
             </FormField>
             {/* ARV — shown for BRR and Flip */}
             {(isBRR || isFLIP) && (
-              <FormField label="After Repair Value (ARV)" hint="Expected value after renovation">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
-                  <Input
-                    type="number"
-                    className="pl-7"
-                    placeholder="220000"
-                    {...register("arv")}
+              <>
+                <FormField label="After Repair Value (ARV)" hint="Expected value after renovation">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                    <Input
+                      type="number"
+                      className="pl-7"
+                      placeholder="220000"
+                      {...register("arv")}
+                    />
+                  </div>
+                </FormField>
+                {/*
+                  Auto-ARV estimator — queries Land Registry + EPC comps
+                  via /api/arv/calculate. Full-width because the comps
+                  table + three scenario tiles need horizontal room.
+                */}
+                <div className="sm:col-span-2">
+                  <AutoArvButton
+                    postcode={postcodeValue || ""}
+                    propertyType={propertyTypeValue}
+                    propertyTypeDetail={propertyTypeDetailValue}
+                    bedrooms={bedroomsValue}
+                    sqft={sqftValue}
+                    currentArv={arvValue}
+                    onSelectArv={(val) =>
+                      setValue("arv", val, { shouldDirty: true, shouldValidate: true })
+                    }
+                    onEstimate={(e: ArvEstimate | null) => {
+                      // Stash the auto-estimate on a hidden-form field so
+                      // downstream sensitivity sliders (Section 5) can
+                      // centre on it. Purely additive — other strategies
+                      // never read it.
+                      if (e && typeof e.midARV === "number") {
+                        setValue("arvAutoMid" as never, e.midARV as never, {
+                          shouldDirty: false,
+                        })
+                      }
+                    }}
                   />
                 </div>
-              </FormField>
+              </>
             )}
             {/* ARV Basis — only BRRRR */}
             {isBRR && (
