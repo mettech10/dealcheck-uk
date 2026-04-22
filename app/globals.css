@@ -214,4 +214,56 @@
     page-break-inside: avoid;
     page-break-after: auto;
   }
+
+  /* Flip-report mode — same pattern as BRRRR, isolates .print-flip-root */
+  body.print-flip * {
+    visibility: hidden;
+  }
+  body.print-flip .print-flip-root,
+  body.print-flip .print-flip-root * {
+    visibility: visible;
+  }
+  body.print-flip .print-flip-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  body.print-flip .print-flip-root .no-print,
+  body.print-flip .print-flip-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body.print-flip .print-flip-root,
+  body.print-flip .print-flip-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.print-flip .print-flip-root [class*="card"],
+  body.print-flip .print-flip-root .rounded-md,
+  body.print-flip .print-flip-root .rounded-lg {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-flip .print-flip-root .text-muted-foreground,
+  body.print-flip .print-flip-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-flip .print-flip-root h1,
+  body.print-flip .print-flip-root h2,
+  body.print-flip .print-flip-root h3 {
+    page-break-after: avoid;
+  }
+  body.print-flip .print-flip-root table {
+    page-break-inside: auto;
+  }
+  body.print-flip .print-flip-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
 }
