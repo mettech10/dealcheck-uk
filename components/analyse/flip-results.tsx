@@ -180,13 +180,66 @@ export function FlipResults({ data, results }: FlipResultsProps) {
         </Button>
       </div>
 
-      {/* ── Print-only header (visible only in print) ─────────────── */}
-      <div className="hidden print:block print-header">
-        <h1 className="text-2xl font-bold">Flip Deal Analysis Report</h1>
-        <p className="text-sm text-muted-foreground">
-          {data.address || "Property"} — {data.postcode} ·{" "}
-          {new Date().toLocaleDateString("en-GB")}
-        </p>
+      {/* ── Print-only cover / executive summary ──────────────────── */}
+      <div className="hidden print:block print-header space-y-3">
+        <div>
+          <h1 className="text-2xl font-bold">Flip Deal Pack</h1>
+          <p className="text-sm text-muted-foreground">
+            {data.address || "Property"} — {data.postcode} ·{" "}
+            {new Date().toLocaleDateString("en-GB")}
+          </p>
+        </div>
+        <div className="rounded-md border p-3">
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide">
+            Executive Summary
+          </h2>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Purchase price</span>
+              <span>{formatCurrency(data.purchasePrice)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">After Repair Value</span>
+              <span>{formatCurrency(arvOverride)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Refurb (incl. contingency)</span>
+              <span>{formatCurrency(refurbTotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Total capital invested</span>
+              <span>{formatCurrency(capitalInvested)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Pre-tax profit</span>
+              <span>{formatCurrency(preTax)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                {taxType === "ct" ? "Corporation Tax" : "Capital Gains Tax"}
+              </span>
+              <span>{formatCurrency(taxLiability)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Take-home (post-tax)</span>
+              <span>{formatCurrency(postTax)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Post-tax ROI</span>
+              <span>{postTaxROI.toFixed(1)}%</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Project duration</span>
+              <span>{projectMonths} months</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Deal score</span>
+              <span>
+                {score}/100 — {scoreLabel}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ── 1. Headline Metrics (8 tiles) ──────────────────────────── */}
@@ -731,6 +784,120 @@ export function FlipResults({ data, results }: FlipResultsProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Print-only: Assumptions & Methodology ──────────────────── */}
+      <div className="hidden print:block">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Assumptions &amp; Methodology</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-xs leading-relaxed">
+            <div>
+              <strong>Stamp Duty Land Tax (SDLT)</strong> — calculated under
+              2024/25 rules for{" "}
+              {data.buyerType === "additional"
+                ? "additional / second-home property (5% surcharge across all bands)"
+                : "first-time buyer (relief up to £625k)"}
+              . Figures shown are the statutory amount due at completion,
+              not an estimate.
+            </div>
+            <div>
+              <strong>Refurbishment</strong> — base budget of{" "}
+              {formatCurrency(refurbBudget)} plus{" "}
+              {data.refurbContingencyPercent ?? 10}% contingency (
+              {formatCurrency(refurbContingency)}). Line-item breakdown
+              available in the Refurb Cost Builder on the input form.
+            </div>
+            <div>
+              <strong>Holding costs</strong> — {formatCurrency(monthlyHolding)}
+              /month (council tax + unoccupied insurance + utilities
+              {(data.flipServiceChargeMonthly ?? 0) > 0 ? " + service charge" : ""}
+              ) across {r.flipHoldingMonths ?? 0} months held.
+            </div>
+            <div>
+              <strong>Finance</strong> —{" "}
+              {data.purchaseType === "bridging-loan" ? (
+                <>
+                  Bridging loan: {data.bridgingLTV ?? 70}% LTV @{" "}
+                  {(data.bridgingMonthlyRate ?? 0.75).toFixed(2)}% per month
+                  over {r.flipHoldingMonths ?? 0} months,
+                  {(data.bridgingArrangementFee ?? 1).toFixed(1)}% arrangement
+                  + {(data.bridgingExitFee ?? 0.5).toFixed(1)}% exit fee.
+                </>
+              ) : data.purchaseType === "mortgage" ? (
+                <>
+                  Buy-to-let style mortgage at{" "}
+                  {data.interestRate.toFixed(2)}% ({data.mortgageType}) over
+                  the {r.flipHoldingMonths ?? 0}-month hold — assumes
+                  interest-only economics during the flip even if a
+                  repayment mortgage is held post-sale.
+                </>
+              ) : (
+                "Cash purchase — no finance costs."
+              )}
+            </div>
+            <div>
+              <strong>Exit</strong> — estate agent{" "}
+              {(data.flipAgentFeePercent ?? 1.5).toFixed(1)}% of ARV ={" "}
+              {formatCurrency(agentFee)}, plus{" "}
+              {formatCurrency(saleLegal)} sale legal +{" "}
+              {formatCurrency(marketing)} marketing. Assumes typical UK
+              no-VAT agent quote — confirm inclusive of VAT with
+              individual agents.
+            </div>
+            <div>
+              <strong>Tax</strong> —{" "}
+              {taxType === "ct" ? (
+                <>
+                  Limited-company basis. Corporation Tax at{" "}
+                  {r.flipTaxRateUsed}% on the full pre-tax profit (finance
+                  interest and holding costs are CT-deductible). Does not
+                  model marginal relief bands precisely between £50k and
+                  £250k.
+                </>
+              ) : (
+                <>
+                  Individual / CGT basis, 2024/25 rates. Residential
+                  property gains taxed at {r.flipTaxRateUsed}%
+                  {data.flipTaxBand === "basic" ? " (basic rate)" : " (higher rate)"}
+                  . Annual exempt amount of £3,000 applied, reduced by any
+                  other gains declared this tax year (
+                  {formatCurrency(data.flipOtherGainsThisYear ?? 0)}).
+                  Holding costs and finance interest are not CGT-deductible
+                  — HMRC treats those as revenue items only relevant if the
+                  activity amounts to a trade.
+                </>
+              )}
+            </div>
+            <div>
+              <strong>70% rule</strong> — <em>Simple</em>: max purchase =
+              ARV × 0.70 − refurb total. <em>Strict</em>: max purchase = ARV
+              × 0.70 − every non-purchase cost (SDLT, legal, survey,
+              refurb, holding, finance, exit). Passing strict means a 30%
+              margin survives all realistic costs.
+            </div>
+            <div>
+              <strong>Deal score</strong> — 5-axis weighted: profit margin
+              vs ARV (25), post-tax ROI (25), 70% rule (20, strict = full /
+              simple = half), refurb uplift multiplier (15), timeline risk
+              (15).
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="mt-4">
+          <CardContent className="py-4 text-[10px] leading-relaxed text-muted-foreground">
+            <strong>Disclaimer:</strong> This report is for investor
+            decision support and is not tax, legal, or investment advice.
+            Numbers depend on user inputs and UK tax rules as of the issue
+            date shown on the cover. Confirm SDLT, CGT/CT liability, and
+            financing quotes with a qualified professional before
+            committing capital. ARV estimates derived from Land Registry
+            sold comparables + EPC floor areas are directional — always
+            verify with a RICS valuation for formal lender purposes.
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
