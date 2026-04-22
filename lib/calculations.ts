@@ -345,72 +345,268 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   }
 
   // ── Flip: Buy, refurbish, sell for profit ────────────────────────────
+  // 7-phase model: Acquisition → Refurb → Holding → Finance → Exit → Tax → ROI
   if (data.investmentType === "flip") {
     const arv = data.arv || data.purchasePrice // selling price
-    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(data.purchasePrice, data.buyerType)
+    const { total: sdltAmount, breakdown: sdltBreakdown } =
+      calculateSDLT(data.purchasePrice, data.buyerType)
 
-    // Finance costs (bridging or mortgage during the hold period)
-    let financeCosts = 0
-    let bridgingDetails = undefined
+    // ── Phase 1 — Acquisition ───────────────────────────────────
+    const flipAcquisitionCost = Math.round(
+      data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts,
+    )
+
+    // ── Phase 2 — Refurb (budget + contingency) ──────────────────
+    const contingencyPct = Math.min(
+      Math.max(data.refurbContingencyPercent ?? 10, 0),
+      50,
+    )
+    const flipRefurbBudget = Math.round(data.refurbishmentBudget || 0)
+    const flipRefurbContingency = Math.round(
+      flipRefurbBudget * (contingencyPct / 100),
+    )
+    const flipRefurbTotal = flipRefurbBudget + flipRefurbContingency
+
+    // ── Phase 3 — Holding costs (during works + sale) ────────────
+    const flipHoldingMonths = Math.min(
+      Math.max(data.flipHoldingMonths ?? 6, 0),
+      36,
+    )
+    const flipMonthlyHoldingCost = Math.round(
+      (data.flipCouncilTaxMonthly ?? 0) +
+        (data.flipInsuranceMonthly ?? 0) +
+        (data.flipUtilitiesMonthly ?? 0) +
+        (data.flipServiceChargeMonthly ?? 0),
+    )
+    const flipHoldingCostsTotal = Math.round(
+      flipMonthlyHoldingCost * flipHoldingMonths,
+    )
+
+    // ── Phase 4 — Finance costs over full holding period ─────────
+    let flipFinanceTotal = 0
+    let bridgingDetails: CalculationResults["bridgingLoanDetails"] = undefined
+    const deposit =
+      data.purchaseType === "cash"
+        ? data.purchasePrice
+        : Math.round(data.purchasePrice * (data.depositPercentage / 100))
+    const loanAmount =
+      data.purchaseType === "cash" ? 0 : data.purchasePrice - deposit
+
     if (data.purchaseType === "bridging-loan") {
-      const bridgingLoanAmt = data.purchasePrice - Math.round(data.purchasePrice * (data.depositPercentage / 100))
       const bRate = data.bridgingMonthlyRate || 0.75
-      const bTerm = data.bridgingTermMonths || 12
-      const result = calculateBridgingLoan(bridgingLoanAmt, bRate, bTerm, data.bridgingArrangementFee || 1, data.bridgingExitFee || 0.5, true)
-      financeCosts = result.totalCost
+      // Use flipHoldingMonths over the legacy bridgingTermMonths — the
+      // flip form drives the term so numbers stay coherent.
+      const bTerm = flipHoldingMonths || data.bridgingTermMonths || 12
+      const result = calculateBridgingLoan(
+        loanAmount,
+        bRate,
+        bTerm,
+        data.bridgingArrangementFee || 1,
+        data.bridgingExitFee || 0.5,
+        true,
+      )
+      flipFinanceTotal = result.totalCost
       bridgingDetails = {
-        loanAmount: bridgingLoanAmt,
-        monthlyInterestRate: bRate, termMonths: bTerm,
-        monthlyInterest: result.monthlyInterest, totalInterest: result.totalInterest,
-        arrangementFee: result.arrangementFee, exitFee: result.exitFee,
-        totalCost: result.totalCost, totalRepayment: result.totalRepayment, apr: result.apr,
+        loanAmount,
+        monthlyInterestRate: bRate,
+        termMonths: bTerm,
+        monthlyInterest: result.monthlyInterest,
+        totalInterest: result.totalInterest,
+        arrangementFee: result.arrangementFee,
+        exitFee: result.exitFee,
+        totalCost: result.totalCost,
+        totalRepayment: result.totalRepayment,
+        apr: result.apr,
       }
     } else if (data.purchaseType === "mortgage") {
-      const mortAmt = data.purchasePrice - Math.round(data.purchasePrice * (data.depositPercentage / 100))
-      const holdMonths = data.bridgingTermMonths || 6 // how long to hold before selling
-      const monthlyPayment = calculateMortgagePayment(mortAmt, data.interestRate, data.mortgageTerm, data.mortgageType)
-      financeCosts = monthlyPayment * holdMonths
+      const monthly = calculateMortgagePayment(
+        loanAmount,
+        data.interestRate,
+        data.mortgageTerm,
+        data.mortgageType,
+      )
+      flipFinanceTotal = Math.round(monthly * flipHoldingMonths)
     }
 
-    // Selling costs: estate agent (~1.5% + VAT = ~1.8%) + selling legal (~£1,000)
-    const agentFee = Math.round(arv * 0.018)
-    const sellingLegal = 1000
-    const sellingCosts = agentFee + sellingLegal
+    // ── Phase 5 — Exit costs ─────────────────────────────────────
+    const agentPct = Math.max(data.flipAgentFeePercent ?? 1.5, 0)
+    const flipAgentFee = Math.round(arv * (agentPct / 100))
+    const flipSaleLegal = Math.max(data.flipSaleLegalFees ?? 1500, 0)
+    const flipMarketingCosts = Math.max(data.flipMarketingCosts ?? 500, 0)
+    const flipExitCostsTotal =
+      flipAgentFee + flipSaleLegal + flipMarketingCosts
 
-    // Total capital required (what the investor puts in)
-    const depositAmount = data.purchaseType === "cash" ? data.purchasePrice
-      : Math.round(data.purchasePrice * (data.depositPercentage / 100))
-    const totalCapitalRequired = depositAmount + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget
-    const totalPurchaseCost = data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts + data.refurbishmentBudget
+    // ── Phase 6 — Profit before tax ──────────────────────────────
+    const flipGrossProfit = arv - data.purchasePrice - flipRefurbBudget
+    const flipPreTaxProfit = Math.round(
+      arv -
+        flipAcquisitionCost -
+        flipRefurbTotal -
+        flipHoldingCostsTotal -
+        flipFinanceTotal -
+        flipExitCostsTotal,
+    )
 
-    // Profit calculation
-    const grossProfit = arv - data.purchasePrice - data.refurbishmentBudget
-    const netProfit = arv - data.purchasePrice - data.refurbishmentBudget - sdltAmount - data.legalFees - data.surveyCosts - sellingCosts - financeCosts
-    const flipROI = totalCapitalRequired > 0 ? Math.round((netProfit / totalCapitalRequired) * 10000) / 100 : 0
+    // ── Phase 7 — Tax (CGT for individual, CT for Ltd) ───────────
+    const ownership = data.flipOwnershipStructure ?? "individual"
+    let flipTaxType: "cgt" | "ct" = "cgt"
+    let flipTaxableGain = 0
+    let flipTaxLiability = 0
+    let flipTaxRateUsed = 0
+
+    if (ownership === "limited-company") {
+      flipTaxType = "ct"
+      const ctRate = Math.min(
+        Math.max(data.flipCorporationTaxRate ?? 25, 0),
+        40,
+      )
+      flipTaxRateUsed = ctRate
+      // Ltd: all costs (including finance interest) are tax-deductible →
+      // taxable profit == pre-tax profit.
+      flipTaxableGain = Math.max(0, flipPreTaxProfit)
+      flipTaxLiability = Math.round(flipTaxableGain * (ctRate / 100))
+    } else {
+      flipTaxType = "cgt"
+      // CGT basis: gain = ARV - allowable cost base. Holding (council tax,
+      // utilities, insurance) and finance interest are NOT allowable for
+      // CGT (those are revenue-style costs, only relevant if HMRC treats
+      // activity as trading income). So we exclude them from cost base.
+      const costBase =
+        data.purchasePrice +
+        sdltAmount +
+        data.legalFees +
+        data.surveyCosts +
+        flipRefurbTotal +
+        flipExitCostsTotal
+      const rawGain = Math.max(0, arv - costBase)
+      const allowance = Math.min(
+        Math.max(data.flipCGTAllowanceRemaining ?? 3000, 0),
+        3000,
+      )
+      const otherGains = Math.max(data.flipOtherGainsThisYear ?? 0, 0)
+      // Other gains eat into the allowance first.
+      const effectiveAllowance = Math.max(0, allowance - otherGains)
+      flipTaxableGain = Math.round(Math.max(0, rawGain - effectiveAllowance))
+      // 2024/25 residential CGT: basic 18%, higher/additional 24%.
+      flipTaxRateUsed = data.flipTaxBand === "basic" ? 18 : 24
+      flipTaxLiability = Math.round(flipTaxableGain * (flipTaxRateUsed / 100))
+    }
+
+    const flipPostTaxProfit = flipPreTaxProfit - flipTaxLiability
+
+    // ── Phase 8 — Capital invested + ROI ─────────────────────────
+    // Cash actually out of the investor's pocket (not borrowed).
+    const flipTotalCapitalInvested = Math.round(
+      deposit +
+        sdltAmount +
+        data.legalFees +
+        data.surveyCosts +
+        flipRefurbTotal +
+        flipHoldingCostsTotal +
+        flipFinanceTotal +
+        flipExitCostsTotal,
+    )
+    const flipPostTaxROI =
+      flipTotalCapitalInvested > 0
+        ? Math.round((flipPostTaxProfit / flipTotalCapitalInvested) * 10000) /
+          100
+        : 0
+    const flipROI =
+      flipTotalCapitalInvested > 0
+        ? Math.round((flipPreTaxProfit / flipTotalCapitalInvested) * 10000) /
+          100
+        : 0
+
+    // ── Phase 9 — 70% rule & MAO ─────────────────────────────────
+    // Simple: max purchase = (ARV × 0.70) - refurb total
+    const flipSimpleMAO = Math.round(arv * 0.7 - flipRefurbTotal)
+    // Strict: subtract every non-purchase cost so a pass truly means 30% margin.
+    const nonPurchaseCosts =
+      sdltAmount +
+      data.legalFees +
+      data.surveyCosts +
+      flipRefurbTotal +
+      flipHoldingCostsTotal +
+      flipFinanceTotal +
+      flipExitCostsTotal
+    const flipStrictMAO = Math.round(arv * 0.7 - nonPurchaseCosts)
+    const flipPassesSimple70 = data.purchasePrice <= flipSimpleMAO
+    const flipPassesStrict70 = data.purchasePrice <= flipStrictMAO
+    const flipPercentOfARV =
+      arv > 0 ? Math.round((data.purchasePrice / arv) * 10000) / 100 : 0
+
+    // ── Phase 10 — Deal score ────────────────────────────────────
+    const scoreInput: FlipDealScoreInput = {
+      preTaxProfit: flipPreTaxProfit,
+      postTaxROI: flipPostTaxROI,
+      arv,
+      purchasePrice: data.purchasePrice,
+      passesSimple70: flipPassesSimple70,
+      passesStrict70: flipPassesStrict70,
+      refurbBudget: flipRefurbBudget,
+      holdingMonths: flipHoldingMonths,
+    }
+    const score = calculateFlipDealScore(scoreInput)
+
+    // Legacy compat — echo the original flip fields so existing Results UI
+    // continues to render while Section 5 builds the new page.
+    const sellingCostsLegacy = flipExitCostsTotal
 
     return {
-      sdltAmount, sdltBreakdown,
-      totalPurchaseCost,
-      totalCapitalRequired,
-      depositAmount,
-      mortgageAmount: data.purchaseType === "cash" ? 0 : data.purchasePrice - depositAmount,
+      sdltAmount,
+      sdltBreakdown,
+      totalPurchaseCost: flipAcquisitionCost + flipRefurbBudget,
+      totalCapitalRequired: flipTotalCapitalInvested,
+      depositAmount: deposit,
+      mortgageAmount: loanAmount,
       monthlyMortgagePayment: 0,
       annualMortgageCost: 0,
       bridgingLoanDetails: bridgingDetails,
-      grossYield: 0, // not applicable for flip
+      grossYield: 0,
       netYield: 0,
       monthlyIncome: 0,
       monthlyExpenses: 0,
       monthlyCashFlow: 0,
-      annualCashFlow: netProfit, // use annualCashFlow to show the profit figure
-      cashOnCashReturn: flipROI,
+      // Keep annualCashFlow = post-tax profit so existing BTL-style UI
+      // stays numerically correct on Flip dashboards.
+      annualCashFlow: flipPostTaxProfit,
+      cashOnCashReturn: flipPostTaxROI,
       annualRunningCosts: 0,
       monthlyRunningCosts: 0,
-      flipGrossProfit: grossProfit,
-      flipSellingCosts: sellingCosts,
-      flipFinanceCosts: financeCosts,
-      flipNetProfit: netProfit,
+      // Legacy
+      flipGrossProfit,
+      flipSellingCosts: sellingCostsLegacy,
+      flipFinanceCosts: flipFinanceTotal,
+      flipNetProfit: flipPreTaxProfit,
       flipROI,
+      // New phase breakdown
+      flipAcquisitionCost,
+      flipRefurbBudget,
+      flipRefurbContingency,
+      flipRefurbTotal,
+      flipHoldingMonths,
+      flipMonthlyHoldingCost,
+      flipHoldingCostsTotal,
+      flipAgentFee,
+      flipMarketingCosts,
+      flipExitCostsTotal,
+      flipFinanceTotal,
+      flipPreTaxProfit,
+      flipTaxType,
+      flipTaxableGain,
+      flipTaxLiability,
+      flipTaxRateUsed,
+      flipPostTaxProfit,
+      flipPostTaxROI,
+      flipTotalCapitalInvested,
+      flipSimpleMAO,
+      flipStrictMAO,
+      flipPassesSimple70,
+      flipPassesStrict70,
+      flipPercentOfARV,
+      flipTotalProjectMonths: flipHoldingMonths,
+      flipDealScore: score.total,
+      flipDealScoreLabel: score.label,
       fiveYearProjection: [],
     }
   }
@@ -882,6 +1078,166 @@ export function calculateBRRRRDealScore(
         note: moneyLeft <= 500
           ? "Perfect capital recycle"
           : `${roceValue.toFixed(1)}% return on money left`,
+      },
+    },
+  }
+}
+
+/**
+ * Flip-specific deal score (0-100) across 5 weighted axes:
+ *
+ *   Profit Margin      (25 pts) — pre-tax profit / ARV (target 20-25%)
+ *   Post-tax ROI       (25 pts) — cash-on-cash after tax
+ *   70% Rule           (20 pts) — strict pass = full, simple pass = half
+ *   Refurb Uplift      (15 pts) — (ARV - purchase) / refurb
+ *   Timeline Risk      (15 pts) — shorter project = lower risk
+ *
+ * Short label for the UI: Excellent / Strong / Decent / Marginal / Poor.
+ */
+export interface FlipDealScoreInput {
+  preTaxProfit: number
+  postTaxROI: number
+  arv: number
+  purchasePrice: number
+  passesSimple70: boolean
+  passesStrict70: boolean
+  refurbBudget: number
+  holdingMonths: number
+}
+
+export interface FlipDealScore {
+  total: number
+  label: "Excellent" | "Strong" | "Decent" | "Marginal" | "Poor"
+  breakdown: {
+    profitMargin:  { score: number; max: 25; value: number; note: string }
+    postTaxROI:    { score: number; max: 25; value: number; note: string }
+    seventyRule:   { score: number; max: 20; value: number; note: string }
+    refurbUplift:  { score: number; max: 15; value: number; note: string }
+    timelineRisk:  { score: number; max: 15; value: number; note: string }
+  }
+}
+
+export function calculateFlipDealScore(
+  input: FlipDealScoreInput,
+): FlipDealScore {
+  // ── Axis 1 — Profit margin vs ARV (25 pts) ──────────────────────────
+  //   ≥ 25%    → 25
+  //   20-25%   → 18-25
+  //   15-20%   → 12-18
+  //   10-15%   →  6-12
+  //   5-10%    →  2-6
+  //   0-5%     →  0-2
+  const margin =
+    input.arv > 0 ? (input.preTaxProfit / input.arv) * 100 : 0
+  let marginScore: number
+  if (margin >= 25)      marginScore = 25
+  else if (margin >= 20) marginScore = Math.round(18 + ((margin - 20) / 5) * 7)
+  else if (margin >= 15) marginScore = Math.round(12 + ((margin - 15) / 5) * 6)
+  else if (margin >= 10) marginScore = Math.round(6  + ((margin - 10) / 5) * 6)
+  else if (margin >= 5)  marginScore = Math.round(2  + ((margin - 5)  / 5) * 4)
+  else if (margin >= 0)  marginScore = Math.round((margin / 5) * 2)
+  else                   marginScore = 0
+
+  // ── Axis 2 — Post-tax ROI (25 pts) ─────────────────────────────────
+  //   ≥ 30%    → 25
+  //   20-30%   → 18-25
+  //   15-20%   → 12-18
+  //   10-15%   →  6-12
+  //   5-10%    →  2-6
+  //   < 5%     →  0-2
+  const roi = input.postTaxROI
+  let roiScore: number
+  if (roi >= 30)      roiScore = 25
+  else if (roi >= 20) roiScore = Math.round(18 + ((roi - 20) / 10) * 7)
+  else if (roi >= 15) roiScore = Math.round(12 + ((roi - 15) / 5)  * 6)
+  else if (roi >= 10) roiScore = Math.round(6  + ((roi - 10) / 5)  * 6)
+  else if (roi >= 5)  roiScore = Math.round(2  + ((roi - 5)  / 5)  * 4)
+  else if (roi >= 0)  roiScore = Math.round((roi / 5) * 2)
+  else                roiScore = 0
+
+  // ── Axis 3 — 70% rule (20 pts) ─────────────────────────────────────
+  // Strict pass (purchase ≤ ARV×0.7 - ALL non-purchase costs) = full 20.
+  // Simple pass only (purchase ≤ ARV×0.7 - refurb) = 10.
+  // Fails both = 0.
+  const seventyScore = input.passesStrict70
+    ? 20
+    : input.passesSimple70
+      ? 10
+      : 0
+  const seventyValue = input.passesStrict70 ? 1 : input.passesSimple70 ? 0.5 : 0
+
+  // ── Axis 4 — Refurb uplift (15 pts) ────────────────────────────────
+  // (ARV - purchase) / refurbBudget
+  //   ≥ 2.5x   → 15
+  //   1.5-2.5  → 9-15
+  //   1.0-1.5  → 4-9
+  //   0.5-1.0  → 1-4
+  //   < 0.5    → 0
+  const uplift =
+    input.refurbBudget > 0
+      ? (input.arv - input.purchasePrice) / input.refurbBudget
+      : 0
+  let upliftScore: number
+  if (uplift >= 2.5)      upliftScore = 15
+  else if (uplift >= 1.5) upliftScore = Math.round(9 + ((uplift - 1.5) / 1.0) * 6)
+  else if (uplift >= 1.0) upliftScore = Math.round(4 + ((uplift - 1.0) / 0.5) * 5)
+  else if (uplift >= 0.5) upliftScore = Math.round(1 + ((uplift - 0.5) / 0.5) * 3)
+  else                    upliftScore = 0
+
+  // ── Axis 5 — Timeline risk (15 pts) ────────────────────────────────
+  // Shorter project = lower carry-cost / market risk.
+  //   ≤ 4mo    → 15
+  //   5-6mo    → 12-15
+  //   7-9mo    →  8-12
+  //   10-12mo  →  4-8
+  //   13-18mo  →  1-4
+  //   ≥ 19mo   →  0
+  const months = input.holdingMonths
+  let timelineScore: number
+  if (months <= 4)        timelineScore = 15
+  else if (months <= 6)   timelineScore = Math.round(12 + ((6 - months) / 2) * 3)
+  else if (months <= 9)   timelineScore = Math.round(8  + ((9 - months) / 3) * 4)
+  else if (months <= 12)  timelineScore = Math.round(4  + ((12 - months) / 3) * 4)
+  else if (months <= 18)  timelineScore = Math.round(1  + ((18 - months) / 6) * 3)
+  else                    timelineScore = 0
+
+  const total =
+    marginScore + roiScore + seventyScore + upliftScore + timelineScore
+
+  const label: FlipDealScore["label"] =
+    total >= 85 ? "Excellent" :
+    total >= 70 ? "Strong"    :
+    total >= 50 ? "Decent"    :
+    total >= 30 ? "Marginal"  :
+                  "Poor"
+
+  return {
+    total: Math.min(100, Math.max(0, total)),
+    label,
+    breakdown: {
+      profitMargin: {
+        score: marginScore, max: 25, value: margin,
+        note: `${margin.toFixed(1)}% margin vs ARV`,
+      },
+      postTaxROI: {
+        score: roiScore, max: 25, value: roi,
+        note: `${roi.toFixed(1)}% ROI after tax`,
+      },
+      seventyRule: {
+        score: seventyScore, max: 20, value: seventyValue,
+        note: input.passesStrict70
+          ? "Passes strict 70% rule"
+          : input.passesSimple70
+            ? "Passes simple 70% rule only"
+            : "Fails 70% rule",
+      },
+      refurbUplift: {
+        score: upliftScore, max: 15, value: uplift,
+        note: `${uplift.toFixed(2)}× uplift on refurb`,
+      },
+      timelineRisk: {
+        score: timelineScore, max: 15, value: months,
+        note: `${months}-month project`,
       },
     },
   }

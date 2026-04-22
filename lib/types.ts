@@ -199,12 +199,49 @@ export interface CalculationResults {
   brrrrRefurbUpliftRatio?: number    // (ARV - purchase) / refurbBudget
   brrrrPostRefinanceRate?: number    // echo of refinance rate used
 
-  // Flip-specific
+  // Flip-specific (legacy summary — kept for back-compat with existing UI)
   flipGrossProfit?: number           // ARV - purchase - refurb
   flipSellingCosts?: number          // agent fees + selling legal
   flipFinanceCosts?: number          // bridging interest + fees
-  flipNetProfit?: number             // gross profit - selling costs - finance costs - SDLT - legal - survey
-  flipROI?: number                   // net profit / total capital invested (%)
+  flipNetProfit?: number             // pre-tax net: ARV - everything
+  flipROI?: number                   // pre-tax ROI: net profit / total capital invested (%)
+
+  // Flip phase breakdown — populated by Section 4 calcs.
+  flipAcquisitionCost?: number       // purchase + SDLT + legal + survey
+  flipRefurbBudget?: number          // raw refurb (matches refurbishmentBudget)
+  flipRefurbContingency?: number     // refurb × contingency %
+  flipRefurbTotal?: number           // refurb + contingency
+  flipHoldingMonths?: number         // total months held
+  flipMonthlyHoldingCost?: number    // council + insurance + utilities + service
+  flipHoldingCostsTotal?: number     // monthly × months
+  flipAgentFee?: number              // ARV × agent %
+  flipMarketingCosts?: number        // echo of form value
+  flipExitCostsTotal?: number        // agent + sale legal + marketing
+  flipFinanceTotal?: number          // bridging totalCost or mortgage × months
+
+  // Profit + tax
+  flipPreTaxProfit?: number          // ARV - all costs (acq + refurb + holding + finance + exit)
+  flipTaxType?: "cgt" | "ct"         // which tax regime applies
+  flipTaxableGain?: number           // gain after cost base + allowance
+  flipTaxLiability?: number          // CGT or CT payable
+  flipTaxRateUsed?: number           // 18 / 24 / 19 / 25 etc
+  flipPostTaxProfit?: number         // pre-tax - tax
+  flipPostTaxROI?: number            // post-tax profit / capital invested (%)
+  flipTotalCapitalInvested?: number  // actual cash outlay
+
+  // 70% rule + MAO
+  flipSimpleMAO?: number             // ARV × 0.70 - (refurb + contingency)
+  flipStrictMAO?: number             // ARV × 0.70 - all non-purchase costs
+  flipPassesSimple70?: boolean       // purchase ≤ simple MAO
+  flipPassesStrict70?: boolean       // purchase ≤ strict MAO
+  flipPercentOfARV?: number          // purchase / ARV (%) — compare to 70
+
+  // Timeline
+  flipTotalProjectMonths?: number    // flipHoldingMonths (already includes sale)
+
+  // Deal score
+  flipDealScore?: number             // 0-100
+  flipDealScoreLabel?: string        // "Excellent" etc.
 
   // Projections
   fiveYearProjection: YearProjection[]
