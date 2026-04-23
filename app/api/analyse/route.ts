@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { checkArticle4 } from "@/lib/article4-service"
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -191,6 +193,57 @@ export async function POST(req: Request) {
       } = await supabase.auth.getUser()
       const userEmail = user?.email || ""
 
+      // Article 4 engine lookup — runs server-side against Supabase so the
+      // Flask AI prompt gets the same 3-state view the result card shows.
+      // Fail-soft: if the table is missing or the postcode is unparseable
+      // we forward a minimal "unknown" shape, never block analysis.
+      let article4Engine:
+        | {
+            isArticle4: boolean
+            status: "active" | "proposed" | "none" | "unknown"
+            warningLevel: "red" | "amber" | "none"
+            summary: string
+            district: string | null
+            sector: string | null
+            areas: Array<{
+              councilName: string
+              directionType: string | null
+              effectiveDate: string | null
+              consultationEndDate: string | null
+              impactDescription: string | null
+              councilPlanningUrl: string | null
+              dataSource: string | null
+              status: string
+            }>
+          }
+        | undefined
+      try {
+        if (propertyData?.postcode) {
+          const admin = createAdminClient()
+          const a4 = await checkArticle4(admin, propertyData.postcode)
+          article4Engine = {
+            isArticle4: a4.isArticle4,
+            status: a4.status,
+            warningLevel: a4.warningLevel,
+            summary: a4.summary,
+            district: a4.district,
+            sector: a4.sector,
+            areas: a4.areas.map((a) => ({
+              councilName: a.councilName,
+              directionType: a.directionType,
+              effectiveDate: a.effectiveDate,
+              consultationEndDate: a.consultationEndDate,
+              impactDescription: a.impactDescription,
+              councilPlanningUrl: a.councilPlanningUrl,
+              dataSource: a.dataSource,
+              status: a.status,
+            })),
+          }
+        }
+      } catch (err) {
+        console.warn("[api/analyse] article4 engine lookup failed:", err)
+      }
+
       // Flask /ai-analyze expects flat camelCase property fields directly in
       // the request body, not nested under propertyData.
       // Also forward the frontend's calculationResults so the backend can use
@@ -262,6 +315,11 @@ export async function POST(req: Request) {
                   arv:                  propertyData?.arv,
                 }
               : undefined,
+          // Article 4 engine snapshot — threaded into the Flask AI prompt
+          // so HMO analyses reference the Metalyzi Supabase dataset
+          // (council, direction type, effective date, impact, source) and
+          // not just the Flask-side hardcoded fallback.
+          _article4Engine: article4Engine,
           // BRRRR-specific phase breakdown + 5-axis deal score. Flask AI
           // prompt consumes these to give BRR-tailored strengths/risks,
           // instead of generic BTL commentary.
