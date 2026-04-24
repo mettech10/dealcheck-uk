@@ -13,6 +13,50 @@ export type InvestmentType = "btl" | "brr" | "hmo" | "flip" | "r2sa" | "developm
 export type PropertyCondition = "excellent" | "good" | "cosmetic" | "full-refurb" | "structural"
 export type PurchaseType = "mortgage" | "bridging-loan" | "cash"
 
+// ── Property Development (new-build / conversion) ─────────────────────
+export type DevSiteType =
+  | "greenfield"
+  | "brownfield"
+  | "existing-building"
+  | "demolition-and-build"
+  | "land-only"
+export type DevPlanningStatus =
+  | "no-planning"
+  | "pre-application"
+  | "outline"
+  | "full-planning"
+  | "permitted-development"
+  | "lapsed"
+export type DevConstructionType =
+  | "new-build-traditional"
+  | "new-build-timber-frame"
+  | "new-build-modular"
+  | "conversion"
+  | "extension"
+  | "refurbishment"
+export type DevUnitType =
+  | "studio"
+  | "1-bed-flat"
+  | "2-bed-flat"
+  | "3-bed-flat"
+  | "1-bed-house"
+  | "2-bed-house"
+  | "3-bed-house"
+  | "4-bed-house"
+  | "5-bed-house"
+  | "commercial"
+  | "other"
+export type SDLTRateType = "residential" | "non-residential" | "mixed-use"
+
+/** A single unit within a scheme's unit mix. Used to drive GDV + size totals. */
+export interface DevUnit {
+  unitType: DevUnitType
+  numberOfUnits: number       // how many of this type
+  avgSizeM2: number           // average GIA per unit (m²)
+  salePricePerUnit: number    // £ each — auto-populated by GDV calc, editable
+  rentalValuePerUnit?: number // monthly rent per unit — optional (for BTR hybrid)
+}
+
 export interface PropertyFormData {
   // Property Details
   address: string
@@ -113,6 +157,57 @@ export interface PropertyFormData {
   saInsuranceAnnual?: number  // annual SA insurance £
   saManagementFeePercent?: number // SA management company %
   saMaintenancePercent?: number   // maintenance as % of revenue
+
+  // ── Property Development ──────────────────────────────────────────
+  // Site Details
+  devSiteType?: DevSiteType
+  devSiteAreaM2?: number           // total site area in m² (not just footprint)
+  devPlanningStatus?: DevPlanningStatus
+  devPlanningRef?: string          // LPA planning reference (e.g. 23/01234/FUL)
+
+  // Unit Mix (dynamic array — zero to many rows)
+  devUnitMix?: DevUnit[]
+
+  // Acquisition — SDLT rate type (residential is default; greenfield/land often non-res/mixed)
+  sdltRateType?: SDLTRateType
+
+  // Construction
+  devConstructionType?: DevConstructionType
+  devBuildCostPerM2?: number       // £/m² GIA, auto-suggested from type + location
+  devAbnormals?: number            // £ — demolition, contamination, piling, highways, services
+  devContingencyPercent?: number   // typical 10% on construction
+
+  // Professional fees (expressed as % of total construction cost)
+  devArchitectPercent?: number     // typical 6%
+  devStructuralEngineerPercent?: number  // typical 2%
+  devQsPercent?: number            // quantity surveyor, typical 1.5%
+  devProjectManagerPercent?: number      // typical 2%
+  devPlanningConsultantFixed?: number    // £ fixed fee
+  devBuildingControlFixed?: number       // £ fixed fee (LPA or approved inspector)
+  devWarrantyPercent?: number      // NHBC / Premier Guarantee, typical 1.2% of GDV
+
+  // Planning Obligations
+  devCILRatePerM2?: number         // £/m² chargeable area — £0 under LPA threshold
+  devS106PerUnit?: number          // £ per dwelling (education, open space)
+  devAffordableHousingPercent?: number // 0–50% discount on affordable units
+  devBuildingRegsFixed?: number    // £ building regs submission fee
+
+  // Development Finance
+  devFinanceLTC?: number           // loan-to-cost %, typical 65%
+  devFinanceDay1Percent?: number   // day-1 advance (land + initial fees) as % of LTC
+  devFinanceRate?: number          // annual % interest
+  devFinanceArrangementFeePercent?: number // typical 2% of facility
+  devFinanceMonitoringFeeMonthly?: number  // £/month monitoring fee
+  devFinanceTermMonths?: number    // total facility term (typ 12–24)
+  devFinanceExitFeePercent?: number // typical 1% of facility
+  devFinanceRolledUp?: boolean     // if true, interest accrues not monthly-serviced
+
+  // Exit
+  devExitStrategy?: "sell-all" | "hold-and-refinance" | "hybrid"
+  devSalesAgentPercent?: number    // typical 1.5% of GDV
+  devSalesLegalPerUnit?: number    // £ per unit legal completion
+  devMarketingCostsFixed?: number  // £ for the scheme (website, CGI, hoardings)
+  devMarketingPerUnit?: number     // £ per unit (brochures, staging)
 
   // Projections — user-supplied assumptions
   capitalGrowthRate?: number  // annual property appreciation %, default 4
