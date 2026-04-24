@@ -338,6 +338,11 @@ export interface CalculationResults {
   flipDealScore?: number             // 0-100
   flipDealScoreLabel?: string        // "Excellent" etc.
 
+  // Development-specific — full appraisal (cost stack + finance + profit + RLV)
+  // Populated only for investmentType === "development". See
+  // lib/developmentCalculations.ts for the DevelopmentResult shape.
+  development?: import("./developmentCalculations").DevelopmentResult
+
   // Projections
   fiveYearProjection: YearProjection[]
 }
