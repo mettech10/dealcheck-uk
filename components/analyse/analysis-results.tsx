@@ -21,6 +21,7 @@ import { Separator } from "@/components/ui/separator"
 import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
+import { DevelopmentResults } from "./development-results"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { HmoComparables } from "./hmo-comparables"
@@ -1345,7 +1346,10 @@ export function AnalysisResults({
       <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
 
       {/* ── Key Metrics Grid ────────────────────────────────────────── */}
-      {data.investmentType === "flip" ? (
+      {/* Development: full panel renders all metrics + viability + cost stack
+          + finance + RLV + sensitivity. Skip the yield/cashflow grid which
+          is all zeros for a build-to-sell scheme. */}
+      {data.investmentType === "development" ? null : data.investmentType === "flip" ? (
         /* Flip-specific metrics */
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <MetricCard
@@ -1465,6 +1469,11 @@ export function AnalysisResults({
       {/* ── Flip-specific 8-display panel ──────────────────────────── */}
       {data.investmentType === "flip" && (
         <FlipResults data={data} results={results} />
+      )}
+
+      {/* ── Development-specific feasibility panel ─────────────────── */}
+      {data.investmentType === "development" && (
+        <DevelopmentResults data={data} results={results} />
       )}
 
       {/* ── Location & Council ──────────────────────────────────────── */}
