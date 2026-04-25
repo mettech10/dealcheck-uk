@@ -1436,7 +1436,6 @@ export function AnalysisResults({
   const hasStrategies =
     !!backendData?.strategy_recommendations &&
     Object.keys(backendData.strategy_recommendations).length > 0
-  const hasArticle4 = !!backendData?.article_4
   const hasLocation = !!(backendData?.location?.council || backendData?.location?.region)
   // Always show valuation card — it handles its own loading/empty states
   const hasValuation = true
@@ -2056,8 +2055,6 @@ export function AnalysisResults({
         investmentType={data.investmentType}
         devConstructionType={data.devConstructionType}
       />
-      {/* hasArticle4 retained for debug — card no longer gated on it. */}
-      {hasArticle4 ? null : null}
 
       {/* ── Strategy Suitability ────────────────────────────────────── */}
       {hasStrategies && (
