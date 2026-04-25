@@ -32,6 +32,15 @@ from national_rail import national_rail, get_national_rail_context  # UK-wide
 # Import Web Scrapers
 from scrapling_extractor import extract_property_from_url  # For most sites
 
+# Import Airroi service (SA/R2SA short-let market data)
+try:
+    from airroi_service import airroi_service
+    AIRROI_AVAILABLE = airroi_service.is_configured()
+except ImportError:
+    AIRROI_AVAILABLE = False
+    airroi_service = None
+    print("[WARN] airroi_service not available — Airroi SA market data disabled")
+
 def _parse_property_markdown(text: str, source: str = 'scraper') -> dict:
     """Parse property details from markdown/plain text returned by a scraper.
     Shared by scrape_with_jina() and scrape_with_firecrawl().
@@ -4626,6 +4635,31 @@ WHEN ANALYSING THIS DEVELOPMENT:
 - For planning route: comment on construction type vs typical planning
   pathway (new-build → Full PP usually; conversion → may have PD rights
   under Class MA / Class Q; refurb → minor works only)."""
+
+    # ── Airroi SA market data (appended to strategy context if available) ──
+    if deal_type in ('R2SA', 'SA') and AIRROI_AVAILABLE and airroi_service:
+        try:
+            _airroi_mkt = airroi_service.get_market_summary(property_data.get('postcode', ''))
+            if _airroi_mkt and _airroi_mkt.get('avgNightlyRate', 0) > 0:
+                _user_rate = float(property_data.get('saNightlyRate', 0) or 0)
+                _mkt_rate = _airroi_mkt['avgNightlyRate']
+                _rate_comparison = (
+                    'above market' if _user_rate > _mkt_rate * 1.05
+                    else 'below market' if _user_rate < _mkt_rate * 0.95
+                    else 'in line with market'
+                )
+                strategy_context += f"""
+
+AIRROI SHORT-LET MARKET DATA:
+- Avg nightly rate: £{_mkt_rate:,.0f}
+- Avg occupancy: {_airroi_mkt.get('avgOccupancyRate', 0):.0f}%
+- Avg monthly revenue: £{_airroi_mkt.get('avgMonthlyRevenue', 0):,.0f}
+- RevPAR: £{_airroi_mkt.get('revPAR', 0):,.0f}
+- Avg stay length: {_airroi_mkt.get('avgLengthOfStay', 0):.1f} nights
+- Active listings: {_airroi_mkt.get('totalActiveListings', 0):.0f}
+- User rate vs market: {_rate_comparison}"""
+        except Exception as _airroi_err:
+            print(f"[AI] Airroi data for prompt failed (non-blocking): {_airroi_err}")
 
     # ------------------------------------------------------------------ #
     # Benchmarks for this deal type (to give Claude context)              #

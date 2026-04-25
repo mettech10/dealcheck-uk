@@ -28,3 +28,5 @@ services:
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
         sync: false
+      - key: AIRROI_API_KEY
+        sync: false
