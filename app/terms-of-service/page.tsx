@@ -9,7 +9,7 @@ export default function TermsOfServicePage() {
         Terms of Service
       </h1>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-        Last updated: 4 April 2026
+        Last updated: 27 April 2026
       </p>
 
       {/* 1. Introduction */}
@@ -230,21 +230,19 @@ export default function TermsOfServicePage() {
           subject to usage restrictions as described on the pricing page.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          <strong>Pay-Per-Deal</strong> — A one-off payment of &pound;15 per
+          <strong>Pay-Per-Deal</strong> — A one-off payment of &pound;2.99 per
           individual deal analysis, with no ongoing commitment.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          <strong>Starter</strong> — &pound;29 per month, providing access to a
-          set number of deal analyses and standard features.
+          <strong>Pro</strong> — &pound;19.99 per month, providing unlimited
+          analyses, advanced features, 5-year projections, PDF export, and
+          priority support.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          <strong>Pro</strong> — &pound;79 per month, providing access to an
-          increased number of analyses, advanced features, and priority support.
-        </li>
-        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          <strong>Unlimited</strong> — &pound;199 per month, providing
-          unlimited deal analyses, all features, and the ability to use Reports
-          for commercial purposes including resale.
+          <strong>Unlimited</strong> — &pound;49.99 per month, providing all
+          Pro features plus team collaboration, API access, white-label reports,
+          and dedicated support, with the ability to use Reports for commercial
+          purposes including resale.
         </li>
       </ul>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">

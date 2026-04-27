@@ -166,7 +166,69 @@ export default function Article4Map({
     [areas]
   )
 
+  const activeCount = useMemo(() => areas.filter((a) => a.status === "active").length, [areas])
+  const proposedCount = useMemo(
+    () => areas.filter((a) => a.status === "proposed" || a.status === "consultation").length,
+    [areas]
+  )
+  const lastUpdated = useMemo(() => {
+    const dates = areas
+      .flatMap((a) => [a.effectiveDate, a.consultationEndDate])
+      .filter(Boolean) as string[]
+    if (!dates.length) return null
+    return dates.sort().at(-1)!
+  }, [areas])
+
   return (
+    <>
+    {!compact && !loading && !loadError && areas.length > 0 && (
+      <div
+        style={{
+          display: "flex",
+          gap: 24,
+          alignItems: "center",
+          flexWrap: "wrap",
+          padding: "10px 16px",
+          marginBottom: 8,
+          background: "white",
+          borderRadius: 8,
+          boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+          fontSize: 13,
+          color: "#374151",
+          border: "1px solid #e5e7eb",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#dc2626",
+              display: "inline-block",
+            }}
+          />
+          <strong>{activeCount}</strong>&nbsp;active
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#f59e0b",
+              display: "inline-block",
+            }}
+          />
+          <strong>{proposedCount}</strong>&nbsp;proposed / consultation
+        </span>
+        {lastUpdated && (
+          <span style={{ color: "#6b7280", marginLeft: "auto", fontSize: 12 }}>
+            Last updated: {lastUpdated}
+          </span>
+        )}
+      </div>
+    )}
     <div style={{ position: "relative", width: "100%", height }}>
       {!compact && (
         <div
@@ -358,6 +420,7 @@ export default function Article4Map({
         ))}
       </MapContainer>
     </div>
+    </>
   )
 }
 

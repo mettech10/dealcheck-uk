@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, Link2, Info, Trash2, Plus } from "lucide-react"
+import { Loader2, Link2, Info, Trash2, Plus, X } from "lucide-react"
 import type { PropertyFormData, PropertyTypeDetail, TenureType } from "@/lib/types"
 import { estimateRefurbCost } from "@/lib/calculations"
 import { AutoArvButton, type ArvEstimate } from "./auto-arv"
@@ -104,6 +104,7 @@ const schema = z.object({
   saPlatformFeePercent: z.coerce.number().min(0).max(100).optional(),
   saCleaningCostPerStay: z.coerce.number().min(0).optional(),
   saAvgStaysPerMonth: z.coerce.number().min(0).max(60).optional(),
+  saAvgStayLengthNights: z.coerce.number().min(1).optional(),
   saMonthlyLease: z.coerce.number().min(0).optional(),
   saUtilitiesMonthly: z.coerce.number().min(0).optional(),
   saInsuranceAnnual: z.coerce.number().min(0).optional(),
@@ -280,6 +281,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     saPlatformFeePercent: 15,
     saCleaningCostPerStay: 80,
     saAvgStaysPerMonth: 8,
+    saAvgStayLengthNights: 3,
     saMonthlyLease: 0,
     saUtilitiesMonthly: 200,
     saInsuranceAnnual: 800,
@@ -362,6 +364,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   // flat `maintenance` figure — so we set the unused field to 0 on switch
   // to keep that branching unambiguous.
   const [maintenanceMode, setMaintenanceMode] = useState<"percent" | "flat">("percent")
+  const [prefillDismissed, setPrefillDismissed] = useState(false)
 
   // Flip refurb builder line items — when any are set, auto-sum into refurbishmentBudget.
   const flipOwnership       = watch("flipOwnershipStructure")
@@ -400,6 +403,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const saNightlyRate = watch("saNightlyRate") || 0
   const saOccupancyRate = watch("saOccupancyRate") || 0
   const saOwnershipType = watch("saOwnershipType") || "rent-to-sa"
+  const saAvgStayLengthNights = watch("saAvgStayLengthNights") || 0
   const saEstimatedMonthly = Math.round(saNightlyRate * (saOccupancyRate / 100) * 30)
 
   // Auto-derive saMonthlySARevenue from nightly rate × occupancy
@@ -408,6 +412,15 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
       setValue("saMonthlySARevenue", saEstimatedMonthly, { shouldDirty: false })
     }
   }, [investmentType, saEstimatedMonthly, setValue])
+
+  // Auto-calculate saAvgStaysPerMonth from occupancy rate ÷ avg stay length
+  useEffect(() => {
+    if (investmentType === "r2sa" && saAvgStayLengthNights > 0 && saOccupancyRate > 0) {
+      const nightsBooked = (saOccupancyRate / 100) * 30
+      const stays = Math.round((nightsBooked / saAvgStayLengthNights) * 10) / 10
+      setValue("saAvgStaysPerMonth", stays, { shouldDirty: false })
+    }
+  }, [investmentType, saOccupancyRate, saAvgStayLengthNights, setValue])
 
   const isR2SA     = investmentType === "r2sa"
   const isHMO      = investmentType === "hmo"
@@ -472,17 +485,25 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
       {/* URL Pre-fill Banner */}
-      {prefilled && (
+      {prefilled && !prefillDismissed && (
         <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
           <Link2 className="mt-0.5 size-4 shrink-0 text-primary" />
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-0.5 flex-1">
             <p className="text-sm font-medium text-foreground">
-              Details pre-filled from listing
+              Details pre-filled from listing. Please review and adjust.
             </p>
             <p className="text-xs text-muted-foreground">
-              Please review and adjust if needed before analysing. Fill in the remaining fields (rent, financing, running costs) to get a full analysis.
+              Fill in the remaining fields (rent, financing, running costs) to get a full analysis.
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setPrefillDismissed(true)}
+            className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Dismiss"
+          >
+            <X className="size-4" />
+          </button>
         </div>
       )}
 
@@ -1927,8 +1948,17 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   <Input type="number" className="pl-7" placeholder="80" {...register("saCleaningCostPerStay")} />
                 </div>
               </FormField>
-              <FormField label="Avg stays per month" hint="Number of guest turnovers per month">
-                <Input type="number" placeholder="8" {...register("saAvgStaysPerMonth")} />
+              <FormField label="Avg stay length (nights)" hint="Typical guest stay duration — used to auto-calculate turnovers per month">
+                <Input type="number" min="1" placeholder="3" {...register("saAvgStayLengthNights")} />
+              </FormField>
+              <FormField label="Avg stays per month" hint={saAvgStayLengthNights > 0 ? "Auto-calculated from occupancy ÷ stay length" : "Number of guest turnovers per month"}>
+                <Input
+                  type="number"
+                  placeholder="8"
+                  readOnly={saAvgStayLengthNights > 0}
+                  className={saAvgStayLengthNights > 0 ? "bg-muted/50 text-muted-foreground" : ""}
+                  {...register("saAvgStaysPerMonth")}
+                />
               </FormField>
               <FormField label="Monthly rent or lease (£)" hint="Leave as 0 if you own the property">
                 <div className="relative">

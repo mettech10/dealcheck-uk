@@ -7,7 +7,7 @@ interface DealScoreProps {
 
 export function getScoreColor(score: number): string {
   if (score >= 75) return "#22c55e"   // green
-  if (score >= 50) return "#3b82f6"   // blue/amber-ish
+  if (score >= 50) return "#f59e0b"   // amber
   return "#ef4444"                     // red
 }
 

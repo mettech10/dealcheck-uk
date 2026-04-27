@@ -1218,43 +1218,86 @@ function SensitivityAnalysisPanel({
   baseFormData: PropertyFormData
   baseResults: CalculationResults
 }) {
-  const basePurchasePrice = baseFormData.purchasePrice ?? 0
-  const [purchasePrice, setPurchasePrice] = useState<number>(basePurchasePrice)
-  const [mortgageRate, setMortgageRate] = useState<number>(baseFormData.interestRate ?? 3.75)
-  const [monthlyRent, setMonthlyRent] = useState<number>(baseFormData.monthlyRent ?? 0)
-  const [vacancyRate, setVacancyRate] = useState<number>(
+  const strategy = baseFormData.investmentType ?? "btl"
+  const isBRRRR = strategy === "brr"
+  const isFlip  = strategy === "flip"
+
+  const basePurchasePrice  = baseFormData.purchasePrice ?? 0
+  const baseARV            = baseFormData.arv ?? Math.round(basePurchasePrice * 1.2 / 1000) * 1000
+  const baseRefurb         = baseFormData.refurbishmentBudget ?? 0
+  const baseBridgingRate   = baseFormData.bridgingMonthlyRate ?? 0.75
+
+  const [purchasePrice,  setPurchasePrice]  = useState<number>(basePurchasePrice)
+  const [mortgageRate,   setMortgageRate]   = useState<number>(baseFormData.interestRate ?? 3.75)
+  const [monthlyRent,    setMonthlyRent]    = useState<number>(baseFormData.monthlyRent ?? 0)
+  const [vacancyRate,    setVacancyRate]    = useState<number>(
     baseFormData.voidWeeks ? Math.round((baseFormData.voidWeeks / 52) * 100 * 10) / 10 : 4.2
   )
+  // BRRRR + Flip extra sliders
+  const [arv,            setArv]            = useState<number>(baseARV)
+  const [refurbCost,     setRefurbCost]     = useState<number>(baseRefurb)
+  // Flip-only
+  const [bridgingRate,   setBridgingRate]   = useState<number>(baseBridgingRate)
+
   const [scenarioResults, setScenarioResults] = useState<CalculationResults | null>(null)
 
-  const priceMin = Math.round(basePurchasePrice * 0.8 / 1000) * 1000
-  const priceMax = Math.round(basePurchasePrice * 1.2 / 1000) * 1000
+  const priceMin   = Math.round(basePurchasePrice * 0.8 / 1000) * 1000
+  const priceMax   = Math.round(basePurchasePrice * 1.2 / 1000) * 1000
+  const arvMin     = Math.round(baseARV * 0.7 / 1000) * 1000
+  const arvMax     = Math.round(baseARV * 1.4 / 1000) * 1000
+  const refurbMin  = 0
+  const refurbMax  = Math.max(50000, Math.round(baseRefurb * 2 / 1000) * 1000)
 
-  const runSensitivity = useCallback(
-    (price: number, rate: number, rent: number, vacancy: number) => {
-      const voidWeeks = Math.round((vacancy / 100) * 52 * 10) / 10
-      const scenarioData: PropertyFormData = {
-        ...baseFormData,
-        purchasePrice: price,
-        interestRate: rate,
-        monthlyRent: rent,
-        voidWeeks,
-      }
-      const newResults = calculateAll(scenarioData)
-      setScenarioResults(newResults)
-    },
-    [baseFormData]
-  )
+  const runSensitivity = useCallback(() => {
+    const voidWeeks = Math.round((vacancyRate / 100) * 52 * 10) / 10
+    const scenarioData: PropertyFormData = {
+      ...baseFormData,
+      purchasePrice,
+      interestRate: mortgageRate,
+      monthlyRent,
+      voidWeeks,
+      ...(isBRRRR || isFlip ? { arv, refurbBudget: refurbCost } : {}),
+      ...(isFlip ? { bridgingMonthlyRate: bridgingRate } : {}),
+    }
+    setScenarioResults(calculateAll(scenarioData))
+  }, [baseFormData, purchasePrice, mortgageRate, monthlyRent, vacancyRate, arv, refurbCost, bridgingRate, isBRRRR, isFlip])
 
-  const active = scenarioResults ?? baseResults
-  const cashflow = active.monthlyCashFlow
-  const yield_ = active.grossYield
-  const coc = active.cashOnCashReturn
+  const active      = scenarioResults ?? baseResults
+  const cashflow    = active.monthlyCashFlow
+  const yield_      = active.grossYield
+  const coc         = active.cashOnCashReturn
   const totalCapital = active.totalCapitalRequired
-  const score = calculateDealScore(coc)
-  const verdict = score >= 75 ? "PROCEED" : score >= 50 ? "REVIEW" : "AVOID"
-
+  const score       = calculateDealScore(coc)
+  const verdict     = score >= 75 ? "PROCEED" : score >= 50 ? "REVIEW" : "AVOID"
   const verdictColor = verdict === "PROCEED" ? "text-success" : verdict === "AVOID" ? "text-destructive" : "text-warning"
+
+  function Slider({
+    label, value, min, max, step, format, onChange, hint,
+  }: {
+    label: string; value: number; min: number; max: number; step: number
+    format: (v: number) => string; onChange: (v: number) => void; hint?: string
+  }) {
+    return (
+      <div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <label className="text-xs font-medium text-foreground">{label}</label>
+          <span className="text-xs font-semibold text-primary">{format(value)}</span>
+        </div>
+        <input
+          type="range" min={min} max={max} step={step} value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          className="w-full accent-primary"
+        />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{format(min)}</span><span>{format(max)}</span>
+        </div>
+        {hint && <p className="mt-1 text-[10px] text-muted-foreground">{hint}</p>}
+      </div>
+    )
+  }
+
+  const gbp = (v: number) => `£${Math.round(v).toLocaleString()}`
+  const pct = (v: number) => `${v.toFixed(2)}%`
 
   return (
     <Card>
@@ -1267,92 +1310,57 @@ function SensitivityAnalysisPanel({
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-5">
-          {/* ── Sliders ── */}
           <div className="flex flex-col gap-4">
-            {/* Purchase Price */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground">Purchase Price</label>
-                <span className="text-xs font-semibold text-primary">£{purchasePrice.toLocaleString()}</span>
-              </div>
-              <input
-                type="range"
-                min={priceMin}
-                max={priceMax}
-                step={1000}
-                value={purchasePrice}
-                onChange={(e) => setPurchasePrice(parseFloat(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>£{priceMin.toLocaleString()}</span><span>£{priceMax.toLocaleString()}</span></div>
-              <p className="mt-1 text-[10px] text-muted-foreground">Adjust to model negotiation scenarios or stress-test at different price points</p>
-            </div>
+            <Slider label="Purchase Price" value={purchasePrice} min={priceMin} max={priceMax} step={1000}
+              format={gbp} onChange={setPurchasePrice}
+              hint="Model negotiation scenarios or stress-test at different price points" />
 
-            {/* Mortgage Rate */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground">Mortgage Rate</label>
-                <span className="text-xs font-semibold text-primary">{mortgageRate.toFixed(2)}%</span>
-              </div>
-              <input
-                type="range"
-                min={0.5}
-                max={12}
-                step={0.25}
-                value={mortgageRate}
-                onChange={(e) => setMortgageRate(parseFloat(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>0.5%</span><span>12%</span></div>
-            </div>
+            {!isFlip && (
+              <Slider label="Mortgage Rate" value={mortgageRate} min={0.5} max={12} step={0.25}
+                format={pct} onChange={setMortgageRate} />
+            )}
 
-            {/* Monthly Rent */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground">Monthly Rent</label>
-                <span className="text-xs font-semibold text-primary">£{monthlyRent.toLocaleString()}</span>
-              </div>
-              <input
-                type="range"
-                min={200}
-                max={Math.max(5000, Math.round((baseFormData.monthlyRent ?? 1000) * 2))}
-                step={50}
-                value={monthlyRent}
-                onChange={(e) => setMonthlyRent(parseFloat(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>£200</span><span>£{Math.max(5000, Math.round((baseFormData.monthlyRent ?? 1000) * 2)).toLocaleString()}</span></div>
-            </div>
+            {!isFlip && !isBRRRR && (
+              <Slider label="Monthly Rent" value={monthlyRent}
+                min={200} max={Math.max(5000, Math.round((baseFormData.monthlyRent ?? 1000) * 2))} step={50}
+                format={gbp} onChange={setMonthlyRent} />
+            )}
 
-            {/* Vacancy Rate */}
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground">Vacancy Rate</label>
-                <span className="text-xs font-semibold text-primary">{vacancyRate.toFixed(1)}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={25}
-                step={0.5}
-                value={vacancyRate}
-                onChange={(e) => setVacancyRate(parseFloat(e.target.value))}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground"><span>0%</span><span>25%</span></div>
-            </div>
+            {!isFlip && !isBRRRR && (
+              <Slider label="Vacancy Rate" value={vacancyRate} min={0} max={25} step={0.5}
+                format={(v) => `${v.toFixed(1)}%`} onChange={setVacancyRate} />
+            )}
+
+            {/* BRRRR + Flip: ARV slider */}
+            {(isBRRRR || isFlip) && (
+              <Slider label="After Repair Value (ARV)" value={arv} min={arvMin} max={arvMax} step={2500}
+                format={gbp} onChange={setArv}
+                hint="Model optimistic or conservative post-refurb valuations" />
+            )}
+
+            {/* BRRRR + Flip: Refurb Cost slider */}
+            {(isBRRRR || isFlip) && (
+              <Slider label="Refurb Cost" value={refurbCost} min={refurbMin} max={refurbMax} step={1000}
+                format={gbp} onChange={setRefurbCost}
+                hint="Stress-test if works run over budget" />
+            )}
+
+            {/* Flip only: Bridging Rate slider */}
+            {isFlip && (
+              <Slider label="Bridging Monthly Rate" value={bridgingRate} min={0.5} max={2} step={0.05}
+                format={(v) => `${v.toFixed(2)}%/mo`} onChange={setBridgingRate}
+                hint="Affects total bridging interest and net profit" />
+            )}
           </div>
 
-          {/* ── Run Button ── */}
           <button
-            onClick={() => runSensitivity(purchasePrice, mortgageRate, monthlyRent, vacancyRate)}
+            onClick={runSensitivity}
             className="flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
           >
             <SlidersHorizontal className="size-4" />
             Run Scenario
           </button>
 
-          {/* ── Scenario Results ── */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
               <p className="text-xs text-muted-foreground">Monthly Cashflow</p>
@@ -1374,9 +1382,7 @@ function SensitivityAnalysisPanel({
             </div>
             <div className="rounded-lg border border-border/50 bg-card p-3 text-center">
               <p className="text-xs text-muted-foreground">Verdict</p>
-              <p className={`mt-1 text-base font-bold ${verdictColor}`}>
-                {verdict}
-              </p>
+              <p className={`mt-1 text-base font-bold ${verdictColor}`}>{verdict}</p>
             </div>
           </div>
         </div>
@@ -2078,10 +2084,8 @@ export function AnalysisResults({
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
 
-      {/* ── Sensitivity Analysis (not applicable for flip — no recurring income) */}
-      {data.investmentType !== "flip" && (
-        <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
-      )}
+      {/* ── Sensitivity Analysis ────────────────────────────────────── */}
+      <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
 
       {/* ── AI Insights (Strengths / Risks / Area / Next Steps) ─────── */}
       {hasAIInsights ? (

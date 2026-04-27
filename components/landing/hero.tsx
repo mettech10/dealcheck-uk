@@ -8,10 +8,10 @@ import { motion } from "framer-motion"
 import { HeroText, PulseElement } from "@/components/animations"
 import { useEffect, useState } from "react"
 
-/** Format a deal count for display — show exact number */
+/** Format a deal count for display — floor to nearest 10 with "+" suffix */
 function formatDealCount(n: number): string {
-  const count = Math.max(0, Math.round(n))
-  return count.toLocaleString()
+  const floored = Math.max(10, Math.floor(n / 10) * 10)
+  return floored.toLocaleString() + "+"
 }
 
 function AnimatedCounter({ target }: { target: string }) {
@@ -26,7 +26,7 @@ export function Hero() {
     fetch("/api/stats/deal-count")
       .then((r) => r.json())
       .then((d) => setDealCount(formatDealCount(d.count ?? 10)))
-      .catch(() => setDealCount("0"))
+      .catch(() => setDealCount("10+"))
   }, [])
 
   return (

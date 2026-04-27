@@ -571,17 +571,16 @@ export function FlipResults({ data, results }: FlipResultsProps) {
         </CardContent>
       </Card>
 
-      {/* ── 5. Strategy comparison — Flip vs Keep-as-BTL ────────────── */}
+      {/* ── 5. Strategy comparison — Flip vs BTL vs BRRRR ───────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>Flip vs Keep as BTL</CardTitle>
+          <CardTitle>Flip vs BTL vs BRRRR</CardTitle>
           <CardDescription>
-            What this project looks like if you sold vs retained it at the
-            end of the refurb
+            Three exit strategies compared at the same ARV — choose the one that suits your goals
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <ComparisonTile
               title="Flip (sell at ARV)"
               lines={[
@@ -591,39 +590,62 @@ export function FlipResults({ data, results }: FlipResultsProps) {
                 { k: "Take-home", v: formatCurrency(postTax), bold: true },
                 { k: "ROI on capital", v: `${postTaxROI.toFixed(1)}%` },
               ]}
-              note="One-off gain — capital + profit back for next deal."
+              note="One-off gain — capital + profit recycled into next deal."
               highlight
             />
             <ComparisonTile
-              title="Keep as BTL (refinance + rent)"
+              title="Keep as BTL (refinance)"
               lines={[
                 {
                   k: "Refinance @ 75% LTV",
                   v: formatCurrency(Math.round(arvOverride * 0.75)),
                 },
                 {
-                  k: "Equity captured",
+                  k: "Equity retained",
                   v: formatCurrency(
-                    Math.max(
-                      0,
-                      Math.round(arvOverride * 0.75) -
-                        (data.purchasePrice - r.depositAmount),
+                    Math.max(0, arvOverride - Math.round(arvOverride * 0.75)),
+                  ),
+                },
+                {
+                  k: "Min rent to break even",
+                  v: formatCurrency(
+                    Math.round(
+                      (arvOverride * 0.75 * ((data.refinanceRate ?? 5.5) / 100)) / 12 +
+                        arvOverride * 0.75 / ((data.refinanceTermYears ?? 25) * 12),
+                    ),
+                  ),
+                },
+                { k: "Capital remaining", v: formatCurrency(capitalInvested) },
+              ]}
+              note="Ongoing income asset — compare local rental yield before deciding."
+              highlight={false}
+            />
+            <ComparisonTile
+              title="BRRRR (refi + recycle)"
+              lines={[
+                {
+                  k: "Refinance @ 75% LTV",
+                  v: formatCurrency(Math.round(arvOverride * 0.75)),
+                },
+                {
+                  k: "Capital recovered",
+                  v: formatCurrency(
+                    Math.min(
+                      capitalInvested,
+                      Math.round(arvOverride * 0.75),
                     ),
                   ),
                 },
                 {
-                  k: "Monthly rent needed to break even",
-                  v: formatCurrency(
-                    Math.round(
-                      (arvOverride * 0.75 * ((data.refinanceRate ?? 5.5) / 100)) /
-                        12 +
-                        ((arvOverride * 0.75) / (data.refinanceTermYears ?? 25 * 12)),
-                    ),
-                  ),
+                  k: "% capital recovered",
+                  v: `${Math.min(100, Math.round((Math.round(arvOverride * 0.75) / Math.max(1, capitalInvested)) * 100))}%`,
                 },
-                { k: "Capital left in", v: formatCurrency(capitalInvested) },
+                {
+                  k: "Equity left in deal",
+                  v: formatCurrency(Math.max(0, arvOverride - Math.round(arvOverride * 0.75))),
+                },
               ]}
-              note="Ongoing asset — compare against local BTL yield before deciding."
+              note="Best of both — recycle most capital while keeping the asset for long-term equity."
               highlight={false}
             />
           </div>

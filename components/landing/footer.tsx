@@ -8,7 +8,7 @@ export function Footer() {
     <footer className="border-t border-border/50 bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-8 sm:flex-row sm:items-start sm:gap-12 lg:gap-20">
         {/* Logo */}
-        <div className="flex shrink-0 items-center gap-2.5">
+        <div className="flex shrink-0 items-center">
           <Image
             src="/logo.png"
             alt="Metalyzi Logo"
@@ -16,7 +16,6 @@ export function Footer() {
             height={24}
             className="rounded-md object-contain"
           />
-          <span className="text-sm font-semibold text-foreground">Metalyzi</span>
         </div>
 
         {/* Columns */}

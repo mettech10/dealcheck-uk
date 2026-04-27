@@ -1343,12 +1343,15 @@ export default function AnalysePage() {
                     }
                   }}
                 />
-                <label
-                  htmlFor="pdf-upload"
-                  className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/50 bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  Choose file
-                </label>
+                <div className="ml-auto flex flex-col items-end gap-1">
+                  <label
+                    htmlFor="pdf-upload"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/50 bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    Choose PDF file
+                  </label>
+                  <span className="text-[10px] text-muted-foreground/60">PDF only, max 10MB</span>
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-3 rounded-lg border border-border/30 bg-card/30 px-4 py-3">
@@ -1361,7 +1364,6 @@ export default function AnalysePage() {
                   onClick={handlePdfUpload}
                   disabled={pdfProcessing}
                   size="sm"
-                  variant="outline"
                   className="shrink-0 text-xs"
                 >
                   {pdfProcessing ? (

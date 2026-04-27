@@ -162,7 +162,8 @@ export interface PropertyFormData {
   saOccupancyRate?: number    // expected occupancy % (0-100)
   saPlatformFeePercent?: number // Airbnb/Booking commission %
   saCleaningCostPerStay?: number // cleaning cost per turnover £
-  saAvgStaysPerMonth?: number   // average stays/turnovers per month
+  saAvgStayLengthNights?: number // average guest stay duration in nights
+  saAvgStaysPerMonth?: number   // average stays/turnovers per month (auto-calculated)
   saMonthlyLease?: number     // monthly rent/lease if rent-to-SA £
   saUtilitiesMonthly?: number // monthly utilities £
   saInsuranceAnnual?: number  // annual SA insurance £
