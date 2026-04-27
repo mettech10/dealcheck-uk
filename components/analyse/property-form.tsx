@@ -92,6 +92,9 @@ const schema = z.object({
   // HMO
   roomCount: z.coerce.number().min(0).max(20).optional(),
   avgRoomRate: z.coerce.number().min(0).optional(),
+  hmoLicenceCost: z.coerce.number().min(0).optional(),
+  hmoLicenceTermYears: z.coerce.number().min(1).max(10).optional(),
+  hmoRoomVoidWeeks: z.coerce.number().min(0).max(52).optional(),
   // SA / R2SA
   saMonthlySARevenue: z.coerce.number().min(0).optional(),
   saSetupCosts: z.coerce.number().min(0).optional(),
@@ -267,6 +270,8 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     flipOtherGainsThisYear: 0,
     roomCount: 0,
     avgRoomRate: 0,
+    hmoLicenceCost: 1000,
+    hmoLicenceTermYears: 5,
     saMonthlySARevenue: 0,
     saSetupCosts: 5000,
     saOwnershipType: "rent-to-sa",
@@ -1745,10 +1750,10 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
           )}
           {/* HMO void and management fields */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField label="Void Period" hint={`Void calculated per room (1 room empty for ${watch("voidWeeks") || 4} weeks/yr)`}>
+            <FormField label="Void Period" hint={`Per-room void weeks/year (e.g. 1 room vacant for ${watch("voidWeeks") || 4} weeks)`}>
               <Input type="number" {...register("voidWeeks")} />
             </FormField>
-            <FormField label="Management Fee" hint="% of rent">
+            <FormField label="Management Fee" hint="% of rent (HMOs typically 12-15%)">
               <div className="relative">
                 <Input
                   type="number"
@@ -1757,6 +1762,31 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   {...register("managementFeePercent")}
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+              </div>
+            </FormField>
+          </div>
+          {/* HMO licence — one-off council fee, amortised over licence term */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <FormField label="HMO Licence Cost" hint="Council licence fee (typically £500-£1,500)">
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                <Input
+                  type="number"
+                  className="pl-7"
+                  placeholder="1000"
+                  {...register("hmoLicenceCost")}
+                />
+              </div>
+            </FormField>
+            <FormField label="Licence Term" hint="Years — most councils issue 5-year licences">
+              <div className="relative">
+                <Input
+                  type="number"
+                  className="pr-12"
+                  placeholder="5"
+                  {...register("hmoLicenceTermYears")}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">yrs</span>
               </div>
             </FormField>
           </div>
