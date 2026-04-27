@@ -281,6 +281,12 @@ export async function POST(req: Request) {
                 cashOnCashReturn: calculationResults.cashOnCashReturn,
                 monthlyIncome: calculationResults.monthlyIncome,
                 monthlyExpenses: calculationResults.monthlyExpenses,
+                sdltAmount: calculationResults.sdltAmount,
+                totalCapitalRequired: calculationResults.totalCapitalRequired,
+                depositAmount: calculationResults.depositAmount,
+                mortgageAmount: calculationResults.mortgageAmount,
+                monthlyMortgagePayment: calculationResults.monthlyMortgagePayment,
+                annualMortgageCost: calculationResults.annualMortgageCost,
               }
             : undefined,
           // FLIP-specific rich metrics from the Next.js engine. Flask AI
