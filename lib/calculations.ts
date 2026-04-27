@@ -1,4 +1,4 @@
-import type { PropertyFormData, CalculationResults, YearProjection } from "./types"
+import type { PropertyFormData, CalculationResults, YearProjection, BuyerType } from "./types"
 
 /**
  * Non-residential / mixed-use SDLT bands (England/NI).
@@ -47,7 +47,7 @@ function calculateNonResidentialSDLT(price: number): {
  */
 export function calculateSDLT(
   price: number,
-  buyerType: "first-time" | "additional",
+  buyerType: BuyerType,
   rateType: "residential" | "non-residential" | "mixed-use" = "residential"
 ): { total: number; breakdown: { band: string; tax: number }[] } {
   // Non-residential / mixed-use: use commercial bands, no FTB relief, no surcharge.
@@ -783,9 +783,12 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     annualMortgageCost = monthlyMortgagePayment * 12
   }
 
-  // Rental income (adjusted for voids)
+  // Rental income
+  // - contractAnnualRent: industry-standard rent (no void adjustment) — used for gross yield
+  // - annualRent: void-adjusted rent — used for cashflow & net yield
   const effectiveWeeks = 52 - data.voidWeeks
-  const annualRent = Math.round(data.monthlyRent * 12 * (effectiveWeeks / 52))
+  const contractAnnualRent = data.monthlyRent * 12
+  const annualRent = Math.round(contractAnnualRent * (effectiveWeeks / 52))
   const monthlyIncome = Math.round((annualRent / 12) * 100) / 100
 
   // Running costs
@@ -930,7 +933,9 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       : 0
 
   // Yields
-  const grossYield = calculateGrossYield(annualRent, data.purchasePrice)
+  // Gross yield = contract rent / price (no void adjustment) — UK industry convention
+  // Net yield = void-adjusted income net of running costs and finance — true return
+  const grossYield = calculateGrossYield(contractAnnualRent, data.purchasePrice)
   const netYield = calculateNetYield(
     annualRent,
     annualRunningCosts + finalAnnualMortgage,
