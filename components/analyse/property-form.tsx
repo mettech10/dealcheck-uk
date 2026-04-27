@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -356,6 +356,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const avgRoomRateValue = watch("avgRoomRate")
   const bedroomsValue = watch("bedrooms")
   const arvValue = watch("arv")
+
+  // Maintenance toggle: % of annual rent vs £ flat (annual). The calc engine
+  // (lib/calculations.ts) prefers maintenancePercent when > 0, else uses the
+  // flat `maintenance` figure — so we set the unused field to 0 on switch
+  // to keep that branching unambiguous.
+  const [maintenanceMode, setMaintenanceMode] = useState<"percent" | "flat">("percent")
 
   // Flip refurb builder line items — when any are set, auto-sum into refurbishmentBudget.
   const flipOwnership       = watch("flipOwnershipStructure")
@@ -999,7 +1005,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   <Input type="number" className="pl-7" placeholder="2500" {...register("devBuildingControlFixed")} />
                 </div>
               </FormField>
-              <FormField label="Warranty / NHBC" hint="% of GDV, typical 1.2%">
+              <FormField label="Warranty / NHBC" hint="Rate × total GDV (typical 1.2% of all units' sale value)">
                 <div className="relative">
                   <Input type="number" step="0.1" className="pr-7" {...register("devWarrantyPercent")} />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
@@ -1012,14 +1018,14 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
           <div className="flex flex-col gap-4">
             <h3 className="text-base font-semibold text-foreground">Planning Obligations</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField label="CIL Rate (£/m²)" hint="Community Infrastructure Levy — £0 if below LPA threshold">
+              <FormField label="CIL Rate (£/m²)" hint="Community Infrastructure Levy — rate × total GIA (£0 if below LPA threshold)">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                   <Input type="number" className="pl-7 pr-12" placeholder="0" {...register("devCILRatePerM2")} />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">/m²</span>
                 </div>
               </FormField>
-              <FormField label="S106 Per Unit" hint="Typically £0–£20k/dwelling; education + open space">
+              <FormField label="S106 Per Unit" hint="Per dwelling × number of units (typical £0–£20k/dwelling for education + open space)">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                   <Input type="number" className="pl-7" placeholder="0" {...register("devS106PerUnit")} />
@@ -1068,7 +1074,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
                 </div>
               </FormField>
-              <FormField label="Monitoring Fee (£/month)">
+              <FormField label="Monitoring Fee (£/month)" hint="£/month × facility term — lender's QS surveyor cost (typical £500/mo)">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                   <Input type="number" className="pl-7" placeholder="500" {...register("devFinanceMonitoringFeeMonthly")} />
@@ -2024,15 +2030,55 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                 <Input type="number" className="pl-7" {...register("insurance")} />
               </div>
             </FormField>
-            <FormField label="Maintenance" hint="% of annual rent (industry standard: 10%)">
-              <div className="relative">
-                <Input
-                  type="number"
-                  step="0.5"
-                  className="pr-7"
-                  {...register("maintenancePercent")}
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+            <FormField
+              label="Maintenance"
+              hint={
+                maintenanceMode === "percent"
+                  ? "% of annual rent (industry standard: 10%)"
+                  : "Flat annual maintenance budget"
+              }
+            >
+              <div className="flex gap-2">
+                <Select
+                  value={maintenanceMode}
+                  onValueChange={(v: "percent" | "flat") => {
+                    setMaintenanceMode(v)
+                    // Zero the unused field so the calc engine's
+                    // "prefer % when > 0, else flat" branch is unambiguous.
+                    if (v === "percent") setValue("maintenance", 0)
+                    else setValue("maintenancePercent", 0)
+                  }}
+                >
+                  <SelectTrigger className="w-24 shrink-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percent">%</SelectItem>
+                    <SelectItem value="flat">£</SelectItem>
+                  </SelectContent>
+                </Select>
+                {maintenanceMode === "percent" ? (
+                  <div className="relative flex-1">
+                    <Input
+                      type="number"
+                      step="0.5"
+                      className="pr-7"
+                      placeholder="10"
+                      {...register("maintenancePercent")}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+                  </div>
+                ) : (
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                    <Input
+                      type="number"
+                      className="pl-7"
+                      placeholder="500"
+                      {...register("maintenance")}
+                    />
+                  </div>
+                )}
               </div>
             </FormField>
             <FormField label="Ground Rent (Annual)">
