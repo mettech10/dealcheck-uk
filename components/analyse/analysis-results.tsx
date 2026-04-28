@@ -25,6 +25,7 @@ import { DevelopmentResults } from "./development-results"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { HmoComparables } from "./hmo-comparables"
+import { AiAreaAnalysisCard } from "./ai-area-analysis-card"
 import {
   BarChart,
   Bar,
@@ -1036,20 +1037,6 @@ function AIInsightsCard({
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {area && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <MapPin className="size-4 text-primary" />
-              <CardTitle className="text-sm">Area Analysis</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm leading-relaxed text-muted-foreground">{area}</p>
           </CardContent>
         </Card>
       )}
@@ -2087,12 +2074,28 @@ export function AnalysisResults({
       {/* ── Sensitivity Analysis ────────────────────────────────────── */}
       <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
 
-      {/* ── AI Insights (Strengths / Risks / Area / Next Steps) ─────── */}
+      {/* ── AI Area Analysis — dedicated, structured 5-section card ───── */}
+      {data.postcode && (
+        <AiAreaAnalysisCard
+          postcode={data.postcode}
+          strategy={data.investmentType}
+          dealData={{
+            purchasePrice: data.purchasePrice,
+            grossYield: results.grossYield,
+            monthlyCashFlow: results.monthlyCashFlow,
+            cashOnCashReturn: results.cashOnCashReturn,
+          }}
+          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
+          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
+          fallbackText={backendData?.ai_area}
+        />
+      )}
+
+      {/* ── AI Insights (Strengths / Risks / Next Steps) ──────────────── */}
       {hasAIInsights ? (
         <AIInsightsCard
           strengths={backendData?.ai_strengths}
           risks={backendData?.ai_risks}
-          area={backendData?.ai_area}
           nextSteps={backendData?.ai_next_steps}
         />
       ) : (
