@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, CircleMarker, Popup, useMap } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 import { createClient } from "@/lib/supabase/client"
@@ -107,10 +107,17 @@ export default function Article4Map({
       try {
         const supabase = createClient()
         const rows = await getAllArticle4Areas(supabase)
-        if (!cancelled) setAreas(rows)
+        if (!cancelled) {
+          setAreas(rows)
+          // eslint-disable-next-line no-console
+          console.log("[Article4Map] loaded", rows.length, "areas:",
+            rows.map((r) => `${r.councilName} (${r.status})`).join(", "))
+        }
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : "Failed to load")
+          // eslint-disable-next-line no-console
+          console.error("[Article4Map] load failed:", err)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -346,78 +353,92 @@ export default function Article4Map({
           </Marker>
         )}
 
-        {rendered.map((a) => (
-          <Marker
-            key={a.id}
-            position={[a.approximateCenterLat!, a.approximateCenterLng!]}
-            icon={ICONS[a.status] ?? ICONS.active}
-          >
-            <Popup maxWidth={320}>
-              <div style={{ fontSize: 13 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>
-                  {a.councilName}
-                </div>
-                <div
-                  style={{
-                    display: "inline-block",
-                    marginTop: 4,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "white",
-                    background:
-                      a.status === "active"
-                        ? "#dc2626"
-                        : a.status === "proposed" || a.status === "consultation"
-                        ? "#f59e0b"
-                        : "#9ca3af",
-                  }}
-                >
-                  {a.status.toUpperCase()}
-                </div>
-                {a.directionType && (
-                  <div style={{ marginTop: 6 }}>
-                    <strong>Type:</strong> {a.directionType}
-                  </div>
-                )}
-                {a.impactDescription && (
-                  <div style={{ marginTop: 4, color: "#374151" }}>
-                    {a.impactDescription}
-                  </div>
-                )}
-                {a.effectiveDate && a.status === "active" && (
-                  <div style={{ marginTop: 4, color: "#6b7280", fontSize: 12 }}>
-                    Effective: {a.effectiveDate}
-                  </div>
-                )}
-                {a.consultationEndDate &&
-                  (a.status === "proposed" || a.status === "consultation") && (
-                    <div style={{ marginTop: 4, color: "#6b7280", fontSize: 12 }}>
-                      Consultation ends: {a.consultationEndDate}
-                    </div>
+        {rendered.map((a) => {
+          const isActive = a.status === "active"
+          const isProposed = a.status === "proposed" || a.status === "consultation"
+          // Active: solid red. Proposed: amber, dashed stroke, smaller.
+          const style = isActive
+            ? {
+                radius: 12,
+                fillColor: "#ef4444",
+                color: "#dc2626",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.7,
+              }
+            : isProposed
+            ? {
+                radius: 10,
+                fillColor: "#f59e0b",
+                color: "#d97706",
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.6,
+                dashArray: "4",
+              }
+            : null
+          if (!style) return null
+          const headerColor = isActive ? "#dc2626" : "#d97706"
+          const headerLabel = isActive
+            ? "🔴 Article 4 In Force"
+            : "🟡 Article 4 Proposed"
+          const dateLine = isActive
+            ? a.effectiveDate || a.confirmedDate
+            : a.consultationEndDate
+          const dateLabel = isActive ? "Since" : "Consultation ends"
+          return (
+            <CircleMarker
+              key={a.id}
+              center={[a.approximateCenterLat!, a.approximateCenterLng!]}
+              pathOptions={style}
+              radius={style.radius}
+            >
+              <Popup maxWidth={320}>
+                <div style={{ fontSize: 13, minWidth: 220 }}>
+                  <h3 style={{ margin: "0 0 8px", color: headerColor, fontSize: 14 }}>
+                    {headerLabel}
+                  </h3>
+                  <p style={{ margin: "0 0 6px" }}>
+                    <strong>{a.councilName}</strong>
+                  </p>
+                  {a.directionType && (
+                    <p style={{ margin: "0 0 4px" }}>
+                      <strong>Type:</strong> {a.directionType}
+                    </p>
                   )}
-                {(a.postcodeDistricts?.length ?? 0) > 0 && (
-                  <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
-                    Districts: {(a.postcodeDistricts ?? []).join(", ")}
-                  </div>
-                )}
-                {a.councilPlanningUrl && (
-                  <div style={{ marginTop: 8 }}>
-                    <a
-                      href={a.councilPlanningUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "#2563eb", fontWeight: 600 }}
-                    >
-                      View council planning page ↗
-                    </a>
-                  </div>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+                  {(a.postcodeDistricts?.length ?? 0) > 0 && (
+                    <p style={{ margin: "0 0 4px" }}>
+                      <strong>Affected:</strong>{" "}
+                      {(a.postcodeDistricts ?? []).join(", ")}
+                    </p>
+                  )}
+                  {dateLine && (
+                    <p style={{ margin: "0 0 4px", color: "#6b7280", fontSize: 12 }}>
+                      {dateLabel}: {dateLine}
+                    </p>
+                  )}
+                  {a.impactDescription && (
+                    <p style={{ margin: "6px 0", color: "#374151", fontSize: 12 }}>
+                      {a.impactDescription}
+                    </p>
+                  )}
+                  {a.councilPlanningUrl && (
+                    <p style={{ margin: "8px 0 0" }}>
+                      <a
+                        href={a.councilPlanningUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "#2563eb", fontWeight: 600 }}
+                      >
+                        View planning page →
+                      </a>
+                    </p>
+                  )}
+                </div>
+              </Popup>
+            </CircleMarker>
+          )
+        })}
       </MapContainer>
     </div>
     </>
