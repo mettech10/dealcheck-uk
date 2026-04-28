@@ -51,25 +51,36 @@ export async function POST(req: Request) {
       }
       console.log("[FLOOR-SIZE] After scrape extraction: sqft=", sqft, "sqm=", sqm)
 
-      // If no floor size from listing, try EPC register
-      // Requires EPC_API_TOKEN (Bearer token) — register free at:
+      // If no floor size from listing, try the gov.uk EPC register.
+      //
+      // ⚠ Floor-area availability (as of Apr 2026):
+      //   The new https://api.get-energy-performance-data.communities.gov.uk
+      //   service exposes /api/domestic/search returning a slim payload of
+      //   address + energy band + UPRN — it does NOT include total-floor-area.
+      //   Empirically tested with a real OL4 4QT postcode: returns 200 with
+      //   `{ data: [...] }` and the row schema is:
+      //     certificateNumber, addressLine1-4, postcode, postTown, council,
+      //     constituency, currentEnergyEfficiencyBand, registrationDate, uprn
+      //   No certificate-detail endpoint is reachable yet (all variants return
+      //   404). Until DLUHC ships a detail endpoint, the scraper is the
+      //   authoritative source for floor area; EPC remains useful for energy
+      //   band, address validation, and presence-of-certificate signal.
+      //
+      // The lookup below is future-proofed: when the detail endpoint lands and
+      // search rows include floor-area (or a follow-up call is supported),
+      // the parser will pick up `total-floor-area`, `totalFloorArea`,
+      // `total_floor_area`, or `floorArea` automatically.
+      //
+      // Token: set EPC_API_TOKEN in Render env. Register free at
       // https://get-energy-performance-data.communities.gov.uk
       let sqftSource: string | undefined
       if (!sqft && raw.postcode) {
-        // New EPC API (migrated 2025): Bearer token auth
-        // Accepts any of these env var names for flexibility
         const epcToken = process.env.EPC_API_TOKEN || process.env.EPC_TOKEN || process.env.EPC_BEARER_TOKEN || process.env.EPC_API_KEY || ""
         console.log("[FLOOR-SIZE] EPC API CALL - postcode:", raw.postcode,
-          "EPC_API_TOKEN present:", !!process.env.EPC_API_TOKEN,
-          "EPC_TOKEN present:", !!process.env.EPC_TOKEN,
-          "EPC_BEARER_TOKEN present:", !!process.env.EPC_BEARER_TOKEN,
-          "EPC_API_KEY present:", !!process.env.EPC_API_KEY,
-          "EPC_API_EMAIL present:", !!process.env.EPC_API_EMAIL,
-          "resolved token present:", !!epcToken)
+          "tokenPresent:", !!epcToken)
         if (epcToken) {
           try {
-            const epcUrl = `https://api.get-energy-performance-data.communities.gov.uk/api/domestic/search?postcode=${encodeURIComponent(raw.postcode)}&page_size=5`
-            console.log("[FLOOR-SIZE] EPC API URL:", epcUrl)
+            const epcUrl = `https://api.get-energy-performance-data.communities.gov.uk/api/domestic/search?postcode=${encodeURIComponent(raw.postcode)}&size=5`
             const epcRes = await fetch(epcUrl, {
               headers: {
                 Accept: "application/json",
@@ -77,23 +88,24 @@ export async function POST(req: Request) {
               },
               signal: AbortSignal.timeout(8000),
             })
-            console.log("[FLOOR-SIZE] EPC RAW RESPONSE STATUS:", epcRes.status)
+            console.log("[FLOOR-SIZE] EPC API status:", epcRes.status)
             if (epcRes.ok) {
               const epcData = await epcRes.json()
-              // New API may use "rows", "results", or top-level array
-              const rows = epcData?.rows || epcData?.results || (Array.isArray(epcData) ? epcData : [])
+              // gov.uk service wraps results in `data`. Older mirrors used
+              // `rows`/`results`, so we accept all three shapes.
+              const rows: Record<string, unknown>[] =
+                epcData?.data ||
+                epcData?.rows ||
+                epcData?.results ||
+                (Array.isArray(epcData) ? epcData : [])
               console.log("[FLOOR-SIZE] EPC rows found:", rows.length)
               if (rows.length > 0) {
-                console.log("[FLOOR-SIZE] EPC first row keys:", Object.keys(rows[0]).join(", "))
-                console.log("[FLOOR-SIZE] EPC first row total-floor-area:", rows[0]["total-floor-area"],
-                  "totalFloorArea:", rows[0].totalFloorArea,
-                  "total_floor_area:", rows[0].total_floor_area,
-                  "floorArea:", rows[0].floorArea)
+                const r = rows[0] as Record<string, unknown>
                 const epcSqm = Number(
-                  rows[0]["total-floor-area"] ||
-                  rows[0].totalFloorArea ||
-                  rows[0].total_floor_area ||
-                  rows[0].floorArea ||
+                  (r["total-floor-area"] as number | undefined) ||
+                  (r["totalFloorArea"] as number | undefined) ||
+                  (r["total_floor_area"] as number | undefined) ||
+                  (r["floorArea"] as number | undefined) ||
                   0
                 )
                 if (epcSqm > 0) {
@@ -101,21 +113,29 @@ export async function POST(req: Request) {
                   sqftSource = "epc"
                   console.log(`[FLOOR-SIZE] EPC SUCCESS: ${epcSqm} sqm → ${sqft} sqft`)
                 } else {
-                  console.log("[FLOOR-SIZE] EPC row found but floor area is empty/zero:", epcSqm)
+                  console.log(
+                    "[FLOOR-SIZE] EPC certificate found but no floor-area field in response — current gov.uk search API does not include floor area. Falling back to scraper."
+                  )
                 }
               }
+            } else if (epcRes.status === 404) {
+              // Normal "no certificates" response — not a real error
+              console.log(`[FLOOR-SIZE] EPC: no certificates registered for ${raw.postcode}`)
             } else {
               const errBody = await epcRes.text().catch(() => "")
-              console.log(`[FLOOR-SIZE] EPC API returned ${epcRes.status} for postcode ${raw.postcode}:`, errBody.slice(0, 200))
+              console.log(
+                `[FLOOR-SIZE] EPC API returned ${epcRes.status} for ${raw.postcode}:`,
+                errBody.slice(0, 200)
+              )
             }
           } catch (epcErr) {
             console.log("[FLOOR-SIZE] EPC lookup EXCEPTION:", epcErr)
           }
         } else {
-          console.log("[FLOOR-SIZE] EPC SKIPPED — no EPC token found in env. Set EPC_API_TOKEN or EPC_TOKEN.")
+          console.log("[FLOOR-SIZE] EPC SKIPPED — no EPC_API_TOKEN in env")
         }
       } else if (sqft) {
-        console.log("[FLOOR-SIZE] EPC SKIPPED — sqft already available from scrape:", sqft)
+        console.log("[FLOOR-SIZE] EPC SKIPPED — sqft already from scrape:", sqft)
       }
       if (sqft && !sqftSource) {
         sqftSource = "listing"
