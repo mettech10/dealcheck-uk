@@ -140,6 +140,47 @@ export async function POST(req: Request) {
       if (sqft && !sqftSource) {
         sqftSource = "listing"
       }
+
+      // Heuristic fallback — when neither the scraper nor EPC supplied a
+      // floor size, derive a best-guess from bedrooms + property type
+      // using UK industry averages. Always estimate something so the
+      // analysis isn't blocked; the form labels the source so the user
+      // knows to verify. Source values: "listing" | "epc" | "estimated".
+      //
+      // Averages drawn from RICS / NHBC residential-size benchmarks.
+      // Apartments smaller than houses; bedroom count is the dominant
+      // signal.
+      if (!sqft) {
+        const bedrooms = Number(raw.bedrooms) || 0
+        const ptype = (raw.propertyType || raw.property_type || "").toLowerCase()
+        const isFlat =
+          ptype.includes("flat") ||
+          ptype.includes("apartment") ||
+          ptype.includes("maisonette")
+        const isDetached = ptype.includes("detach") && !ptype.includes("semi")
+        // Look-up table: estimated sqft by bedrooms × property type bucket.
+        // Falls through to the generic "house" column when type unknown.
+        const ESTIMATES: Record<number, { flat: number; semi: number; detached: number; house: number }> = {
+          0: { flat: 270, semi: 350, detached: 400, house: 350 },   // studio
+          1: { flat: 495, semi: 560, detached: 700, house: 560 },
+          2: { flat: 624, semi: 775, detached: 950, house: 775 },
+          3: { flat: 800, semi: 1001, detached: 1200, house: 947 },
+          4: { flat: 1050, semi: 1200, detached: 1500, house: 1300 },
+          5: { flat: 1300, semi: 1500, detached: 1900, house: 1700 },
+          6: { flat: 1500, semi: 1700, detached: 2200, house: 2000 },
+        }
+        const row = ESTIMATES[Math.min(Math.max(bedrooms, 0), 6)] || ESTIMATES[3]
+        const est = isFlat ? row.flat : isDetached ? row.detached : ptype.includes("semi") ? row.semi : row.house
+        if (est && bedrooms > 0) {
+          sqft = est
+          sqftSource = "estimated"
+          console.log(
+            `[FLOOR-SIZE] HEURISTIC: ${bedrooms} bed ${ptype || "house"} → ${est} sqft (estimate, user should verify)`
+          )
+        } else {
+          console.log("[FLOOR-SIZE] No data available for heuristic — bedrooms unknown")
+        }
+      }
       console.log("[FLOOR-SIZE] FINAL: sqft=", sqft, "sqftSource=", sqftSource)
 
       // Map property type detail from scraper to form enum

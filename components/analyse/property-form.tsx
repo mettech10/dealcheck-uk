@@ -612,6 +612,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
           <FormField label="Floor Size (sqft)" hint={
             sqftSource === "epc" ? "Floor size from EPC register"
             : sqftSource === "listing" ? "Floor size from listing"
+            : sqftSource === "estimated" ? "Estimated from bedrooms + property type \u2014 please verify"
             : sqftValue ? "From listing or EPC certificate"
             : "Floor size not found \u2014 enter manually"
           }>
