@@ -2033,7 +2033,7 @@ export function AnalysisResults({
                 {data.bills > 0 && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Bills</span>
-                    <span className="font-medium text-destructive">-{formatCurrency(Math.round(data.bills / 12))}</span>
+                    <span className="font-medium text-destructive">-{formatCurrency(Math.round(data.bills))}</span>
                   </div>
                 )}
 

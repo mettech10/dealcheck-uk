@@ -1020,7 +1020,7 @@ export default function AnalysePage() {
         ${fd?.insurance ? `<tr><td>Insurance</td><td class="td-right">-${gbp(fd.insurance / 12)}/mo</td></tr>` : ""}
         ${fd?.maintenance ? `<tr><td>Maintenance</td><td class="td-right">-${gbp(fd.maintenance / 12)}/mo</td></tr>` : ""}
         ${fd?.groundRent ? `<tr><td>Ground Rent</td><td class="td-right">-${gbp(fd.groundRent / 12)}/mo</td></tr>` : ""}
-        ${fd?.bills ? `<tr><td>Bills</td><td class="td-right">-${gbp(fd.bills / 12)}/mo</td></tr>` : ""}
+        ${fd?.bills ? `<tr><td>Bills</td><td class="td-right" style="color:#dc2626">-${gbp(fd.bills)}/mo</td></tr>` : ""}
         <tr><td><strong>Total Expenses</strong></td><td class="td-right"><strong>-${gbp(res?.monthlyExpenses || 0)}</strong></td></tr>
         <tr style="font-size:13px;font-weight:700;color:${(res?.monthlyCashFlow || 0) >= 0 ? "#16a34a" : "#dc2626"}">
           <td><strong>Net Monthly Cashflow</strong></td>
