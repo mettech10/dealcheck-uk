@@ -718,6 +718,9 @@ function HouseValuationCard({
   investmentType,
   userMonthlyRent,
   bedrooms,
+  roomCount,
+  avgRoomRate,
+  postcode,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
@@ -726,7 +729,37 @@ function HouseValuationCard({
   investmentType?: string
   userMonthlyRent?: number
   bedrooms?: number
+  roomCount?: number
+  avgRoomRate?: number
+  postcode?: string
 }) {
+  // Fetch SpareRoom listings for HMO to derive average room rent from comparables
+  const isHmoCard = investmentType === "hmo"
+  const [spareRoomAvg, setSpareRoomAvg] = useState<number | null>(null)
+  const [spareRoomCount, setSpareRoomCount] = useState<number>(0)
+  useEffect(() => {
+    if (!isHmoCard || !postcode) return
+    const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://metusa-deal-analyzer.onrender.com"
+    fetch(`${BACKEND_URL}/api/comparables`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postcode: postcode.toUpperCase(), maxResults: 12 }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        const listings: Array<{ rentPcm?: number | null; monthly_rent?: number; price_pcm?: number }> =
+          data?.listings || []
+        const prices = listings
+          .map((l) => l.rentPcm ?? l.monthly_rent ?? l.price_pcm ?? null)
+          .filter((p): p is number => typeof p === "number" && p > 0)
+        if (prices.length > 0) {
+          setSpareRoomAvg(prices.reduce((s, p) => s + p, 0) / prices.length)
+          setSpareRoomCount(prices.length)
+        }
+      })
+      .catch(() => {})
+  }, [isHmoCard, postcode])
+
   // Priority: backend valuation estimate → backend avg_sold_price → frontend comparables average
   const backendEstimate = valuation?.estimate && valuation.estimate > 0 ? valuation.estimate : null
   const backendAvg = avgSoldPrice && avgSoldPrice > 0 ? avgSoldPrice : null
@@ -738,14 +771,24 @@ function HouseValuationCard({
 
   const isHmo = investmentType === "hmo"
 
-  // Rental data — for HMO, use user's entered monthly rent (total HMO income)
-  const estRent = isHmo && userMonthlyRent && userMonthlyRent > 0
-    ? userMonthlyRent
+  // HMO income: use form roomCount × (SpareRoom avg → user's entered avgRoomRate)
+  const hmoRooms = roomCount ?? bedrooms ?? 0
+  const hmoAvgRent = spareRoomAvg ?? (avgRoomRate && avgRoomRate > 0 ? avgRoomRate : null)
+  const hmoIncome = isHmo && hmoRooms > 0 && hmoAvgRent
+    ? Math.round(hmoRooms * hmoAvgRent)
+    : null
+  const hmoRentSource = spareRoomAvg
+    ? `from ${spareRoomCount} SpareRoom listings`
+    : "your entered rate"
+
+  // Rental data — for HMO, prefer SpareRoom-derived income; fall back to user's monthly rent
+  const estRent = isHmo
+    ? (hmoIncome ?? (userMonthlyRent && userMonthlyRent > 0 ? userMonthlyRent : null))
     : (comparables?.estimatedRent ?? null)
   const rentRange = isHmo ? null : (comparables?.rentRange ?? null)
   const rentLabel = isHmo ? "Est. HMO Monthly Income" : "Estimated Monthly Rent"
-  const rentSubtext = isHmo && userMonthlyRent && bedrooms
-    ? `${bedrooms} rooms × £${Math.round(userMonthlyRent / bedrooms)} avg room rent`
+  const rentSubtext = isHmo && hmoRooms > 0 && hmoAvgRent
+    ? `${hmoRooms} rooms × £${Math.round(hmoAvgRent)} avg room rent (${hmoRentSource})`
     : null
 
   // Gross yield — recalculate for HMO if we have the data
@@ -1591,6 +1634,9 @@ export function AnalysisResults({
           investmentType={data.investmentType}
           userMonthlyRent={data.monthlyRent}
           bedrooms={data.bedrooms}
+          roomCount={data.roomCount}
+          avgRoomRate={data.avgRoomRate}
+          postcode={data.postcode}
         />
       )}
 
