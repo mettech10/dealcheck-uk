@@ -733,14 +733,15 @@ function HouseValuationCard({
   avgRoomRate?: number
   postcode?: string
 }) {
-  // Fetch SpareRoom listings for HMO to derive average room rent from comparables
+  // Fetch SpareRoom / PropertyData room listings for HMO to derive avg room rent
   const isHmoCard = investmentType === "hmo"
   const [spareRoomAvg, setSpareRoomAvg] = useState<number | null>(null)
   const [spareRoomCount, setSpareRoomCount] = useState<number>(0)
+  const [spareRoomSource, setSpareRoomSource] = useState<string>("")
   useEffect(() => {
     if (!isHmoCard || !postcode) return
-    const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://metusa-deal-analyzer.onrender.com"
-    fetch(`${BACKEND_URL}/api/comparables`, {
+    console.log("[HMO ROOMS FROM FORM] roomCount:", roomCount, "avgRoomRate:", avgRoomRate, "bedrooms:", bedrooms)
+    fetch(`/api/comparables/spareroom`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ postcode: postcode.toUpperCase(), maxResults: 12 }),
@@ -752,13 +753,15 @@ function HouseValuationCard({
         const prices = listings
           .map((l) => l.rentPcm ?? l.monthly_rent ?? l.price_pcm ?? null)
           .filter((p): p is number => typeof p === "number" && p > 0)
+        console.log("[HMO AVG RENT] source:", data?.source, "listings:", prices.length, "avg:", prices.length ? Math.round(prices.reduce((s, p) => s + p, 0) / prices.length) : null)
         if (prices.length > 0) {
           setSpareRoomAvg(prices.reduce((s, p) => s + p, 0) / prices.length)
           setSpareRoomCount(prices.length)
+          setSpareRoomSource(data?.source === "propertydata" ? "PropertyData market data" : `${prices.length} SpareRoom listings`)
         }
       })
-      .catch(() => {})
-  }, [isHmoCard, postcode])
+      .catch((err) => console.error("[HMO AVG RENT] fetch error:", err))
+  }, [isHmoCard, postcode, roomCount, avgRoomRate, bedrooms])
 
   // Priority: backend valuation estimate → backend avg_sold_price → frontend comparables average
   const backendEstimate = valuation?.estimate && valuation.estimate > 0 ? valuation.estimate : null
@@ -778,7 +781,7 @@ function HouseValuationCard({
     ? Math.round(hmoRooms * hmoAvgRent)
     : null
   const hmoRentSource = spareRoomAvg
-    ? `from ${spareRoomCount} SpareRoom listings`
+    ? `from ${spareRoomSource || `${spareRoomCount} SpareRoom listings`}`
     : "your entered rate"
 
   // Rental data — for HMO, prefer SpareRoom-derived income; fall back to user's monthly rent
