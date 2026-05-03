@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react"
 import { ExternalLink, Loader2, Home } from "lucide-react"
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://metusa-deal-analyzer.onrender.com"
-
 interface SpareRoomListing {
   title: string
   rentPcm: number | null
@@ -40,14 +38,17 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
 
     setLoading(true)
 
-    // Call Flask backend directly for live SpareRoom scraped data
-    fetch(`${BACKEND_URL}/api/comparables`, {
+    // Use the same Next.js proxy route that powers the HMO Rental Comparables
+    // section (HmoComparables). Same data, same source — no CORS surface,
+    // and stays in sync with the working component.
+    fetch(`/api/comparables/spareroom`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ postcode: postcode.toUpperCase(), maxResults: 12 }),
     })
       .then((r) => r.json())
       .then((data) => {
+        console.log("[Room Listings tab] source:", data?.source, "count:", (data?.listings || []).length)
         if (data.success) {
           setListings(data.listings || [])
           setSource(data.source || "")
@@ -55,7 +56,7 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
         }
       })
       .catch((err) => {
-        console.error("[SpareRoom Listings] Error:", err)
+        console.error("[Room Listings tab] Error:", err)
       })
       .finally(() => setLoading(false))
   }, [postcode])
