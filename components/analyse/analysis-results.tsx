@@ -42,7 +42,7 @@ import {
   Line,
 } from "recharts"
 import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark } from "@/lib/types"
-import { formatCurrency, formatPercent, calculateDealScore, calculateAll } from "@/lib/calculations"
+import { formatCurrency, formatPercent, calculateDealScore, calculateAll, estimateRefurbCost } from "@/lib/calculations"
 import {
   TrendingUp,
   TrendingDown,
@@ -943,46 +943,35 @@ function HouseValuationCard({
 
 // ── Refurb Estimates ───────────────────────────────────────────────────────
 function RefurbEstimatesCard({
-  estimates,
+  sqft,
+  condition,
+  propertyType,
+  postcode,
 }: {
-  estimates?: BackendResults["refurb_estimates"]
+  sqft?: number
+  condition?: string
+  propertyType?: string
+  postcode?: string
 }) {
-  if (!estimates) return null
+  console.log("[REFURB CARD] sqft:", sqft, "condition:", condition, "propertyType:", propertyType, "postcode:", postcode)
 
-  const levels: {
-    key: keyof NonNullable<BackendResults["refurb_estimates"]>
+  // Match form Select values exactly (property-form.tsx):
+  // excellent | good | cosmetic | full-refurb | structural
+  const tiers: {
+    key: string
     label: string
     desc: string
+    rateSqft: number
     color: string
   }[] = [
-    {
-      key: "light",
-      label: "Light (Cosmetic)",
-      desc: "Redecorate, carpets, minor fixtures",
-      color: "text-success",
-    },
-    {
-      key: "medium",
-      label: "Medium (Standard)",
-      desc: "New kitchen, bathroom, replastering",
-      color: "text-warning",
-    },
-    {
-      key: "heavy",
-      label: "Heavy (Full Refurb)",
-      desc: "Rewire, new heating, full strip-out",
-      color: "text-orange-500",
-    },
-    {
-      key: "structural",
-      label: "Structural",
-      desc: "Load-bearing walls, foundations, extensions",
-      color: "text-destructive",
-    },
+    { key: "excellent",   label: "Excellent / Move-in Ready",   desc: "No work needed",                                  rateSqft: 0,    color: "text-muted-foreground" },
+    { key: "good",        label: "Good — Minor Cosmetic",       desc: "Redecorate, carpets, minor fixtures",             rateSqft: 12.5, color: "text-success" },
+    { key: "cosmetic",    label: "Needs Cosmetic Work",         desc: "New kitchen/bathroom, replastering",              rateSqft: 25,   color: "text-warning" },
+    { key: "full-refurb", label: "Needs Full Refurbishment",    desc: "Rewire, new heating, full strip-out",             rateSqft: 50,   color: "text-orange-500" },
+    { key: "structural",  label: "Structural / Major Works",    desc: "Load-bearing walls, foundations, extensions",     rateSqft: 87.5, color: "text-destructive" },
   ]
 
-  const available = levels.filter((l) => estimates[l.key])
-  if (available.length === 0) return null
+  const validSqft = typeof sqft === "number" && sqft > 0 ? sqft : null
 
   return (
     <Card>
@@ -992,29 +981,41 @@ function RefurbEstimatesCard({
           <CardTitle className="text-sm">Refurbishment Cost Estimates</CardTitle>
         </div>
         <CardDescription className="text-xs">
-          Based on property size and location
+          {validSqft
+            ? `Based on ${validSqft.toLocaleString()} sqft floor size · all condition types shown`
+            : "Enter floor size for accurate estimates"}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {available.map(({ key, label, desc, color }) => {
-            const d = estimates[key]!
+          {tiers.map(({ key, label, desc, rateSqft, color }) => {
+            const isSelected = condition === key
+            // Use the same calculation pipeline as the form auto-fill
+            // (applies property-type and regional multipliers).
+            const cost = validSqft
+              ? estimateRefurbCost(validSqft, key, propertyType || "house", postcode)
+              : 0
             return (
               <div
                 key={key}
-                className="flex flex-col gap-1 rounded-lg border border-border/50 bg-muted/20 p-3"
+                className={`flex flex-col gap-1 rounded-lg border p-3 transition-colors ${
+                  isSelected
+                    ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                    : "border-border/50 bg-muted/20"
+                } ${!validSqft ? "opacity-60" : ""}`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-foreground">{label}</span>
                   <span className={`text-sm font-bold ${color}`}>
-                    {formatCurrency(d.total)}
+                    {validSqft ? formatCurrency(cost) : "—"}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">{desc}</p>
-                {(d.per_sqft_mid || d.per_sqm) && (
-                  <p className="text-xs text-muted-foreground">
-                    ~£{d.per_sqft_mid ?? d.per_sqm}/sqft
-                  </p>
+                <p className="text-xs text-muted-foreground">~£{rateSqft}/sqft base rate</p>
+                {isSelected && (
+                  <span className="mt-1 inline-flex w-fit items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                    Selected condition ✓
+                  </span>
                 )}
               </div>
             )
@@ -1471,7 +1472,6 @@ export function AnalysisResults({
 
   const hasSoldComparables = true // Always show — PropertyComparables fetches from Land Registry
   const hasRentComparables = (backendData?.rent_comparables?.length ?? 0) > 0
-  const hasRefurb = !!backendData?.refurb_estimates && Object.keys(backendData.refurb_estimates).length > 0
   const hasStrategies =
     !!backendData?.strategy_recommendations &&
     Object.keys(backendData.strategy_recommendations).length > 0
@@ -2112,7 +2112,12 @@ export function AnalysisResults({
       {/* Standalone HmoComparables now placed above Full Financial Breakdown */}
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
-      {hasRefurb && <RefurbEstimatesCard estimates={backendData?.refurb_estimates} />}
+      <RefurbEstimatesCard
+        sqft={data.sqft}
+        condition={data.condition}
+        propertyType={data.propertyType}
+        postcode={data.postcode}
+      />
 
       {/* ── Risk Flags ──────────────────────────────────────────────── */}
       {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
