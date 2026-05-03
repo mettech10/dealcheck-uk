@@ -804,9 +804,11 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   // Running costs
   const monthlyManagement = data.monthlyRent * (data.managementFeePercent / 100)
   const monthlyInsurance = data.insurance / 12
-  // Maintenance: prefer percentage of annual rent; fall back to flat amount
+  // Maintenance: prefer percentage of GROSS annual rent (matches management
+  // fee convention — both expressed as % of contract rent, not the void-
+  // adjusted figure); fall back to flat annual amount when % is 0.
   const maintenanceAnnual = data.maintenancePercent > 0
-    ? annualRent * (data.maintenancePercent / 100)
+    ? contractAnnualRent * (data.maintenancePercent / 100)
     : data.maintenance
   const monthlyMaintenance = maintenanceAnnual / 12
   const monthlyGroundRent = data.groundRent / 12
