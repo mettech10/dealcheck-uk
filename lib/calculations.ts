@@ -325,7 +325,14 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   // ── Serviced Accommodation (R2SA or SA-owned) ──────────────────────────
   if (data.investmentType === "r2sa") {
     const isOwned = data.saOwnershipType === "own"
-    const saRevenue = data.saMonthlySARevenue || 0
+    // Defensive: derive monthly revenue from nightly rate × occupancy × 30 if
+    // the form's auto-fill didn't fire (e.g. on direct submit). This avoids
+    // the headline metrics collapsing to 0% / "-103% CoC" when the legacy
+    // saMonthlySARevenue field is unset but the SA inputs are present.
+    const derivedRevenue = (data.saNightlyRate ?? 0) * ((data.saOccupancyRate ?? 0) / 100) * 30
+    const saRevenue = (data.saMonthlySARevenue && data.saMonthlySARevenue > 0)
+      ? data.saMonthlySARevenue
+      : derivedRevenue
 
     // ── SA Operating Costs (from detailed form fields) ──
     const platformFee     = saRevenue * ((data.saPlatformFeePercent ?? 15) / 100)

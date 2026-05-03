@@ -1497,7 +1497,59 @@ export function AnalysisResults({
       {/* Development: full panel renders all metrics + viability + cost stack
           + finance + RLV + sensitivity. Skip the yield/cashflow grid which
           is all zeros for a build-to-sell scheme. */}
-      {data.investmentType === "development" ? null : data.investmentType === "flip" ? (
+      {data.investmentType === "development" ? null : data.investmentType === "r2sa" ? (
+        /* SA / R2SA — revenue/profit/yield framing instead of BTL rent/yield */
+        (() => {
+          const isSAOwned = data.saOwnershipType === "own"
+          const monthlyRevenue = results.monthlyIncome
+          const annualRevenue = monthlyRevenue * 12
+          const platformPct = data.saPlatformFeePercent ?? 15
+          const platformCost = monthlyRevenue * (platformPct / 100)
+          const occ = data.saOccupancyRate ?? 0
+          return (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <MetricCard
+                label="Monthly Revenue"
+                value={formatCurrency(monthlyRevenue)}
+                sub={occ > 0 ? `At ${occ}% occupancy` : "Set nightly rate + occupancy"}
+                icon={PoundSterling}
+                positive={monthlyRevenue > 0}
+              />
+              <MetricCard
+                label="Monthly Net Profit"
+                value={formatCurrency(results.monthlyCashFlow)}
+                icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
+                positive={results.monthlyCashFlow >= 0}
+              />
+              <MetricCard
+                label="Annual Revenue"
+                value={formatCurrency(annualRevenue)}
+                icon={TrendingUp}
+                positive={annualRevenue > 0}
+              />
+              <MetricCard
+                label="Total Capital Required"
+                value={formatCurrency(results.totalCapitalRequired)}
+                sub={isSAOwned ? "Deposit + SDLT + fees + setup" : "≈3 months rent + setup"}
+                icon={Wallet}
+              />
+              <MetricCard
+                label="Gross Yield"
+                value={isSAOwned ? formatPercent(results.grossYield) : "N/A"}
+                sub={isSAOwned ? undefined : "Rent-to-SA — no purchase"}
+                icon={Percent}
+                positive={isSAOwned && results.grossYield >= 8}
+              />
+              <MetricCard
+                label="Platform Cost"
+                value={`${formatCurrency(platformCost)}/mo`}
+                sub={`${platformPct}% of revenue`}
+                icon={Wallet}
+              />
+            </div>
+          )
+        })()
+      ) : data.investmentType === "flip" ? (
         /* Flip-specific metrics */
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <MetricCard
