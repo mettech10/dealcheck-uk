@@ -88,6 +88,10 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
     })
       .then((r) => r.json())
       .then((data) => {
+        console.log("[AIRROI MARKET DATA]", JSON.stringify(data?.airroiMarket, null, 2))
+        if (data?.airroiListings?.[0]) {
+          console.log("[AIRROI LISTING SAMPLE]", JSON.stringify(data.airroiListings[0], null, 2))
+        }
         setListings(data.listings || [])
         setSummary(data.summary || null)
         setFallbackUrl(
@@ -118,7 +122,7 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
   return (
     <div className="space-y-4">
       {/* ── Airroi SA Market Data Card ──────────────────────────────────── */}
-      {!loading && airroiMarket && airroiMarket.avgNightlyRate > 0 && (
+      {!loading && airroiMarket && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -132,15 +136,16 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* Metrics table */}
+            {/* Metrics table — always render all rows, fall back to "—" when
+                the field is 0/null so labels never appear without values. */}
             <div className="rounded-lg border border-border/50 overflow-hidden">
               <div className="divide-y divide-border/30">
-                <MetricRow label="Avg Rate" value={`£${airroiMarket.avgNightlyRate.toFixed(0)}/night`} />
-                <MetricRow label="Occupancy" value={`${airroiMarket.avgOccupancyRate.toFixed(0)}%`} />
-                <MetricRow label="Monthly Rev" value={formatCurrency(airroiMarket.avgMonthlyRevenue)} />
-                <MetricRow label="RevPAR" value={`£${airroiMarket.revPAR.toFixed(0)}`} />
-                <MetricRow label="Stay Length" value={`${airroiMarket.avgLengthOfStay.toFixed(1)} nights`} />
-                <MetricRow label="Listings" value={`${airroiMarket.totalActiveListings.toFixed(0)} active`} />
+                <MetricRow label="Avg Nightly Rate" value={airroiMarket.avgNightlyRate > 0 ? `£${airroiMarket.avgNightlyRate.toFixed(0)}/night` : "—"} />
+                <MetricRow label="Avg Occupancy"    value={airroiMarket.avgOccupancyRate > 0 ? `${airroiMarket.avgOccupancyRate.toFixed(0)}%` : "—"} />
+                <MetricRow label="Avg Monthly Rev"  value={airroiMarket.avgMonthlyRevenue > 0 ? formatCurrency(Math.round(airroiMarket.avgMonthlyRevenue)) : "—"} />
+                <MetricRow label="RevPAR"           value={airroiMarket.revPAR > 0 ? `£${airroiMarket.revPAR.toFixed(0)}` : "—"} />
+                <MetricRow label="Avg Stay Length"  value={airroiMarket.avgLengthOfStay > 0 ? `${airroiMarket.avgLengthOfStay.toFixed(1)} nights` : "—"} />
+                <MetricRow label="Active Listings"  value={airroiMarket.totalActiveListings > 0 ? `${airroiMarket.totalActiveListings.toFixed(0)} active` : "—"} />
               </div>
             </div>
 
@@ -175,8 +180,8 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-primary">
-                          £{al.nightlyRate}/night
+                        <p className={`text-sm font-bold ${al.nightlyRate > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                          {al.nightlyRate > 0 ? `£${al.nightlyRate}/night` : "Price unavailable"}
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           {al.bedrooms > 0 && (
@@ -340,8 +345,8 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
                         {listing.title}
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-bold text-primary">
-                          £{listing.nightly_rate}/night
+                        <span className={`text-sm font-bold ${listing.nightly_rate > 0 ? "text-primary" : "text-muted-foreground"}`}>
+                          {listing.nightly_rate > 0 ? `£${listing.nightly_rate}/night` : "Price unavailable"}
                         </span>
                         {listing.rating && (
                           <span className="text-xs text-muted-foreground">
