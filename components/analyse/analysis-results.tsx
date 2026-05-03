@@ -1897,11 +1897,21 @@ export function AnalysisResults({
 
         {(hasSoldComparables || hasRentComparables) && (
           <TabsContent value="comparables" className="mt-4">
+            {/* SA: single scroll view — SA Market Data + Nightly Rate
+                Comparables. No sold/rental/room sub-tabs (irrelevant for
+                short-let). All other strategies get the standard
+                PropertyComparables with sold/rental/room sub-tabs. */}
             {data.investmentType === "r2sa" ? (
-              <SAComparables
-                postcode={data.postcode}
-                bedrooms={data.bedrooms}
-              />
+              data.postcode ? (
+                <SAComparables
+                  postcode={data.postcode}
+                  bedrooms={data.bedrooms}
+                />
+              ) : (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+                  Add a postcode to load SA market data and nightly-rate comparables.
+                </p>
+              )
             ) : (
               <PropertyComparables
                 postcode={data.postcode}
