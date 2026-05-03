@@ -24,6 +24,7 @@ import { FlipResults } from "./flip-results"
 import { DevelopmentResults } from "./development-results"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
+import { SAAreaIntelligence } from "./sa-area-intelligence"
 import { HmoComparables } from "./hmo-comparables"
 import { AiAreaAnalysisCard } from "./ai-area-analysis-card"
 import {
@@ -1679,8 +1680,18 @@ export function AnalysisResults({
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}
 
+      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
+      {data.investmentType === "r2sa" && data.postcode && (
+        <SAAreaIntelligence
+          postcode={data.postcode}
+          bedrooms={data.bedrooms}
+          userNightlyRate={data.saNightlyRate}
+          userOccupancyRate={data.saOccupancyRate}
+        />
+      )}
+
       {/* ── House Valuation ─────────────────────────────────────────── */}
-      {hasValuation && (
+      {hasValuation && data.investmentType !== "r2sa" && (
         <HouseValuationCard
           valuation={backendData?.house_valuation}
           purchasePrice={data.purchasePrice}
