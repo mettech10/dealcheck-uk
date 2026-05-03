@@ -85,6 +85,21 @@ const CHART_COLORS = [
   "oklch(0.65 0.12 310)",
 ]
 
+// Reusable signed-£ row used by the SA financial breakdown. Negative values
+// render in red with a leading "-£"; positive values render plain (or in
+// muted text when `muted` is set, e.g. for one-off capital line items).
+function Row({ label, value, muted = false }: { label: string; value: number; muted?: boolean }) {
+  const isNeg = value < 0
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-medium ${isNeg ? "text-destructive" : muted ? "text-foreground" : "text-foreground"}`}>
+        {isNeg ? "-" : ""}{formatCurrency(Math.round(Math.abs(value)))}
+      </span>
+    </div>
+  )
+}
+
 function MetricCard({
   label,
   value,
@@ -1932,6 +1947,161 @@ export function AnalysisResults({
       {data.investmentType === "hmo" && data.postcode && (
         <HmoComparables postcode={data.postcode} />
       )}
+
+      {/* ── Full Financial Breakdown — SA / R2SA ────────────────────── */}
+      {data.investmentType === "r2sa" && (() => {
+        const isSAOwned = data.saOwnershipType === "own"
+        const monthlyRevenue = results.monthlyIncome
+        const annualRevenue = monthlyRevenue * 12
+        const occupancy = data.saOccupancyRate ?? 0
+        const platformPct = data.saPlatformFeePercent ?? 15
+        const platformCost = monthlyRevenue * (platformPct / 100)
+        const cleaningPerStay = data.saCleaningCostPerStay ?? 0
+        const stays = data.saAvgStaysPerMonth ?? 0
+        const cleaningCost = cleaningPerStay * stays
+        const utilities = data.saUtilitiesMonthly ?? 0
+        const insuranceMonthly = (data.saInsuranceAnnual ?? 0) / 12
+        const mgmtPct = data.saManagementFeePercent ?? 0
+        const mgmtCost = monthlyRevenue * (mgmtPct / 100)
+        const maintPct = data.saMaintenancePercent ?? 0
+        const maintCost = monthlyRevenue * (maintPct / 100)
+        const leaseCost = !isSAOwned ? (data.saMonthlyLease || data.monthlyRent || 0) : 0
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Full Financial Breakdown</CardTitle>
+              <CardDescription>
+                Serviced Accommodation · {isSAOwned ? "owned" : "rent-to-SA"} model
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-5">
+
+              {/* REVENUE */}
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Revenue</p>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Monthly Revenue {occupancy > 0 ? `(at ${occupancy}% occupancy)` : ""}
+                    </span>
+                    <span className="font-medium text-success">+{formatCurrency(monthlyRevenue)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Annual Revenue</span>
+                    <span className="font-medium text-success">+{formatCurrency(Math.round(annualRevenue))}</span>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* PLATFORM & OPERATIONAL COSTS */}
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Platform & Operational Costs</p>
+                <div className="flex flex-col gap-1.5">
+                  <Row label={`Platform Commission (${platformPct}%)`}                                value={-platformCost} />
+                  <Row label={`Cleaning (${stays.toFixed(1)} stays × £${cleaningPerStay})`}            value={-cleaningCost} />
+                  <Row label="Utilities (monthly)"                                                     value={-utilities} />
+                  <Row label="Insurance (monthly)"                                                     value={-insuranceMonthly} />
+                  <Row label={`SA Management Fee (${mgmtPct}%)`}                                       value={-mgmtCost} />
+                  <Row label={`Maintenance (${maintPct}%)`}                                            value={-maintCost} />
+                </div>
+              </div>
+
+              {/* FINANCING / LEASE */}
+              {isSAOwned && results.monthlyMortgagePayment > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Financing</p>
+                  <Row label={`Monthly Mortgage (${data.interestRate}% ${data.mortgageType})`} value={-results.monthlyMortgagePayment} />
+                </div>
+              )}
+              {!isSAOwned && leaseCost > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Lease Cost</p>
+                  <Row label="Monthly Rent / Lease" value={-leaseCost} />
+                </div>
+              )}
+
+              <Separator />
+
+              {/* TOTALS */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Total Monthly Costs</span>
+                  <span className="font-semibold text-destructive">-{formatCurrency(results.monthlyExpenses)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-foreground">Monthly Net Profit</span>
+                  <span className={`text-base font-bold ${results.monthlyCashFlow >= 0 ? "text-success" : "text-destructive"}`}>
+                    {results.monthlyCashFlow >= 0 ? "+" : ""}{formatCurrency(results.monthlyCashFlow)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-semibold text-foreground">Annual Net Profit</span>
+                  <span className={`font-bold ${results.annualCashFlow >= 0 ? "text-success" : "text-destructive"}`}>
+                    {results.annualCashFlow >= 0 ? "+" : ""}{formatCurrency(results.annualCashFlow)}
+                  </span>
+                </div>
+              </div>
+
+              {/* CAPITAL (owned only) */}
+              {isSAOwned && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Capital</p>
+                    <div className="flex flex-col gap-1.5">
+                      <Row label={`Deposit (${data.depositPercentage}%)`} value={results.depositAmount} muted />
+                      <Row label="SDLT" value={results.sdltAmount} muted />
+                      <Row label="Legal Fees" value={data.legalFees} muted />
+                      <Row label="Survey" value={data.surveyCosts} muted />
+                      {(data.saSetupCosts ?? 0) > 0 && (
+                        <Row label="SA Setup Costs" value={data.saSetupCosts ?? 0} muted />
+                      )}
+                      <Separator className="my-1" />
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-semibold text-foreground">Total Capital Required</span>
+                        <span className="font-bold text-primary">{formatCurrency(results.totalCapitalRequired)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* RETURNS (owned only) */}
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Returns</p>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Gross Yield</span>
+                        <span className={`font-semibold ${results.grossYield >= 8 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Net Yield</span>
+                        <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">ROI (Cash-on-Cash)</span>
+                        <span className={`font-semibold ${results.cashOnCashReturn >= 8 ? "text-success" : "text-foreground"}`}>{formatPercent(results.cashOnCashReturn)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!isSAOwned && (
+                <p className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  Rent-to-SA model — gross/net yield are not applicable (no purchase).
+                  ROI based on £{(data.saSetupCosts ?? 5000).toLocaleString()} setup capital:{" "}
+                  <span className={`font-semibold ${results.cashOnCashReturn >= 0 ? "text-success" : "text-destructive"}`}>
+                    {formatPercent(results.cashOnCashReturn)}
+                  </span>
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* ── Full Financial Breakdown ─────────────────────────────────── */}
       {data.investmentType !== "r2sa" && (
