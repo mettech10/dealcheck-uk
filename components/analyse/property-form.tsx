@@ -339,6 +339,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     control,
     watch,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<PropertyFormData>({
     resolver: zodResolver(schema),
@@ -2076,8 +2077,18 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                     setMaintenanceMode(v)
                     // Zero the unused field so the calc engine's
                     // "prefer % when > 0, else flat" branch is unambiguous.
-                    if (v === "percent") setValue("maintenance", 0)
-                    else setValue("maintenancePercent", 0)
+                    // Also restore a sensible default on the active field
+                    // if it's currently 0 (e.g. after toggling back), so
+                    // the calc never silently uses an unset value.
+                    if (v === "percent") {
+                      setValue("maintenance", 0)
+                      const curPct = getValues("maintenancePercent")
+                      if (!curPct || curPct === 0) setValue("maintenancePercent", 10)
+                    } else {
+                      setValue("maintenancePercent", 0)
+                      const curFlat = getValues("maintenance")
+                      if (!curFlat || curFlat === 0) setValue("maintenance", 500)
+                    }
                   }}
                 >
                   <SelectTrigger className="w-24 shrink-0">

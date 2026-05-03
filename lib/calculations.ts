@@ -806,10 +806,16 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   const monthlyInsurance = data.insurance / 12
   // Maintenance: prefer percentage of GROSS annual rent (matches management
   // fee convention — both expressed as % of contract rent, not the void-
-  // adjusted figure); fall back to flat annual amount when % is 0.
+  // adjusted figure); fall back to flat annual amount when % is 0; and if
+  // BOTH are 0/unset (can happen when the form's maintenance-mode toggle
+  // has zeroed the active field), default to 10% — the industry standard
+  // and the form's own default — rather than silently treating maintenance
+  // as £0.
   const maintenanceAnnual = data.maintenancePercent > 0
     ? contractAnnualRent * (data.maintenancePercent / 100)
-    : data.maintenance
+    : data.maintenance > 0
+      ? data.maintenance
+      : contractAnnualRent * 0.10
   const monthlyMaintenance = maintenanceAnnual / 12
   const monthlyGroundRent = data.groundRent / 12
   const monthlyBills = data.bills // Bills is entered as a monthly figure
