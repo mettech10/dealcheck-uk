@@ -1546,7 +1546,7 @@ export function AnalysisResults({
               <MetricCard
                 label="Total Capital Required"
                 value={formatCurrency(results.totalCapitalRequired)}
-                sub={isSAOwned ? "Deposit + SDLT + fees + setup" : "≈3 months rent + setup"}
+                sub={isSAOwned ? "Deposit + SDLT + fees + setup" : "Rent deposit + advance + insurance + setup costs"}
                 icon={Wallet}
               />
               <MetricCard
@@ -2089,15 +2089,59 @@ export function AnalysisResults({
                 </>
               )}
 
-              {!isSAOwned && (
-                <p className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  Rent-to-SA model — gross/net yield are not applicable (no purchase).
-                  ROI based on £{(data.saSetupCosts ?? 5000).toLocaleString()} setup capital:{" "}
-                  <span className={`font-semibold ${results.cashOnCashReturn >= 0 ? "text-success" : "text-destructive"}`}>
-                    {formatPercent(results.cashOnCashReturn)}
-                  </span>
-                </p>
-              )}
+              {!isSAOwned && (() => {
+                const annualInsurance = data.saInsuranceAnnual ?? 0
+                const furnitureSetup = data.saSetupCosts ?? 0
+                const rentDeposit = leaseCost * 2
+                const advanceRent = leaseCost
+                const utilitiesSetup = utilities * 2
+                const initialCleaning = cleaningPerStay * 3
+                console.log("[SA COST BREAKDOWN]", {
+                  monthlyRevenue,
+                  platformFee: platformCost,
+                  cleaning: cleaningCost,
+                  monthlyRent: leaseCost,
+                  utilities,
+                  monthlyInsurance: insuranceMonthly,
+                  management: mgmtCost,
+                  maintenance: maintCost,
+                  totalMonthlyCosts: results.monthlyExpenses,
+                  monthlyNetProfit: results.monthlyCashFlow,
+                  totalCapital: results.totalCapitalRequired,
+                  capitalParts: { rentDeposit, advanceRent, utilitiesSetup, annualInsurance, initialCleaning, furnitureSetup },
+                })
+                return (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Capital (one-off)</p>
+                      <div className="flex flex-col gap-1.5">
+                        <Row label="Rent Deposit (2 months)" value={rentDeposit} muted />
+                        <Row label="Advance Rent (1 month)" value={advanceRent} muted />
+                        <Row label="Utilities Setup (deposit + 1st month)" value={utilitiesSetup} muted />
+                        <Row label="Annual Insurance (upfront)" value={annualInsurance} muted />
+                        <Row label="Initial Cleaning Supplies" value={initialCleaning} muted />
+                        {furnitureSetup > 0 && (
+                          <Row label="Furniture & Setup" value={furnitureSetup} muted />
+                        )}
+                        <Separator className="my-1" />
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-semibold text-foreground">Total Capital Required</span>
+                          <span className="font-bold text-primary">{formatCurrency(results.totalCapitalRequired)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                      Rent-to-SA model — gross/net yield are not applicable (no purchase).
+                      ROI on capital required:{" "}
+                      <span className={`font-semibold ${results.cashOnCashReturn >= 0 ? "text-success" : "text-destructive"}`}>
+                        {formatPercent(results.cashOnCashReturn)}
+                      </span>
+                    </p>
+                  </>
+                )
+              })()}
             </CardContent>
           </Card>
         )

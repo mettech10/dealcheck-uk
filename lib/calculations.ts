@@ -347,18 +347,33 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     if (!isOwned) {
       // ── Pure R2SA: rent from landlord, sublet as SA ──
       const rentPaid = data.saMonthlyLease || data.monthlyRent || 0
-      const setupCosts = data.saSetupCosts || 5000
+      const furnitureSetup = data.saSetupCosts || 0
+      const cleaningPerStay = data.saCleaningCostPerStay ?? 80
+      const annualInsurance = data.saInsuranceAnnual ?? 0
+      // Real start-up capital for rent-to-SA: 2-month security deposit +
+      // first month's rent in advance + utilities deposit & first month +
+      // annual insurance paid upfront + initial cleaning kit (3 stays
+      // worth) + furniture/setup. Replaces the old "= setupCosts" stub
+      // which understated capital by thousands of pounds.
+      const totalCapital = Math.round(
+        (rentPaid * 2) +              // security deposit (2 months)
+        rentPaid +                    // advance rent (1 month)
+        (utilities * 2) +             // utilities deposit + first month
+        annualInsurance +             // annual insurance upfront
+        (cleaningPerStay * 3) +       // initial cleaning supplies
+        furnitureSetup
+      )
       const monthlyExpenses = Math.round((rentPaid + monthlyOpCosts) * 100) / 100
       const monthlyCashFlow = Math.round((saRevenue - monthlyExpenses) * 100) / 100
       const annualCashFlow  = Math.round(monthlyCashFlow * 12 * 100) / 100
       const cashOnCashReturn =
-        setupCosts > 0 ? Math.round((annualCashFlow / setupCosts) * 10000) / 100 : 0
+        totalCapital > 0 ? Math.round((annualCashFlow / totalCapital) * 10000) / 100 : 0
 
       return {
         sdltAmount: 0,
         sdltBreakdown: [],
         totalPurchaseCost: 0,
-        totalCapitalRequired: setupCosts,
+        totalCapitalRequired: totalCapital,
         depositAmount: 0,
         mortgageAmount: 0,
         monthlyMortgagePayment: 0,
