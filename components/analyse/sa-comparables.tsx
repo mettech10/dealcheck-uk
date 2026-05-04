@@ -59,6 +59,35 @@ interface AirroiListing {
   listingUrl: string
   thumbnailUrl: string
   distance: number
+  // Tolerated alternative field names — different Airroi/scraper paths use
+  // different keys for the same datum. See extractNightlyRate() below.
+  nightly_rate?: number
+  price?: number
+  rate?: number
+  avg_price?: number
+  average_daily_rate?: number
+  adr?: number
+  price_per_night?: number
+  pricing?: { nightly?: number }
+}
+
+/** Pull a usable nightly rate from any of the field shapes Airroi or the
+ * Apify Airbnb actor have been observed to return. Centralising this means
+ * the listing card never has to guess. Returns 0 when nothing usable is
+ * present so callers can filter / hide. */
+function extractNightlyRate(listing: AirroiListing): number {
+  const n =
+    listing.nightlyRate ??
+    listing.nightly_rate ??
+    listing.price ??
+    listing.rate ??
+    listing.avg_price ??
+    listing.average_daily_rate ??
+    listing.adr ??
+    listing.pricing?.nightly ??
+    listing.price_per_night ??
+    0
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0
 }
 
 interface SAComparablesProps {
@@ -149,14 +178,35 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
               </div>
             </div>
 
-            {/* Airroi nearby listings */}
-            {airroiListings.length > 0 && (
+            {/* Airroi nearby listings — only show those with a real
+                nightly rate; zero-price entries are filtered out so the
+                grid doesn't get padded with "Price unavailable" cards. */}
+            {(() => {
+              const validListings = airroiListings
+                .map((l) => ({ listing: l, rate: extractNightlyRate(l) }))
+                .filter(({ rate }) => rate > 0)
+              console.log("[AIRROI LISTINGS RAW]", JSON.stringify(airroiListings.slice(0, 3), null, 2))
+              console.log("[AIRROI VALID LISTINGS]", validListings.length, "of", airroiListings.length)
+              if (airroiListings.length === 0) return null
+              if (validListings.length === 0) {
+                return (
+                  <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                    Live pricing data unavailable for this area — use the market averages above for benchmarking.
+                  </div>
+                )
+              }
+              const validOcc = validListings.filter(({ listing }) => listing.occupancyRate > 0)
+              const avgRate = Math.round(validListings.reduce((s, { rate }) => s + rate, 0) / validListings.length)
+              const avgOcc = validOcc.length > 0
+                ? Math.round(validOcc.reduce((s, { listing }) => s + listing.occupancyRate, 0) / validOcc.length)
+                : null
+              return (
               <div className="mt-4">
                 <p className="text-xs font-medium text-muted-foreground mb-2">
                   Nearby SA Listings
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {airroiListings.map((al, i) => (
+                  {validListings.map(({ listing: al, rate }, i) => (
                     <a
                       key={i}
                       href={al.listingUrl || undefined}
@@ -180,8 +230,8 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-bold ${al.nightlyRate > 0 ? "text-primary" : "text-muted-foreground"}`}>
-                          {al.nightlyRate > 0 ? `£${al.nightlyRate}/night` : "Price unavailable"}
+                        <p className="text-sm font-bold text-primary">
+                          £{rate.toFixed(rate >= 100 ? 0 : 1)}/night
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           {al.bedrooms > 0 && (
@@ -214,14 +264,12 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground text-center mt-2">
-                  {airroiListings.length} SA comparables
-                  {airroiListings.filter(l => l.nightlyRate > 0).length > 0 &&
-                    ` · Avg: £${Math.round(airroiListings.filter(l => l.nightlyRate > 0).reduce((s, l) => s + l.nightlyRate, 0) / airroiListings.filter(l => l.nightlyRate > 0).length)}/night`}
-                  {airroiListings.filter(l => l.occupancyRate > 0).length > 0 &&
-                    ` · Avg occupancy: ${Math.round(airroiListings.filter(l => l.occupancyRate > 0).reduce((s, l) => s + l.occupancyRate, 0) / airroiListings.filter(l => l.occupancyRate > 0).length)}%`}
+                  {validListings.length} SA comparables · Avg: £{avgRate}/night
+                  {avgOcc !== null && ` · Avg occupancy: ${avgOcc}%`}
                 </p>
               </div>
-            )}
+              )
+            })()}
           </CardContent>
         </Card>
       )}
