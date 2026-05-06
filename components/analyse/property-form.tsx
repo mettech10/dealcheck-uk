@@ -484,7 +484,31 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   }, [isHMO, hmoTotalRent, setValue])
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
+    <form
+      onSubmit={handleSubmit((formData) => {
+        // Normalise maintenance to match the visible UI mode at submit
+        // time. The toggle handler can leave the inactive field at 0
+        // from earlier interactions; re-syncing here guarantees what the
+        // user sees ('%' input with placeholder 10) is what gets sent.
+        const next = { ...formData }
+        if (maintenanceMode === "percent") {
+          if (!next.maintenancePercent || next.maintenancePercent === 0) {
+            next.maintenancePercent = 10
+          }
+          next.maintenance = 0
+        } else {
+          if (!next.maintenance || next.maintenance === 0) {
+            next.maintenance = 500
+          }
+          next.maintenancePercent = 0
+        }
+        console.log("[FORM SUBMIT] maintenanceMode:", maintenanceMode,
+          "maintenancePercent:", next.maintenancePercent,
+          "maintenance:", next.maintenance)
+        onSubmit(next)
+      })}
+      className="flex flex-col gap-8"
+    >
       {/* URL Pre-fill Banner */}
       {prefilled && !prefillDismissed && (
         <div className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
