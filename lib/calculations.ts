@@ -898,24 +898,14 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   let brrrrPostRefinanceRate: number | undefined
 
   if (data.investmentType === "brr" && data.arv && data.arv > 0) {
-    // Phase 1 — Acquisition cost (cash-equivalent upfront before finance)
-    brrrrAcquisitionCost = Math.round(
-      data.purchasePrice + sdltAmount + data.legalFees + data.surveyCosts
-    )
-
-    // Phase 2 — Refurb total (budget + contingency + holding during void)
-    const contingencyPct = Math.min(Math.max(data.refurbContingencyPercent ?? 10, 0), 50)
-    const holdingMonths = Math.min(Math.max(data.refurbHoldingMonths ?? 0, 0), 24)
-    const holdingPerMonth = Math.max(data.refurbHoldingCostPerMonth ?? 0, 0)
-    brrrrRefurbBudget = Math.round(data.refurbishmentBudget)
-    brrrrRefurbContingency = Math.round(brrrrRefurbBudget * (contingencyPct / 100))
-    brrrrRefurbHoldingCost = Math.round(holdingMonths * holdingPerMonth)
-    brrrrRefurbTotal = brrrrRefurbBudget + brrrrRefurbContingency + brrrrRefurbHoldingCost
-
-    // Phase 3 — Bridging cost (if bridging was used)
+    // Phase 3 first — Bridging finance shape (we need bridgingLoanAmount
+    // to figure out own-cash portion of the purchase, so compute this
+    // BEFORE acquisition cost). Only non-zero when purchaseType is
+    // "bridging-loan"; for mortgage/cash BRRRR there's no bridging spend.
+    let bridgingLoanAmount = 0
     if (data.purchaseType === "bridging-loan") {
       const bridgingLoanPct = Math.min(Math.max(data.bridgingLTV ?? 70, 0), 100) / 100
-      const bridgingLoanAmount = data.purchasePrice * bridgingLoanPct
+      bridgingLoanAmount = data.purchasePrice * bridgingLoanPct
       const monthlyRate = Math.max(data.bridgingMonthlyRate ?? 0, 0) / 100
       const termMonths = Math.max(data.bridgingTermMonths ?? 0, 0)
       const arrFeePct = Math.max(data.bridgingArrangementFee ?? 0, 0) / 100
@@ -928,6 +918,31 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       brrrrBridgingFees = 0
       brrrrBridgingTotal = 0
     }
+
+    // Phase 1 — Acquisition cost (cash-equivalent upfront before refurb).
+    // BUG FIX: when buying with a bridging loan, the investor only puts down
+    // the non-bridged portion of the purchase price. Previously the FULL
+    // purchase price was counted as own cash, inflating totalCashInvested
+    // by the bridging amount and tanking the capital-recycled %.
+    // For cash/standard-mortgage purchases, ownCashPurchase = purchasePrice
+    // (the deposit is part of cash invested in the BRRRR model — the
+    // standard BTL mortgage is never drawn since the property is refinanced
+    // straight after refurb).
+    const ownCashPurchase = data.purchaseType === "bridging-loan"
+      ? data.purchasePrice - bridgingLoanAmount
+      : data.purchasePrice
+    brrrrAcquisitionCost = Math.round(
+      ownCashPurchase + sdltAmount + data.legalFees + data.surveyCosts
+    )
+
+    // Phase 2 — Refurb total (budget + contingency + holding during void)
+    const contingencyPct = Math.min(Math.max(data.refurbContingencyPercent ?? 10, 0), 50)
+    const holdingMonths = Math.min(Math.max(data.refurbHoldingMonths ?? 0, 0), 24)
+    const holdingPerMonth = Math.max(data.refurbHoldingCostPerMonth ?? 0, 0)
+    brrrrRefurbBudget = Math.round(data.refurbishmentBudget)
+    brrrrRefurbContingency = Math.round(brrrrRefurbBudget * (contingencyPct / 100))
+    brrrrRefurbHoldingCost = Math.round(holdingMonths * holdingPerMonth)
+    brrrrRefurbTotal = brrrrRefurbBudget + brrrrRefurbContingency + brrrrRefurbHoldingCost
 
     // Phase 4 — Refinance: new BTL mortgage on ARV with dedicated LTV/rate/term
     const refinanceLTVPct = Math.min(Math.max(data.refinanceLTV ?? 75, 0), 100) / 100
@@ -956,8 +971,18 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       brrrrBridgingTotal +
       brrrrRefinanceFees
     )
-    // Capital returned at refinance = new loan - original debt payoff
-    const originalLoanPayoff = mortgageAmount
+    // Capital returned at refinance = new loan - whatever loan was actually
+    // outstanding pre-refinance.
+    // BUG FIX: for bridging-loan BRRRR the loan being paid off is the
+    // BRIDGING loan, not the standard mortgage (which was never drawn in
+    // this scenario). Previously this used `mortgageAmount` (purchase -
+    // deposit, computed assuming a standard mortgage), so capitalReturned
+    // was off by (bridgingLoan - mortgageAmount). For non-bridging BRRRR
+    // (cash or standard mortgage) the original-loan-payoff is the standard
+    // mortgageAmount (0 for cash).
+    const originalLoanPayoff = data.purchaseType === "bridging-loan"
+      ? bridgingLoanAmount
+      : mortgageAmount
     brrrrCapitalReturned = Math.max(0, refinancedMortgageAmount - originalLoanPayoff)
     moneyLeftInDeal = Math.max(0, brrrrTotalCashInvested - brrrrCapitalReturned)
     finalTotalCapital = moneyLeftInDeal
