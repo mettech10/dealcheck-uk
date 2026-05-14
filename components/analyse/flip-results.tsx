@@ -310,6 +310,36 @@ export function FlipResults({ data, results }: FlipResultsProps) {
               tone={projectMonths <= 6 ? "good" : projectMonths <= 12 ? "ok" : "bad"}
             />
           </div>
+
+          {/* ── Annualised ROI / monthly burn / break-even strip ──── */}
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+            <HeadlineTile
+              label="Annualised ROI"
+              value={
+                projectMonths > 0
+                  ? `${(postTaxROI / (projectMonths / 12)).toFixed(1)}%/yr`
+                  : "—"
+              }
+              sub={`Post-tax ROI scaled to 12 mo`}
+              tone={postTaxROI / Math.max(projectMonths / 12, 0.01) >= 20 ? "good" : "ok"}
+            />
+            <HeadlineTile
+              label="Monthly Holding Burn"
+              value={formatCurrency(monthlyHolding)}
+              sub={`× ${r.flipHoldingMonths ?? 0} months of carry`}
+              tone="neutral"
+            />
+            <HeadlineTile
+              label="Break-even Sale Price"
+              value={formatCurrency(Math.max(0, arvOverride - preTax))}
+              sub="Min sale price to recover all costs"
+              tone={
+                arvOverride > 0 && arvOverride - preTax <= arvOverride
+                  ? "ok"
+                  : "bad"
+              }
+            />
+          </div>
         </CardContent>
       </Card>
 
