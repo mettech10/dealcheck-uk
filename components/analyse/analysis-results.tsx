@@ -1522,6 +1522,16 @@ export function AnalysisResults({
           const platformPct = data.saPlatformFeePercent ?? 15
           const platformCost = monthlyRevenue * (platformPct / 100)
           const occ = data.saOccupancyRate ?? 0
+
+          // S4 spec: break-even occupancy + revenue:rent ratio for rent-to-SA
+          const nightly = data.saNightlyRate ?? 0
+          const leaseRent = data.saMonthlyLease || data.monthlyRent || 0
+          const totalMonthlyCosts = results.monthlyExpenses ?? 0
+          const breakevenOcc =
+            nightly > 0 ? (totalMonthlyCosts / (nightly * 30)) * 100 : 0
+          const revToRentRatio =
+            leaseRent > 0 ? monthlyRevenue / leaseRent : 0
+
           return (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <MetricCard
@@ -1549,19 +1559,46 @@ export function AnalysisResults({
                 sub={isSAOwned ? "Deposit + SDLT + fees + setup" : "Rent deposit + advance + insurance + setup costs"}
                 icon={Wallet}
               />
-              <MetricCard
-                label="Gross Yield"
-                value={isSAOwned ? formatPercent(results.grossYield) : "N/A"}
-                sub={isSAOwned ? undefined : "Rent-to-SA — no purchase"}
-                icon={Percent}
-                positive={isSAOwned && results.grossYield >= 8}
-              />
-              <MetricCard
-                label="Platform Cost"
-                value={`${formatCurrency(platformCost)}/mo`}
-                sub={`${platformPct}% of revenue`}
-                icon={Wallet}
-              />
+              {isSAOwned ? (
+                <MetricCard
+                  label="Gross Yield"
+                  value={formatPercent(results.grossYield)}
+                  icon={Percent}
+                  positive={results.grossYield >= 8}
+                />
+              ) : (
+                <MetricCard
+                  label="Break-even Occupancy"
+                  value={
+                    breakevenOcc > 0 && breakevenOcc < 200
+                      ? `${breakevenOcc.toFixed(1)}%`
+                      : "—"
+                  }
+                  sub={
+                    breakevenOcc > occ && occ > 0
+                      ? `Above your ${occ}% — review`
+                      : "Min to cover all costs"
+                  }
+                  icon={Percent}
+                  positive={breakevenOcc > 0 && breakevenOcc < occ}
+                />
+              )}
+              {isSAOwned ? (
+                <MetricCard
+                  label="Platform Cost"
+                  value={`${formatCurrency(platformCost)}/mo`}
+                  sub={`${platformPct}% of revenue`}
+                  icon={Wallet}
+                />
+              ) : (
+                <MetricCard
+                  label="Revenue : Rent Ratio"
+                  value={revToRentRatio > 0 ? `${revToRentRatio.toFixed(2)}×` : "—"}
+                  sub="Target 2.0× or better"
+                  icon={TrendingUp}
+                  positive={revToRentRatio >= 2}
+                />
+              )}
             </div>
           )
         })()
