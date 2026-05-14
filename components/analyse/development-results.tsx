@@ -388,6 +388,17 @@ export function DevelopmentResults({
           sub={`GDV ${formatCurrency(dev.totalGDV)}`}
           icon={Layers}
         />
+        <DevMetric
+          label="Residual Land Value"
+          value={formatCurrency(dev.residualLandValue)}
+          sub={
+            dev.landPremiumOverAsk >= 0
+              ? `Margin ${formatCurrency(dev.landPremiumOverAsk)} vs paid`
+              : `OVER-PAYING by ${formatCurrency(Math.abs(dev.landPremiumOverAsk))}`
+          }
+          icon={Scale}
+          positive={dev.landPremiumOverAsk >= 0}
+        />
       </div>
 
       {/* ── 3 · GDV Summary ─────────────────────────────────── */}
