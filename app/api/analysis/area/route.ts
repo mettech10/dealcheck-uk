@@ -11,7 +11,7 @@ const BACKEND_API_URL =
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { postcode, strategy, dealData, benchmark, articleFour } = body
+    const { postcode, strategy, dealData, benchmark, articleFour, marketContext } = body
 
     if (!postcode) {
       return NextResponse.json(
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     const upstream = await fetch(`${BACKEND_API_URL}/api/analysis/area`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postcode, strategy, dealData, benchmark, articleFour }),
+      body: JSON.stringify({ postcode, strategy, dealData, benchmark, articleFour, marketContext }),
       signal: AbortSignal.timeout(45_000),
     })
 

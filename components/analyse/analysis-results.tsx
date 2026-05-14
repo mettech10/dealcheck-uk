@@ -2458,7 +2458,11 @@ export function AnalysisResults({
       {/* ── Sensitivity Analysis ────────────────────────────────────── */}
       <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
 
-      {/* ── AI Area Analysis — dedicated, structured 5-section card ───── */}
+      {/* ── AI Area Analysis — strategy-aware 5-section card ──────────── */}
+      {/* Threads strategy-specific signals (ARV, room rates, SA nightly,
+          DEV unit mix etc) into the Flask Claude prompt so each strategy
+          gets section titles and analytical lens calibrated to that
+          strategy's investor questions — not a one-size BTL-style report. */}
       {data.postcode && (
         <AiAreaAnalysisCard
           postcode={data.postcode}
@@ -2468,9 +2472,57 @@ export function AnalysisResults({
             grossYield: results.grossYield,
             monthlyCashFlow: results.monthlyCashFlow,
             cashOnCashReturn: results.cashOnCashReturn,
+            bedrooms: data.bedrooms,
+            sqft: data.sqft,
+            propertyType: data.propertyType,
+            propertyTypeDetail: data.propertyTypeDetail,
+            tenureType: data.tenureType,
+            condition: data.condition,
+            refurbishmentBudget: data.refurbishmentBudget,
+            // Strategy-specific extras — Flask uses these to enrich the prompt
+            arv: data.arv,
+            arvBasis: data.arvBasis,
+            // HMO
+            roomCount: data.roomCount,
+            avgRoomRate: data.avgRoomRate,
+            hmoLicenceCost: data.hmoLicenceCost,
+            // BRRRR
+            brrrrCapitalRecycledPct: results.brrrrCapitalRecycledPct,
+            brrrrRefurbUpliftRatio: results.brrrrRefurbUpliftRatio,
+            moneyLeftInDeal: results.moneyLeftInDeal,
+            equityGained: results.equityGained,
+            refinancedMortgageAmount: results.refinancedMortgageAmount,
+            // Flip
+            flipPostTaxProfit: results.flipPostTaxProfit,
+            flipPostTaxROI: results.flipPostTaxROI,
+            flipPassesStrict70: results.flipPassesStrict70,
+            flipHoldingMonths: data.flipHoldingMonths,
+            flipOwnershipStructure: data.flipOwnershipStructure,
+            // SA / R2SA
+            saOwnershipType: data.saOwnershipType,
+            saNightlyRate: data.saNightlyRate,
+            saOccupancyRate: data.saOccupancyRate,
+            saMonthlyLease: data.saMonthlyLease,
+            // Development
+            devSiteType: data.devSiteType,
+            devPlanningStatus: data.devPlanningStatus,
+            devUnitMixSize: Array.isArray(data.devUnitMix) ? data.devUnitMix.length : 0,
+            devTotalUnits: Array.isArray(data.devUnitMix)
+              ? data.devUnitMix.reduce((s, u) => s + (Number(u.numberOfUnits) || 0), 0)
+              : 0,
+            devGdv: results.development?.totalGDV,
+            devTdc: results.development?.totalDevelopmentCost,
+            devProfitOnCostPct: results.development?.profitOnCost,
+            devRlv: results.development?.residualLandValue,
           }}
           benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
           articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
+          marketContext={{
+            soldComparables: backendData?.sold_comparables ?? null,
+            rentComparables: backendData?.rent_comparables ?? null,
+            avgSoldPrice: backendData?.avg_sold_price ?? null,
+            houseValuation: backendData?.house_valuation ?? null,
+          }}
           fallbackText={backendData?.ai_area}
         />
       )}
