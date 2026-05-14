@@ -2092,6 +2092,12 @@ export function AnalysisResults({
                       <Row label="SDLT" value={results.sdltAmount} muted />
                       <Row label="Legal Fees" value={data.legalFees} muted />
                       <Row label="Survey" value={data.surveyCosts} muted />
+                      {/* Refurb is added to totalCapitalRequired by the calc engine
+                          (lib/calculations.ts SA-Owned branch). Without showing this
+                          line, the components didn't tie to the displayed Total. */}
+                      {(data.refurbishmentBudget ?? 0) > 0 && (
+                        <Row label="Refurbishment Budget" value={data.refurbishmentBudget ?? 0} muted />
+                      )}
                       {(data.saSetupCosts ?? 0) > 0 && (
                         <Row label="SA Setup Costs" value={data.saSetupCosts ?? 0} muted />
                       )}
