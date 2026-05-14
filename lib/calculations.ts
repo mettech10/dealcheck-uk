@@ -991,9 +991,16 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       : 0
 
     // Phase 6 — Equity & uplift metrics
+    // - equityGained: forced appreciation NET of refurb spend (the investor's
+    //   actual created value after paying for the works).
+    // - brrrrEquityAtRefinance: equity in the property at refinance time
+    //   (ARV − refinanced mortgage). Lender-facing metric; usually larger.
+    // - brrrrRefurbUpliftRatio: divides by FULL refurb spend (base + contingency)
+    //   so it reflects every £ committed to the works, not just the budgeted £.
     equityGained = Math.round(data.arv - data.purchasePrice - (brrrrRefurbBudget + brrrrRefurbContingency))
-    brrrrRefurbUpliftRatio = brrrrRefurbBudget > 0
-      ? Math.round(((data.arv - data.purchasePrice) / brrrrRefurbBudget) * 100) / 100
+    const refurbSpendForRatio = brrrrRefurbBudget + brrrrRefurbContingency
+    brrrrRefurbUpliftRatio = refurbSpendForRatio > 0
+      ? Math.round(((data.arv - data.purchasePrice) / refurbSpendForRatio) * 100) / 100
       : 0
   }
 
@@ -1076,6 +1083,10 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     refinancedMortgageAmount,
     moneyLeftInDeal,
     equityGained,
+    brrrrEquityAtRefinance:
+      data.investmentType === "brr" && data.arv && refinancedMortgageAmount
+        ? Math.round(data.arv - refinancedMortgageAmount)
+        : undefined,
     brrrrAcquisitionCost,
     brrrrRefurbBudget,
     brrrrRefurbContingency,
@@ -1161,91 +1172,92 @@ export interface BRRRRDealScore {
 
 export function calculateBRRRRDealScore(
   results: CalculationResults,
-  arv?: number
+  arv?: number,
+  data?: { monthlyRent?: number; purchasePrice?: number }
 ): BRRRRDealScore {
-  // ── Axis 1: Capital recycling (30 pts) ──────────────────────────────
-  // 100% recycled = full 30. Linear 0-100% → 0-30.
-  const recycledPct = results.brrrrCapitalRecycledPct ?? 0
-  const capitalRecyclingScore = Math.round(
-    Math.min(Math.max(recycledPct, 0), 100) * 0.3
-  )
+  // BRRRR scoring rubric — stepped bands by industry convention.
+  // Steps match the canonical BRRRR investor framework: capital recycled
+  // >= 80-90% is the gold standard, refurb uplift >= 2× is exceptional,
+  // post-refi cashflow >= £500/mo is strong, etc.
 
-  // ── Axis 2: Cashflow (25 pts) ───────────────────────────────────────
-  //   ≥ £500/mo     → 25
-  //   £300-500      → 18-25 (linear)
-  //   £150-300      → 10-18
-  //   £0-150        →  0-10
-  //   < £0          →  0
+  // ── Axis 1: Capital recycling (30 pts) ──────────────────────────────
+  //   >= 90% → 30   |   >= 75% → 22   |   >= 50% → 15
+  //   >= 25% →  8   |   else  →  0
+  const recycledPct = results.brrrrCapitalRecycledPct ?? 0
+  let capitalRecyclingScore: number
+  if (recycledPct >= 90)      capitalRecyclingScore = 30
+  else if (recycledPct >= 75) capitalRecyclingScore = 22
+  else if (recycledPct >= 50) capitalRecyclingScore = 15
+  else if (recycledPct >= 25) capitalRecyclingScore = 8
+  else                        capitalRecyclingScore = 0
+
+  // ── Axis 2: Post-refi monthly cashflow (25 pts) ─────────────────────
+  //   >= £500 → 25  |  >= £300 → 18  |  >= £100 → 10
+  //   >= £0   →  5  |  < £0    →  0
   const mcf = results.monthlyCashFlow ?? 0
   let cashflowScore: number
   if (mcf >= 500)      cashflowScore = 25
-  else if (mcf >= 300) cashflowScore = Math.round(18 + ((mcf - 300) / 200) * 7)
-  else if (mcf >= 150) cashflowScore = Math.round(10 + ((mcf - 150) / 150) * 8)
-  else if (mcf >= 0)   cashflowScore = Math.round((mcf / 150) * 10)
+  else if (mcf >= 300) cashflowScore = 18
+  else if (mcf >= 100) cashflowScore = 10
+  else if (mcf >= 0)   cashflowScore = 5
   else                 cashflowScore = 0
 
-  // ── Axis 3: Refurb uplift ratio (20 pts) ────────────────────────────
-  // ratio = (ARV - purchase) / refurb. 2.0x+ is exceptional.
-  //   ≥ 2.5  → 20
-  //   1.5-2.5→ 12-20
-  //   1.0-1.5→  6-12
-  //   0.5-1.0→  2-6
-  //   < 0.5  →  0
+  // ── Axis 3: Refurb uplift multiple (20 pts) ─────────────────────────
+  // ratio = (ARV - purchase) / (refurb budget + contingency).
+  //   >= 2.0× → 20  |  >= 1.5× → 14  |  >= 1.0× →  8
+  //   < 1.0×  →  0
   const uplift = results.brrrrRefurbUpliftRatio ?? 0
   let upliftScore: number
-  if (uplift >= 2.5)      upliftScore = 20
-  else if (uplift >= 1.5) upliftScore = Math.round(12 + ((uplift - 1.5) / 1.0) * 8)
-  else if (uplift >= 1.0) upliftScore = Math.round(6  + ((uplift - 1.0) / 0.5) * 6)
-  else if (uplift >= 0.5) upliftScore = Math.round(2  + ((uplift - 0.5) / 0.5) * 4)
+  if (uplift >= 2.0)      upliftScore = 20
+  else if (uplift >= 1.5) upliftScore = 14
+  else if (uplift >= 1.0) upliftScore = 8
   else                    upliftScore = 0
 
-  // ── Axis 4: Net yield on ARV (15 pts) ───────────────────────────────
-  // Recompute yield against ARV (not purchase) since refinance uses ARV.
-  // Target bands:
-  //   ≥ 7%    → 15
-  //   5-7%    → 10-15
-  //   3-5%    →  5-10
-  //   0-3%    →  0-5
-  const annualCashflow = results.annualCashFlow ?? 0
-  const annualNetRentalIncome =
-    annualCashflow + (results.annualMortgageCost ?? 0)
+  // ── Axis 4: Gross yield on ARV (15 pts) ─────────────────────────────
+  // = annual contract rent / ARV × 100. Uses ARV (not purchase) because
+  // refinance debt scales with ARV — yield on ARV is what really stress-
+  // tests cashflow vs the new mortgage.
+  //   >= 8% → 15  |  >= 6% → 10  |  >= 4% → 5  |  < 4% → 0
+  const monthlyRent = data?.monthlyRent ?? 0
+  const annualGrossRent = monthlyRent * 12
   const yieldOnARV =
-    arv && arv > 0 ? (annualNetRentalIncome / arv) * 100 : 0
+    arv && arv > 0 ? (annualGrossRent / arv) * 100 : 0
   let yieldScore: number
-  if (yieldOnARV >= 7)      yieldScore = 15
-  else if (yieldOnARV >= 5) yieldScore = Math.round(10 + ((yieldOnARV - 5) / 2) * 5)
-  else if (yieldOnARV >= 3) yieldScore = Math.round(5  + ((yieldOnARV - 3) / 2) * 5)
-  else if (yieldOnARV >= 0) yieldScore = Math.round((yieldOnARV / 3) * 5)
+  if (yieldOnARV >= 8)      yieldScore = 15
+  else if (yieldOnARV >= 6) yieldScore = 10
+  else if (yieldOnARV >= 4) yieldScore = 5
   else                      yieldScore = 0
 
-  // ── Axis 5: ROCE (10 pts) ───────────────────────────────────────────
-  // Return on Capital Employed = cashflow / money left in deal.
-  // If moneyLeftInDeal ≈ 0 (infinite ROCE = perfect recycle), award full 10.
-  //   moneyLeft = 0   → 10 (bonus for perfect recycle)
-  //   ROCE ≥ 30%      → 10
-  //   ROCE 15-30%     → 6-10
-  //   ROCE 5-15%      → 2-6
-  //   ROCE < 5%       → 0-2
+  // ── Axis 5: ROCE — Return on Capital Employed (10 pts) ──────────────
+  // ROCE = forced equity uplift / money still in deal × 100.
+  // This is the WEALTH-creation metric — how much equity you built per
+  // £ of cash still locked in. Distinct from cash-on-cash (income/cash).
+  //   moneyLeft <= 0      → 10 (perfect recycle — infinite ROCE)
+  //   ROCE >= 200%        → 10
+  //   ROCE 100-200%       →  7
+  //   ROCE  50-100%       →  4
+  //   ROCE  <  50%        →  0
   const moneyLeft = results.moneyLeftInDeal ?? results.totalCapitalRequired ?? 0
+  const valueUplift =
+    arv && data?.purchasePrice ? arv - data.purchasePrice : 0
   const roceValue = moneyLeft > 500
-    ? (annualCashflow / moneyLeft) * 100
-    : 999 // sentinel — perfect recycle
+    ? (valueUplift / moneyLeft) * 100
+    : 999
   let roceScore: number
-  if (moneyLeft <= 500)     roceScore = 10
-  else if (roceValue >= 30) roceScore = 10
-  else if (roceValue >= 15) roceScore = Math.round(6 + ((roceValue - 15) / 15) * 4)
-  else if (roceValue >= 5)  roceScore = Math.round(2 + ((roceValue - 5)  / 10) * 4)
-  else if (roceValue >= 0)  roceScore = Math.round((roceValue / 5) * 2)
-  else                      roceScore = 0
+  if (moneyLeft <= 500)      roceScore = 10
+  else if (roceValue >= 200) roceScore = 10
+  else if (roceValue >= 100) roceScore = 7
+  else if (roceValue >= 50)  roceScore = 4
+  else                       roceScore = 0
 
   const total =
     capitalRecyclingScore + cashflowScore + upliftScore + yieldScore + roceScore
 
   const label: BRRRRDealScore["label"] =
-    total >= 85 ? "Excellent" :
-    total >= 70 ? "Strong"    :
-    total >= 50 ? "Decent"    :
-    total >= 30 ? "Marginal"  :
+    total >= 90 ? "Excellent" :
+    total >= 75 ? "Strong"    :
+    total >= 60 ? "Decent"    :
+    total >= 45 ? "Marginal"  :
                   "Poor"
 
   return {
@@ -1266,14 +1278,14 @@ export function calculateBRRRRDealScore(
       },
       yieldOnARV: {
         score: yieldScore, max: 15, value: yieldOnARV,
-        note: `${yieldOnARV.toFixed(2)}% yield on ARV`,
+        note: `${yieldOnARV.toFixed(2)}% gross yield on ARV`,
       },
       roce: {
         score: roceScore, max: 10,
         value: moneyLeft <= 500 ? 100 : roceValue,
         note: moneyLeft <= 500
           ? "Perfect capital recycle"
-          : `${roceValue.toFixed(1)}% return on money left`,
+          : `${roceValue.toFixed(1)}% wealth uplift on money left`,
       },
     },
   }

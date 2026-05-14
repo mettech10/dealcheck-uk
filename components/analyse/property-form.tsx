@@ -175,6 +175,26 @@ const schema = z.object({
   maintenancePercent: z.coerce.number().min(0).max(100),
   groundRent: z.coerce.number().min(0),
   bills: z.coerce.number().min(0),
+}).superRefine((data, ctx) => {
+  // BRRRR requires a positive ARV — without it, every BRRRR-specific
+  // metric (refinance amount, capital recycled, equity gained) evaluates
+  // to zero and the results page shows blank tiles. Was the root cause
+  // of the "every BRRRR metric shows 0" report.
+  if (data.investmentType === "brr" && (!data.arv || data.arv <= 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "BRRRR analyses need an After-Repair Value (ARV) > 0",
+      path: ["arv"],
+    })
+  }
+  // Flip also needs ARV to compute exit profit / 70% rule.
+  if (data.investmentType === "flip" && (!data.arv || data.arv <= 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Flip analyses need an After-Repair Value (ARV) > 0",
+      path: ["arv"],
+    })
+  }
 })
 
 interface PropertyFormProps {

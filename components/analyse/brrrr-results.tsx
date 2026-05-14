@@ -51,10 +51,25 @@ interface BRRRRResultsProps {
 
 export function BRRRRResults({ data, results }: BRRRRResultsProps) {
   const arv = data.arv ?? 0
-  const score = calculateBRRRRDealScore(results, arv)
+  const score = calculateBRRRRDealScore(results, arv, {
+    monthlyRent: data.monthlyRent,
+    purchasePrice: data.purchasePrice,
+  })
 
   // Phase costs (safe defaults if missing)
   const acqCost = results.brrrrAcquisitionCost ?? 0
+  // Own-cash portion of the purchase: the investor's actual upfront spend
+  // on the property itself (excluding SDLT/legal/survey). For bridging
+  // purchases this is the non-bridged portion; for cash/mortgage it's the
+  // full purchase price.
+  const bridgingLoanAmount =
+    data.purchaseType === "bridging-loan"
+      ? data.purchasePrice * ((data.bridgingLTV ?? 70) / 100)
+      : 0
+  const ownCashPurchase =
+    data.purchaseType === "bridging-loan"
+      ? Math.round(data.purchasePrice - bridgingLoanAmount)
+      : data.purchasePrice
   const refurbBudget = results.brrrrRefurbBudget ?? 0
   const refurbContingency = results.brrrrRefurbContingency ?? 0
   const refurbHolding = results.brrrrRefurbHoldingCost ?? 0
@@ -71,6 +86,7 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
   const recycledPct = results.brrrrCapitalRecycledPct ?? 0
   const upliftRatio = results.brrrrRefurbUpliftRatio ?? 0
   const equity = results.equityGained ?? 0
+  const equityAtRefi = results.brrrrEquityAtRefinance ?? Math.max(0, (data.arv ?? 0) - refinancedMortgage)
 
   const verdictColor =
     score.total >= 70
@@ -179,7 +195,11 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
               icon={<Wallet className="size-4" />}
               phase="1 — Acquisition"
               cost={acqCost}
-              detail={`Purchase ${formatCurrency(data.purchasePrice)} + SDLT ${formatCurrency(results.sdltAmount)} + legal/survey`}
+              detail={
+                data.purchaseType === "bridging-loan"
+                  ? `Own cash ${formatCurrency(ownCashPurchase)} (purchase ${formatCurrency(data.purchasePrice)} − ${formatCurrency(bridgingLoanAmount)} bridging) + SDLT ${formatCurrency(results.sdltAmount)} + legal/survey`
+                  : `Purchase ${formatCurrency(data.purchasePrice)} + SDLT ${formatCurrency(results.sdltAmount)} + legal/survey`
+              }
             />
             <JourneyStep
               icon={<Hammer className="size-4" />}
@@ -223,7 +243,15 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
             <table className="w-full text-sm">
               <tbody>
                 <SectionRow title="Phase 1 — Acquisition" />
-                <Row label="Purchase price" value={data.purchasePrice} />
+                {data.purchaseType === "bridging-loan" ? (
+                  <>
+                    <Row label="Purchase price (gross)" value={data.purchasePrice} muted />
+                    <Row label={`Bridging loan (${data.bridgingLTV ?? 70}% LTV)`} value={-bridgingLoanAmount} muted />
+                    <Row label="Own cash purchase" value={ownCashPurchase} />
+                  </>
+                ) : (
+                  <Row label="Purchase price" value={data.purchasePrice} />
+                )}
                 <Row label="SDLT" value={results.sdltAmount} />
                 <Row label="Legal fees" value={data.legalFees} />
                 <Row label="Survey" value={data.surveyCosts} />
@@ -428,7 +456,7 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <HeadlineTile
               label="Purchase Price"
               value={formatCurrency(data.purchasePrice)}
@@ -442,9 +470,15 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
               tone="neutral"
             />
             <HeadlineTile
+              label="Equity at Refinance"
+              value={formatCurrency(equityAtRefi)}
+              sub="ARV − new mortgage"
+              tone={equityAtRefi > 0 ? "good" : "bad"}
+            />
+            <HeadlineTile
               label="Equity Gained"
               value={formatCurrency(equity)}
-              sub="Forced appreciation"
+              sub="Forced appreciation (net of refurb)"
               tone={equity > 0 ? "good" : "bad"}
             />
           </div>
@@ -540,19 +574,22 @@ function Row({
   value,
   bold = false,
   sub,
+  muted = false,
 }: {
   label: string
   value: number
   bold?: boolean
   sub?: string
+  muted?: boolean
 }) {
+  const muteClass = muted ? "text-muted-foreground" : ""
   return (
     <tr className="border-t">
-      <td className="px-3 py-2">
+      <td className={`px-3 py-2 ${muteClass}`}>
         <div className={bold ? "font-medium" : ""}>{label}</div>
         {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
       </td>
-      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""}`}>
+      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${muteClass}`}>
         {formatCurrency(value)}
       </td>
     </tr>

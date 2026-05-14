@@ -287,7 +287,8 @@ export interface CalculationResults {
   // BRRRR-specific
   refinancedMortgageAmount?: number  // mortgage on ARV after refinance
   moneyLeftInDeal?: number           // total invested minus capital returned at refinance
-  equityGained?: number              // ARV - purchase - refurb (forced appreciation)
+  equityGained?: number              // ARV - purchase - refurb (forced appreciation, NET of refurb spend)
+  brrrrEquityAtRefinance?: number    // ARV - refinanced mortgage (lender-facing equity headroom at refi)
 
   // BRRRR — phase cost breakdown
   brrrrAcquisitionCost?: number      // purchase + SDLT + legal + survey
@@ -303,7 +304,7 @@ export interface CalculationResults {
   brrrrTotalCashInvested?: number    // sum of all outflows before refinance
   brrrrCapitalReturned?: number      // refinance minus bridging/mortgage payoff
   brrrrCapitalRecycledPct?: number   // capitalReturned / totalCashInvested * 100
-  brrrrRefurbUpliftRatio?: number    // (ARV - purchase) / refurbBudget
+  brrrrRefurbUpliftRatio?: number    // (ARV - purchase) / (refurbBudget + contingency)
   brrrrPostRefinanceRate?: number    // echo of refinance rate used
 
   // Flip-specific (legacy summary — kept for back-compat with existing UI)
