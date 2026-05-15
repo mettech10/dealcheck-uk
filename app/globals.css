@@ -331,6 +331,98 @@
     display: block !important;
     visibility: visible !important;
   }
+
+  /* ── Full results-page print mode ────────────────────────────────────
+     Wired by the "Save as PDF" button at the top of /analyse. Same
+     isolation pattern as the strategy-specific reports — hide everything
+     outside the .print-results-root subtree, drop the dark theme, page-
+     break between cards. Prints whatever the user is currently seeing
+     on the results view (verdict banner + headline metrics + strategy
+     panel + market comparables + area analysis + AI insights + 5-year
+     projection + sensitivity, in their current state). */
+  body.print-results * {
+    visibility: hidden;
+  }
+  body.print-results .print-results-root,
+  body.print-results .print-results-root * {
+    visibility: visible;
+  }
+  body.print-results .print-results-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  body.print-results .print-results-root .no-print,
+  body.print-results .print-results-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  /* Light theme overrides so colours print well on white paper */
+  body.print-results .print-results-root,
+  body.print-results .print-results-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  /* Every card-shaped block gets a light border + breaks-inside avoid
+     so we never get a card sliced across two pages. */
+  body.print-results .print-results-root [class*="card"],
+  body.print-results .print-results-root .rounded-md,
+  body.print-results .print-results-root .rounded-lg,
+  body.print-results .print-results-root .rounded-xl {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-results .print-results-root .text-muted-foreground,
+  body.print-results .print-results-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-results .print-results-root h1,
+  body.print-results .print-results-root h2,
+  body.print-results .print-results-root h3,
+  body.print-results .print-results-root h4 {
+    page-break-after: avoid;
+  }
+  body.print-results .print-results-root table {
+    page-break-inside: auto;
+  }
+  body.print-results .print-results-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  /* Preserve the verdict / score-coloured states even in print — these
+     are the most important visual signals on the page. Whitelist by
+     tailwind-style class fragments so we keep red/amber/green and
+     success/warning/destructive backgrounds in their muted print form. */
+  body.print-results .print-results-root [class*="text-red"],
+  body.print-results .print-results-root [class*="text-destructive"] {
+    color: #b91c1c !important;
+  }
+  body.print-results .print-results-root [class*="text-emerald"],
+  body.print-results .print-results-root [class*="text-success"],
+  body.print-results .print-results-root [class*="text-green"] {
+    color: #15803d !important;
+  }
+  body.print-results .print-results-root [class*="text-amber"],
+  body.print-results .print-results-root [class*="text-warning"],
+  body.print-results .print-results-root [class*="text-yellow"] {
+    color: #b45309 !important;
+  }
+  body.print-results .print-results-root [class*="text-primary"] {
+    color: #0d9488 !important;
+  }
+  /* Tabs are only partially visible in print — only show the actively-
+     selected tab content (Tabs hidden tabs have hidden / data-state=
+     "inactive"). The user can switch tabs and re-print if they want a
+     different chart. */
+  body.print-results .print-results-root [role="tablist"] {
+    display: none !important;
+  }
 }
 
 /* Hide print-only elements outside print mode. */

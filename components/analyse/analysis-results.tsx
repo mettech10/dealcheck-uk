@@ -1504,7 +1504,12 @@ export function AnalysisResults({
   const hasBenchmark = !!backendData?.regional_benchmark
 
   return (
-    <div className="flex flex-col gap-6">
+    /* `print-results-root` is the wrapper isolated by body.print-results
+       in globals.css → when the user hits "Save as PDF" the whole results
+       tree (cards, charts, AI sections, area analysis, comparables…)
+       renders to PDF exactly as it appears on screen. Each card already
+       has its own border + page-break-inside: avoid via the print rules. */
+    <div className="flex flex-col gap-6 print-results-root">
 
       {/* ── Verdict Banner ──────────────────────────────────────────── */}
       <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
