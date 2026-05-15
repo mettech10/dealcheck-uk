@@ -23,10 +23,13 @@ import {
 // ── Cache TTLs (hours) ────────────────────────────────────────────────────
 
 const TTL = {
-  "sold-prices": 168,  // 7 days — Land Registry data changes slowly
-  "prices": 48,        // 2 days — asking prices change more often
-  "rents": 24,         // 1 day — rental market is dynamic
-  "rents-hmo": 24,     // 1 day
+  "sold-prices": 168,    // 7 days — Land Registry data changes slowly
+  "prices": 48,          // 2 days — asking prices change more often
+  "rents": 24,           // 1 day — rental market is dynamic
+  "rents-hmo": 24,       // 1 day
+  "spareroom-live": 6,   // 6 hours — Flask SpareRoom scrape (caches successful
+                         //          results to stop the same-page flap where one
+                         //          fetch lands 10 listings and the next lands 0)
 } as const
 
 type CacheEndpoint = keyof typeof TTL
@@ -214,6 +217,61 @@ export async function cachedGetAskingPrices(
       radius_km: result.data?.radius ? parseFloat(result.data.radius) : undefined,
       points_count: result.data?.points_analysed,
     })
+  }
+  return result
+}
+
+/**
+ * Cache wrapper for the Flask /api/comparables endpoint (live SpareRoom
+ * scrape via Bright Data / Apify). The live scraper is non-deterministic —
+ * back-to-back calls for the same postcode regularly return different
+ * counts (10 listings one call, 0 the next). This causes the visible bug
+ * where the House Valuation card shows "from 10 SpareRoom listings" while
+ * the Room Listings tab shows "No live room listings found" on the SAME
+ * page render.
+ *
+ * Caches ONLY successful responses (count > 0) with a 6h TTL — short
+ * enough that fresh market state still flows through within a day, long
+ * enough to stabilise the per-page rendering. Failed/empty responses are
+ * NOT cached so subsequent calls retry the scraper.
+ *
+ * Args: postcode + maxResults; opaque fetcher returning the Flask response.
+ */
+export async function cachedFlaskSpareroom(
+  postcode: string,
+  maxResults: number,
+  fetcher: () => Promise<Record<string, unknown> | null>
+): Promise<Record<string, unknown> | null> {
+  const params = { endpoint: "spareroom-live", postcode: postcode.toUpperCase(), maxResults }
+  const hash = await hashParams(params as Record<string, string | number | undefined>)
+
+  const cached = await getCached(hash, "spareroom-live")
+  if (cached) {
+    console.log("[PD-Cache] HIT spareroom-live for", postcode)
+    return cached.response as Record<string, unknown>
+  }
+
+  console.log("[PD-Cache] MISS spareroom-live for", postcode, "— calling Flask")
+  const result = await fetcher()
+
+  // Only cache a successful response with actual listings — empty/failed
+  // results stay uncached so the next call retries the live scraper.
+  const listings = Array.isArray(result?.listings) ? (result!.listings as unknown[]) : []
+  const isSuccess = result?.success === true && listings.length > 0
+  if (isSuccess) {
+    const rents = listings
+      .map((l) => {
+        const o = l as Record<string, unknown>
+        return (o.monthly_rent as number) || (o.rentPcm as number) || (o.price_pcm as number) || 0
+      })
+      .filter((r) => r > 0)
+    const avgRent =
+      rents.length > 0 ? Math.round(rents.reduce((a, b) => a + b, 0) / rents.length) : undefined
+    await setCache(postcode, "spareroom-live", undefined, hash, result, {
+      avg_rent: avgRent,
+      points_count: listings.length,
+    })
+    console.log("[PD-Cache] WROTE spareroom-live for", postcode, "—", listings.length, "listings")
   }
   return result
 }

@@ -4,7 +4,7 @@ import {
   mapRoomType,
   type HmoRentsResponse,
 } from "@/lib/propertydata"
-import { cachedGetHmoRents } from "@/lib/propertydata-cache"
+import { cachedGetHmoRents, cachedFlaskSpareroom } from "@/lib/propertydata-cache"
 
 const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -37,22 +37,36 @@ export async function POST(req: Request) {
       return NextResponse.json(result)
     }
 
-    console.log("[HMO-ROUTE] PropertyData failed or empty, falling back to Flask")
+    console.log("[HMO-ROUTE] PropertyData failed or empty, falling back to Flask (cached)")
 
     // ── Fallback: Flask backend (SpareRoom/OpenRent actors) ────────────────
+    // Wrapped in cachedFlaskSpareroom so back-to-back calls for the same
+    // postcode return the same listings — fixes the flap where one fetch
+    // lands 10 listings and the next lands 0 from the live scraper.
     try {
-      const response = await fetch(`${FLASK_URL}/api/comparables`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postcode: postcode.toUpperCase(),
-          maxResults: maxResults || 12,
-        }),
-      })
-
-      const data = await response.json()
-      console.log("[HMO-ROUTE] Flask fallback - success:", data.success, "count:", data.count)
-      return NextResponse.json(data)
+      const data = await cachedFlaskSpareroom(
+        postcode.toUpperCase(),
+        maxResults || 12,
+        async () => {
+          const response = await fetch(`${FLASK_URL}/api/comparables`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              postcode: postcode.toUpperCase(),
+              maxResults: maxResults || 12,
+            }),
+          })
+          return await response.json()
+        }
+      )
+      const safe = data ?? {}
+      console.log(
+        "[HMO-ROUTE] Flask fallback - success:",
+        (safe as { success?: boolean }).success,
+        "count:",
+        (safe as { count?: number }).count
+      )
+      return NextResponse.json(safe)
     } catch (flaskErr) {
       console.error("[HMO-ROUTE] Flask fallback also failed:", flaskErr)
     }
