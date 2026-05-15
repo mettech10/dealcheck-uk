@@ -250,12 +250,12 @@ function signUpWelcomeEmailHtml(name?: string): string {
 
 function receiptEmailHtml(plan: string, amount: string): string {
   const planLabel =
-    plan === "pay_per_deal"
-      ? "Pay Per Deal"
+    plan === "pay_per_analysis" || plan === "pay_per_deal"
+      ? "Pay Per Analysis"
       : plan === "pro"
       ? "Pro Plan"
-      : plan === "unlimited"
-      ? "Unlimited Plan"
+      : plan === "enterprise"
+      ? "Enterprise Plan"
       : "Subscription"
 
   return baseTemplate(`

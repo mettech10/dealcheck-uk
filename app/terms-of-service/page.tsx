@@ -230,19 +230,22 @@ export default function TermsOfServicePage() {
           subject to usage restrictions as described on the pricing page.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          <strong>Pay-Per-Deal</strong> — A one-off payment of &pound;2.99 per
-          individual deal analysis, with no ongoing commitment.
+          <strong>Pay Per Analysis</strong> — A one-off payment of &pound;2.99
+          per individual deal analysis, with no ongoing commitment. Each
+          purchase unlocks the full feature set for a single deal.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
           <strong>Pro</strong> — &pound;19.99 per month, providing unlimited
-          analyses, advanced features, 5-year projections, PDF export, and
-          priority support.
+          analyses, all six investment strategies (BTL, HMO, BRRRR, Flip,
+          Serviced Accommodation, Development), advanced features, 5-year
+          projections, PDF export, and priority support. Billed monthly,
+          cancellable at any time.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
-          <strong>Unlimited</strong> — &pound;49.99 per month, providing all
-          Pro features plus team collaboration, API access, white-label reports,
-          and dedicated support, with the ability to use Reports for commercial
-          purposes including resale.
+          <strong>Enterprise</strong> — Custom pricing for teams and
+          professional users requiring team seats, API access, white-label
+          reports, custom integrations, and a dedicated account manager.
+          Contact us at contact@metalyzi.co.uk for a quote.
         </li>
       </ul>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
