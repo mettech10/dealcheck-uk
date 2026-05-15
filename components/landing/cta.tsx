@@ -33,31 +33,32 @@ export function CTA() {
                 >
                   <Sparkles className="size-4" />
                 </motion.div>
-                Launching Soon
+                Live Now
               </motion.div>
 
-              <motion.h2 
+              <motion.h2
                 className="text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.2 }}
                 viewport={{ once: true }}
               >
-                Get Early Access to Metalyzi
+                Start Analysing Deals Today
               </motion.h2>
 
-              <motion.p 
+              <motion.p
                 className="mx-auto mt-4 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
                 viewport={{ once: true }}
               >
-                Join the waitlist for exclusive early access to AI-powered property deal analysis.
-                Be the first to transform how you evaluate investment opportunities.
+                Run 3 deal analyses free every month — no card required. Upgrade
+                when you need the full toolkit (all 6 strategies, AI insights,
+                PDF reports).
               </motion.p>
 
-              <motion.div 
+              <motion.div
                 className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -66,8 +67,8 @@ export function CTA() {
               >
                 <PulseElement>
                   <Button asChild size="xl">
-                    <Link href="/waitlist">
-                      Join Waitlist
+                    <Link href="/analyse">
+                      Start for Free
                       <motion.span
                         animate={{ x: [0, 5, 0] }}
                         transition={{ duration: 1.5, repeat: Infinity }}
@@ -77,11 +78,11 @@ export function CTA() {
                     </Link>
                   </Button>
                 </PulseElement>
-                
+
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button asChild size="xl" variant="outline">
-                    <Link href="/analyse">
-                      Try Demo
+                    <Link href="#pricing">
+                      See Pricing
                     </Link>
                   </Button>
                 </motion.div>
