@@ -7,7 +7,12 @@
  *   BREVO_SENDER_EMAIL   — verified sender address (default: noreply@metalyzi.co.uk)
  */
 
-async function sendBrevoEmail(
+/**
+ * Low-level Brevo SMTP send. Exported so other email modules
+ * (lib/paymentEmails.ts) can compose new templates without re-implementing
+ * the API plumbing.
+ */
+export async function sendBrevoEmail(
   to: string,
   subject: string,
   htmlContent: string,
@@ -54,7 +59,7 @@ async function sendBrevoEmail(
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function logoBlock(): string {
+export function logoBlock(): string {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://metalyzi.co.uk"
   return `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
@@ -87,7 +92,7 @@ function emailFooter(): string {
     </tr>`
 }
 
-function baseTemplate(content: string): string {
+export function baseTemplate(content: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
