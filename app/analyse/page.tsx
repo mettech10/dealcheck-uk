@@ -9,6 +9,7 @@ import { PropertyForm } from "@/components/analyse/property-form"
 import { AnalysisResults } from "@/components/analyse/analysis-results"
 import { RecentDeals } from "@/components/analyse/recent-deals"
 import { PropertyListingCard } from "@/components/analyse/property-listing-card"
+import { UpgradeModal, type UpgradeReason } from "@/components/UpgradeModal"
 import type { ScrapedListing } from "@/components/analyse/property-listing-card"
 import { calculateAll, calculateDealScore } from "@/lib/calculations"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
@@ -306,6 +307,10 @@ export default function AnalysePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aiText, setAiText] = useState("")
+  // ── Usage-gate paywall state ─────────────────────────────────────────
+  const [showUpgrade, setShowUpgrade] = useState(false)
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeReason>("free_limit_reached")
+  const [upgradeFreeUsed, setUpgradeFreeUsed] = useState(0)
   const [aiLoading, setAiLoading] = useState(false)
   const [backendData, setBackendData] = useState<BackendResults | null>(null)
   const [prefillData, setPrefillData] = useState<Partial<PropertyFormData> | null>(null)
@@ -334,10 +339,35 @@ export default function AnalysePage() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => null)
-          if (errData?.code === "subscription_required") {
-            throw new Error(
-              "🔒 An active subscription is required to run analyses. Please upgrade your plan."
+          // ── Usage-gate paywall (new flow) ─────────────────────────
+          // /api/analyse returns 402 with code=usage_limit_reached when
+          // the user has run out of free analyses or paid credits. Open
+          // the upgrade modal with the right paywall message instead of
+          // throwing a generic error.
+          if (res.status === 402 && errData?.code === "usage_limit_reached") {
+            setUpgradeReason(
+              (errData.reason as UpgradeReason) ?? "free_limit_reached",
             )
+            setUpgradeFreeUsed(errData.freeUsed ?? 0)
+            setShowUpgrade(true)
+            setIsLoading(false)
+            setAiLoading(false)
+            return
+          }
+          if (res.status === 401 || errData?.code === "not_logged_in") {
+            setUpgradeReason("not_logged_in")
+            setShowUpgrade(true)
+            setIsLoading(false)
+            setAiLoading(false)
+            return
+          }
+          // Legacy subscription_required code from the Flask backend.
+          if (errData?.code === "subscription_required") {
+            setUpgradeReason("free_limit_reached")
+            setShowUpgrade(true)
+            setIsLoading(false)
+            setAiLoading(false)
+            return
           }
           throw new Error(
             errData?.error || "Analysis failed. Please try again."
@@ -1155,6 +1185,16 @@ export default function AnalysePage() {
           </div>
         )}
       </main>
+
+      {/* Upgrade paywall — opens when the analyse API returns 402
+          (usage_limit_reached) or 401 (not_logged_in). The modal owns
+          its own checkout-redirect logic; we just toggle visibility. */}
+      <UpgradeModal
+        open={showUpgrade}
+        reason={upgradeReason}
+        freeUsed={upgradeFreeUsed}
+        onClose={() => setShowUpgrade(false)}
+      />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
+import { checkCanAnalyse, recordAnalysisUsed } from "@/lib/usageGate"
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -247,12 +248,48 @@ export async function POST(req: Request) {
         )
       }
 
-      // Get the authenticated user's email for the subscription gate
+      // Get the authenticated user for the usage gate + email threading.
       const supabase = await createClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
       const userEmail = user?.email || ""
+
+      // ── Usage gate — server-side enforcement of tier limits ──────────
+      // checkCanAnalyse hits the get_user_tier Supabase RPC which encodes
+      // the rules: Pro/Enterprise unlimited, PPA needs credits, Free up
+      // to 3/month. Returns a structured reason so the frontend can show
+      // the right paywall message. Anonymous users get 401 — the upgrade
+      // modal will redirect them to /login.
+      const usage = await checkCanAnalyse(user?.id)
+      if (!usage.canAnalyse) {
+        if (usage.reason === "not_logged_in") {
+          return NextResponse.json(
+            {
+              error: "Sign in to analyse deals",
+              code: "not_logged_in",
+            },
+            { status: 401 },
+          )
+        }
+        return NextResponse.json(
+          {
+            error:
+              usage.reason === "free_limit_reached"
+                ? "You've used all 3 free analyses this month"
+                : usage.reason === "no_credits"
+                  ? "You have no Pay Per Analysis credits left"
+                  : "Subscription required",
+            code: "usage_limit_reached",
+            reason: usage.reason,
+            tier: usage.tier,
+            freeUsed: usage.freeUsed,
+            freeLimit: usage.freeLimit,
+            paidCredits: usage.paidCredits,
+          },
+          { status: 402 },
+        )
+      }
 
       // Article 4 engine lookup — runs server-side against Supabase so the
       // Flask AI prompt gets the same 3-state view the result card shows.
@@ -457,6 +494,16 @@ export async function POST(req: Request) {
       // Flask returns { success: true, results: { ...metrics, ai_verdict, ... } }
       // page.tsx expects { structured: { ... } } and calls formatAnalysisResults()
       // on the structured object to render the text view.
+      //
+      // Record one successful analysis against the user's tier before
+      // returning — fire-and-forget so an RPC blip doesn't fail the
+      // response. The gate at the top of this handler already validated
+      // that the user had quota; this is the post-debit step.
+      if (user?.id) {
+        recordAnalysisUsed(user.id, usage.tier).catch((e) =>
+          console.warn("[analyse] recordAnalysisUsed failed:", e),
+        )
+      }
       return NextResponse.json({ structured: data.results })
     }
 
