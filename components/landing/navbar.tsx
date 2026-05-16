@@ -51,6 +51,12 @@ export function Navbar({ user }: NavbarProps) {
             Pricing
           </a>
           <Link
+            href="/tools"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Tools
+          </Link>
+          <Link
             href="/account"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
@@ -130,6 +136,13 @@ export function Navbar({ user }: NavbarProps) {
             >
               Pricing
             </a>
+            <Link
+              href="/tools"
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => setMobileOpen(false)}
+            >
+              Tools
+            </Link>
             <Link
               href="/account"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
