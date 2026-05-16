@@ -1528,6 +1528,33 @@ export function AnalysisResults({
           colour-coded label, and collapsible category breakdown.      */}
       <DealScorePanel result={scoreResult} />
 
+      {/* ── Tools CTA strip ─────────────────────────────────────────── */}
+      {/* Cross-link to the standalone tools so users naturally flow
+          from analysis → portfolio tracking and comparison.         */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 text-sm print:hidden">
+        <span className="text-muted-foreground">Next steps:</span>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/tools/portfolio?prefill=${encodeURIComponent(JSON.stringify({
+              address: data.address,
+              postcode: data.postcode,
+              purchase_price: data.purchasePrice,
+              monthly_rent: data.monthlyRent,
+              strategy: (data.investmentType || "btl").toUpperCase(),
+            }))}`}
+            className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
+          >
+            Add to portfolio →
+          </Link>
+          <Link
+            href="/tools/compare"
+            className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
+          >
+            Compare with another deal →
+          </Link>
+        </div>
+      </div>
+
       {/* ── Key Metrics Grid ────────────────────────────────────────── */}
       {/* Development: full panel renders all metrics + viability + cost stack
           + finance + RLV + sensitivity. Skip the yield/cashflow grid which
