@@ -696,6 +696,172 @@ export function scoreHmo(input: ScoringInput): ScoreResult {
   return { total, label, colour, categories, warnings, criticalFlags }
 }
 
+// ── BRRRR scorer ─────────────────────────────────────────────────────
+
+export function scoreBrrrr(input: ScoringInput): ScoreResult {
+  const warnings: string[] = []
+  const criticalFlags: CriticalFlag[] = []
+  const f = (s: number, max: number, name: string, value: string, note?: string): ScoreFactor =>
+    ({ name, score: s, maxScore: max, value, note })
+
+  // ── Category 1 — Capital Recycling (30) ──
+  const capRec = input.capitalRecoveredPct ?? 0
+  let capPts = 0
+  if (capRec >= 100) capPts = 20
+  else if (capRec >= 85) capPts = 16
+  else if (capRec >= 70) capPts = 11
+  else if (capRec >= 50) capPts = 6
+  else if (capRec >= 25) capPts = 2
+
+  const left = input.cashLeftIn ?? 0
+  let leftPts = 0
+  if (left <= 0) leftPts = 10
+  else if (left <= 15000) leftPts = 8
+  else if (left <= 30000) leftPts = 5
+  else if (left <= 50000) leftPts = 2
+
+  const cat1: ScoreCategory = {
+    name: "Capital Recycling",
+    score: capPts + leftPts,
+    maxScore: 30,
+    factors: [
+      f(capPts, 20, "Capital Recovered %", fmtPct(capRec, 0)),
+      f(leftPts, 10, "Cash Left In Deal", fmtGbp(left)),
+    ],
+  }
+
+  // ── Category 2 — Refurb & Value (25) ──
+  const uplift = input.arvUpliftMultiple ?? 0
+  let upliftPts = 0
+  if (uplift >= 3) upliftPts = 12
+  else if (uplift >= 2) upliftPts = 9
+  else if (uplift >= 1.5) upliftPts = 5
+  else if (uplift >= 1) upliftPts = 2
+
+  const arvVp = input.arvVsPurchasePct ?? 0
+  let arvPts = 0
+  if (arvVp >= 50) arvPts = 8
+  else if (arvVp >= 30) arvPts = 6
+  else if (arvVp >= 20) arvPts = 4
+  else if (arvVp >= 10) arvPts = 2
+
+  // Refurb realism — heuristic: if condition is full-refurb/structural
+  // and contingency was set ≥10%, treat as aligned.
+  const refurbCond = input.condition
+  const cont = input.contingencyPct ?? 0
+  let realism = 0
+  let realismValue = "Budget assessment unavailable"
+  if (refurbCond === "full-refurb" || refurbCond === "structural") {
+    if (cont >= 15) {
+      realism = 5
+      realismValue = `${refurbCond} works with ${fmtPct(cont, 0)} contingency`
+    } else if (cont >= 10) {
+      realism = 3
+      realismValue = `${refurbCond} works · contingency ${fmtPct(cont, 0)} (light)`
+    } else {
+      realism = 0
+      realismValue = `${refurbCond} works · only ${fmtPct(cont, 0)} contingency — underestimated`
+    }
+  } else if (refurbCond === "cosmetic" || refurbCond === "good") {
+    realism = 5
+    realismValue = `${refurbCond} works · budget aligns`
+  } else if (refurbCond === "excellent") {
+    realism = 5
+    realismValue = "Excellent condition — minimal refurb needed"
+  } else {
+    realism = 2
+    realismValue = "Condition not specified — verify budget"
+  }
+
+  const cat2: ScoreCategory = {
+    name: "Refurb & Value",
+    score: upliftPts + arvPts + realism,
+    maxScore: 25,
+    factors: [
+      f(upliftPts, 12, "Refurb Uplift Multiple", `${uplift.toFixed(2)}×`),
+      f(arvPts, 8, "ARV vs Purchase", fmtPct(arvVp, 1)),
+      f(realism, 5, "Refurb Budget Realism", realismValue),
+    ],
+  }
+
+  // ── Category 3 — Post-Refi Position (25) ──
+  const postCf = input.postRefiCashflow ?? input.monthlyCashflow
+  const postCfPts = tierScore(postCf, [
+    [400, 12], [200, 9], [100, 5], [0, 2],
+  ])
+
+  const yArv = input.yieldOnArv ?? 0
+  const yArvPts = tierScore(yArv, [
+    [8, 8], [6, 6], [4, 3],
+  ])
+
+  const roce = input.roce ?? 0
+  let rocePts = 0
+  if (roce >= 200 || left <= 0) rocePts = 5
+  else if (roce >= 100) rocePts = 3
+  else if (roce >= 50) rocePts = 1
+
+  const cat3: ScoreCategory = {
+    name: "Post-Refi Position",
+    score: postCfPts + yArvPts + rocePts,
+    maxScore: 25,
+    factors: [
+      f(postCfPts, 12, "Post-Refi Cashflow", fmtGbp(postCf)),
+      f(yArvPts, 8, "Yield on ARV", fmtPct(yArv)),
+      f(rocePts, 5, "ROCE", `${fmtPct(roce, 0)}`),
+    ],
+  }
+
+  // ── Category 4 — Risk Factors (20) ──
+  const bridge = input.bridgingTermMonths ?? 0
+  let bridgePts = 0
+  if (bridge <= 4) bridgePts = 8
+  else if (bridge <= 6) bridgePts = 6
+  else if (bridge <= 9) bridgePts = 3
+
+  const refiLtv = input.refinanceLtv ?? 75
+  let refiPts = 0
+  if (refiLtv <= 65) refiPts = 7
+  else if (refiLtv <= 72) refiPts = 4
+  else if (refiLtv <= 75) refiPts = 2
+
+  // Article 4 only relevant if BRRRR exits to HMO use — proxy by
+  // numberOfRooms ≥ 3 (HMO-style refurb).
+  const intendedHmo = (input.numberOfRooms ?? input.bedrooms) >= 4
+  let a4Pts = 5
+  let a4Value = "BRRRR exit not HMO"
+  if (intendedHmo) {
+    if (input.article4Status === "active") {
+      a4Pts = 0
+      a4Value = "Article 4 active + HMO exit"
+    } else if (input.article4Status === "none") {
+      a4Pts = 5
+      a4Value = "No A4 — HMO exit viable"
+    } else {
+      a4Pts = 2
+      a4Value = "A4 status unconfirmed"
+    }
+  }
+
+  const cat4: ScoreCategory = {
+    name: "Risk Factors",
+    score: bridgePts + refiPts + a4Pts,
+    maxScore: 20,
+    factors: [
+      f(bridgePts, 8, "Bridging Term Risk", `${bridge} months`),
+      f(refiPts, 7, "Refinance LTV", fmtPct(refiLtv, 0)),
+      f(a4Pts, 5, "Article 4 for HMO Exit", a4Value),
+    ],
+  }
+
+  const categories = [cat1, cat2, cat3, cat4]
+  const rawTotal = sumCategories(categories)
+  const total = applyHardCaps(rawTotal, input, warnings, criticalFlags)
+  const { label, colour } = bandFromTotal(total)
+
+  return { total, label, colour, categories, warnings, criticalFlags }
+}
+
 // ── Public entry point ───────────────────────────────────────────────
 
 export function scoreDeal(input: ScoringInput): ScoreResult {
@@ -704,7 +870,9 @@ export function scoreDeal(input: ScoringInput): ScoreResult {
       return scoreBtl(input)
     case "hmo":
       return scoreHmo(input)
-    // brr, flip, r2sa, development scorers added in subsequent sections
+    case "brr":
+      return scoreBrrrr(input)
+    // flip, r2sa, development scorers added in subsequent sections
     default:
       return {
         total: 0,
