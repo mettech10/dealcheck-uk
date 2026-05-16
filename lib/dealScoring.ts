@@ -1209,6 +1209,204 @@ export function scoreSa(input: ScoringInput): ScoreResult {
   return { total, label, colour, categories, warnings, criticalFlags }
 }
 
+// ── Development scorer ───────────────────────────────────────────────
+
+export function scoreDevelopment(input: ScoringInput): ScoreResult {
+  const warnings: string[] = []
+  const criticalFlags: CriticalFlag[] = []
+  const f = (s: number, max: number, name: string, value: string, note?: string): ScoreFactor =>
+    ({ name, score: s, maxScore: max, value, note })
+
+  // ── Category 1 — Viability Metrics (35) ──
+  const pog = input.profitOnGdv ?? 0
+  let pogPts = 0
+  if (pog >= 25) pogPts = 15
+  else if (pog >= 20) pogPts = 12
+  else if (pog >= 15) pogPts = 7
+  else if (pog >= 10) pogPts = 3
+
+  const poc = input.profitOnCost ?? 0
+  let pocPts = 0
+  if (poc >= 30) pocPts = 12
+  else if (poc >= 25) pocPts = 9
+  else if (poc >= 18) pocPts = 5
+
+  const irr = input.irr ?? 0
+  let irrPts = 0
+  if (irr >= 25) irrPts = 8
+  else if (irr >= 18) irrPts = 6
+  else if (irr >= 12) irrPts = 3
+
+  const cat1: ScoreCategory = {
+    name: "Viability Metrics",
+    score: pogPts + pocPts + irrPts,
+    maxScore: 35,
+    factors: [
+      f(pogPts, 15, "Profit on GDV", fmtPct(pog)),
+      f(pocPts, 12, "Profit on Cost", fmtPct(poc)),
+      f(irrPts, 8, "IRR", fmtPct(irr)),
+    ],
+  }
+
+  // ── Category 2 — Land & Market (25) ──
+  const lvr = input.landVsRlvPct ?? 0
+  let lvrPts = 0
+  let lvrValue = "RLV not calculable"
+  if (lvr > 0) {
+    if (lvr <= 80) lvrPts = 12
+    else if (lvr <= 95) lvrPts = 8
+    else if (lvr <= 105) lvrPts = 4
+    else lvrPts = 0
+    lvrValue = `Land at ${fmtPct(lvr, 0)} of RLV`
+  }
+
+  const gc = input.gdvCompsCount ?? 0
+  let gcPts = 0
+  if (gc >= 5) gcPts = 8
+  else if (gc >= 3) gcPts = 5
+  else if (gc >= 1) gcPts = 2
+  const gcValue = `${gc} new-build comp${gc === 1 ? "" : "s"}`
+
+  let absPts = 0
+  let absValue = "Market activity unknown"
+  switch (input.absorptionMarket) {
+    case "active":
+      absPts = 5
+      absValue = "Active new-build market"
+      break
+    case "moderate":
+      absPts = 3
+      absValue = "Moderate market"
+      break
+    case "slow":
+      absPts = 0
+      absValue = "Slow market"
+      break
+  }
+
+  const cat2: ScoreCategory = {
+    name: "Land & Market",
+    score: lvrPts + gcPts + absPts,
+    maxScore: 25,
+    factors: [
+      f(lvrPts, 12, "Land Price vs RLV", lvrValue),
+      f(gcPts, 8, "GDV per m² Backing", gcValue),
+      f(absPts, 5, "Absorption Rate", absValue),
+    ],
+  }
+
+  // ── Category 3 — Lender Metrics (25) ──
+  const ltgdv = input.ltgdv ?? 0
+  let ltgdvPts = 0
+  if (ltgdv <= 55) ltgdvPts = 12
+  else if (ltgdv <= 60) ltgdvPts = 9
+  else if (ltgdv <= 65) ltgdvPts = 5
+  else if (ltgdv <= 70) ltgdvPts = 1
+
+  const ltc = input.ltc ?? 0
+  let ltcPts = 0
+  if (ltc <= 60) ltcPts = 8
+  else if (ltc <= 65) ltcPts = 6
+  else if (ltc <= 70) ltcPts = 3
+
+  const roe = input.roe ?? 0
+  let roePts = 0
+  if (roe >= 40) roePts = 5
+  else if (roe >= 25) roePts = 3
+  else if (roe >= 15) roePts = 1
+
+  const cat3: ScoreCategory = {
+    name: "Lender Metrics",
+    score: ltgdvPts + ltcPts + roePts,
+    maxScore: 25,
+    factors: [
+      f(ltgdvPts, 12, "LTGDV", fmtPct(ltgdv)),
+      f(ltcPts, 8, "LTC", fmtPct(ltc)),
+      f(roePts, 5, "Return on Equity", fmtPct(roe)),
+    ],
+  }
+
+  // ── Category 4 — Risk Factors (15) ──
+  let planPts = 0
+  let planValue = "Planning status unknown"
+  switch (input.planningStatus) {
+    case "full-planning":
+      planPts = 8
+      planValue = "Full permission granted"
+      break
+    case "outline":
+      planPts = 6
+      planValue = "Outline permission"
+      break
+    case "pre-application":
+      planPts = 3
+      planValue = "Pre-application positive"
+      break
+    case "permitted-development":
+      planPts = 6
+      planValue = "Permitted development"
+      break
+    case "no-planning":
+      planPts = input.devSiteType === "greenfield" ? 0 : 2
+      planValue = `No planning · ${input.devSiteType ?? "site type unknown"}`
+      break
+    case "lapsed":
+      planPts = 1
+      planValue = "Lapsed permission"
+      break
+  }
+
+  let consPts = 0
+  let consValue = "Construction type not specified"
+  switch (input.constructionType) {
+    case "conversion":
+      consPts = 7
+      consValue = "Conversion (low risk)"
+      break
+    case "new-build-traditional":
+      consPts = 5
+      consValue = "New-build masonry"
+      break
+    case "new-build-timber-frame":
+      consPts = 4
+      consValue = "New-build timber frame"
+      break
+    case "new-build-modular":
+      consPts = 4
+      consValue = "New-build modular"
+      break
+    case "demolition-and-build":
+      consPts = 2
+      consValue = "Demolish & rebuild"
+      break
+    case "refurbishment":
+      consPts = 7
+      consValue = "Refurbishment"
+      break
+    case "extension":
+      consPts = 6
+      consValue = "Extension"
+      break
+  }
+
+  const cat4: ScoreCategory = {
+    name: "Risk Factors",
+    score: planPts + consPts,
+    maxScore: 15,
+    factors: [
+      f(planPts, 8, "Planning Status", planValue),
+      f(consPts, 7, "Construction Risk", consValue),
+    ],
+  }
+
+  const categories = [cat1, cat2, cat3, cat4]
+  const rawTotal = sumCategories(categories)
+  const total = applyHardCaps(rawTotal, input, warnings, criticalFlags)
+  const { label, colour } = bandFromTotal(total)
+
+  return { total, label, colour, categories, warnings, criticalFlags }
+}
+
 // ── Public entry point ───────────────────────────────────────────────
 
 export function scoreDeal(input: ScoringInput): ScoreResult {
@@ -1223,7 +1421,8 @@ export function scoreDeal(input: ScoringInput): ScoreResult {
       return scoreFlip(input)
     case "r2sa":
       return scoreSa(input)
-    // development scorer added in next section
+    case "development":
+      return scoreDevelopment(input)
     default:
       return {
         total: 0,
