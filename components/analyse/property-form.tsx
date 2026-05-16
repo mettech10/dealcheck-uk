@@ -147,10 +147,13 @@ const schema = z.object({
   devPlanningConsultantFixed: z.coerce.number().min(0).optional(),
   devBuildingControlFixed: z.coerce.number().min(0).optional(),
   devWarrantyPercent: z.coerce.number().min(0).max(5).optional(),
+  devSapEpcCostPerUnit: z.coerce.number().min(0).optional(),
+  devPartyWallCost: z.coerce.number().min(0).optional(),
   devCILRatePerM2: z.coerce.number().min(0).optional(),
   devS106PerUnit: z.coerce.number().min(0).optional(),
   devAffordableHousingPercent: z.coerce.number().min(0).max(100).optional(),
   devBuildingRegsFixed: z.coerce.number().min(0).optional(),
+  devPlanningAppFee: z.coerce.number().min(0).optional(),
   devFinanceLTC: z.coerce.number().min(0).max(100).optional(),
   devFinanceDay1Percent: z.coerce.number().min(0).max(100).optional(),
   devFinanceRate: z.coerce.number().min(0).max(20).optional(),
@@ -159,11 +162,16 @@ const schema = z.object({
   devFinanceTermMonths: z.coerce.number().min(1).max(60).optional(),
   devFinanceExitFeePercent: z.coerce.number().min(0).max(10).optional(),
   devFinanceRolledUp: z.boolean().optional(),
+  devLenderValuationFee: z.coerce.number().min(0).optional(),
   devExitStrategy: z.enum(["sell-all", "hold-and-refinance", "hybrid"]).optional(),
   devSalesAgentPercent: z.coerce.number().min(0).max(10).optional(),
   devSalesLegalPerUnit: z.coerce.number().min(0).optional(),
   devMarketingCostsFixed: z.coerce.number().min(0).optional(),
   devMarketingPerUnit: z.coerce.number().min(0).optional(),
+  devShowHomeCost: z.coerce.number().min(0).optional(),
+  devSalesPeriodMonths: z.coerce.number().min(0).max(60).optional(),
+  devAbsorptionRatePerMonth: z.coerce.number().min(0).max(50).optional(),
+  devVATApplicable: z.boolean().optional(),
   capitalGrowthRate: z.coerce.number().min(0).max(30).optional(),
   mortgageType: z.enum(["repayment", "interest-only"]),
   monthlyRent: z.coerce.number().min(0),
@@ -325,10 +333,13 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     devPlanningConsultantFixed: 5000,
     devBuildingControlFixed: 2500,
     devWarrantyPercent: 1.2,
+    devSapEpcCostPerUnit: 500,         // SAP + Predicted EPC per dwelling
+    devPartyWallCost: 0,                // 0 by default — only adds up if user confirms terraced/semi
     devCILRatePerM2: 0,
     devS106PerUnit: 0,
     devAffordableHousingPercent: 0,
     devBuildingRegsFixed: 1200,
+    devPlanningAppFee: 0,              // user enters from LPA quote
     devFinanceLTC: 65,
     devFinanceDay1Percent: 50,
     devFinanceRate: 8.5,
@@ -337,11 +348,16 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     devFinanceTermMonths: 18,
     devFinanceExitFeePercent: 1,
     devFinanceRolledUp: true,
+    devLenderValuationFee: 1500,       // typical RICS valuation for sub-£1m facility
     devExitStrategy: "sell-all",
     devSalesAgentPercent: 1.5,
     devSalesLegalPerUnit: 1500,
     devMarketingCostsFixed: 15000,
     devMarketingPerUnit: 500,
+    devShowHomeCost: 0,                // £25k typical for mid-tier scheme, but opt-in
+    devSalesPeriodMonths: 6,           // post-PC marketing window
+    devAbsorptionRatePerMonth: 1.5,    // ~1-2 units/month typical UK mid-sized scheme
+    devVATApplicable: false,           // new-build residential zero-rated by default
     monthlyRent: 0,
     annualRentIncrease: 2,
     voidWeeks: 2,
@@ -1078,6 +1094,18 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
                 </div>
               </FormField>
+              <FormField label="SAP / EPC (£ per unit)" hint="SAP calc + Predicted EPC per dwelling — required for Building Regs sign-off (~£300–£800)">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                  <Input type="number" className="pl-7" placeholder="500" {...register("devSapEpcCostPerUnit")} />
+                </div>
+              </FormField>
+              <FormField label="Party Wall Surveyors (£)" hint="Party Wall Act fees for terraced / semi-detached schemes only (~£1.5k–£5k per affected boundary)">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                  <Input type="number" className="pl-7" placeholder="0" {...register("devPartyWallCost")} />
+                </div>
+              </FormField>
             </div>
           </div>
 
@@ -1108,6 +1136,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                   <Input type="number" className="pl-7" placeholder="1200" {...register("devBuildingRegsFixed")} />
+                </div>
+              </FormField>
+              <FormField label="Planning Application Fee (£)" hint="Statutory LPA fee: ~£293 for minor, £578 × units for major dwellings (2025 schedule)">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                  <Input type="number" className="pl-7" placeholder="0" {...register("devPlanningAppFee")} />
                 </div>
               </FormField>
             </div>
@@ -1176,6 +1210,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   )}
                 />
               </FormField>
+              <FormField label="Lender Valuation Fee (£)" hint="RICS-qualified valuation paid to lender's surveyor — typical £1k–£2k for sub-£1m facility">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                  <Input type="number" className="pl-7" placeholder="1500" {...register("devLenderValuationFee")} />
+                </div>
+              </FormField>
             </div>
           </div>
 
@@ -1225,6 +1265,41 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   <Input type="number" className="pl-7" placeholder="500" {...register("devMarketingPerUnit")} />
                 </div>
               </FormField>
+              <FormField label="Show Home Build (£)" hint="One-off fit-out / staging capex on the show unit (typical £15k–£40k for mid-tier scheme)">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
+                  <Input type="number" className="pl-7" placeholder="0" {...register("devShowHomeCost")} />
+                </div>
+              </FormField>
+              <FormField label="Sales Period (months)" hint="Post-completion marketing window. If > facility term, finance interest extends accordingly.">
+                <Input type="number" placeholder="6" {...register("devSalesPeriodMonths")} />
+              </FormField>
+              <FormField label="Absorption Rate (units/month)" hint="Expected pace of unit sales (typical UK mid-sized scheme: 1–2/month)">
+                <Input type="number" step="0.5" placeholder="1.5" {...register("devAbsorptionRatePerMonth")} />
+              </FormField>
+              <FormField label="VAT Applicable?" hint="New-build residential is zero-rated; conversions can be 5%; commercial standard 20%">
+                <Controller
+                  control={control}
+                  name="devVATApplicable"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ? "yes" : "no"}
+                      onValueChange={(v) => field.onChange(v === "yes")}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="no">No — zero-rated (new-build residential)</SelectItem>
+                        <SelectItem value="yes">Yes — VAT recoverable / chargeable</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </FormField>
+            </div>
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              <strong className="text-foreground">VAT note:</strong> Newly-built residential dwellings are zero-rated for VAT — developers can reclaim input VAT on construction. Mixed-use, conversions (5%), and commercial schemes (20%) follow different rules. This calculator treats costs as <strong>net of recoverable VAT</strong>. If selling commercial / opted-to-tax units, add 20% to GDV inputs before entering.
             </div>
           </div>
 

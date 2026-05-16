@@ -197,12 +197,15 @@ export interface PropertyFormData {
   devPlanningConsultantFixed?: number    // £ fixed fee
   devBuildingControlFixed?: number       // £ fixed fee (LPA or approved inspector)
   devWarrantyPercent?: number      // NHBC / Premier Guarantee, typical 1.2% of GDV
+  devSapEpcCostPerUnit?: number    // SAP + Predicted EPC per dwelling (~£300-£800)
+  devPartyWallCost?: number        // Party Wall Act surveyors' fees (terraced / semi schemes)
 
   // Planning Obligations
   devCILRatePerM2?: number         // £/m² chargeable area — £0 under LPA threshold
   devS106PerUnit?: number          // £ per dwelling (education, open space)
   devAffordableHousingPercent?: number // 0–50% discount on affordable units
   devBuildingRegsFixed?: number    // £ building regs submission fee
+  devPlanningAppFee?: number       // £ statutory LPA application fee (£293 minor, £578/unit major schemes 2025)
 
   // Development Finance
   devFinanceLTC?: number           // loan-to-cost %, typical 65%
@@ -213,6 +216,7 @@ export interface PropertyFormData {
   devFinanceTermMonths?: number    // total facility term (typ 12–24)
   devFinanceExitFeePercent?: number // typical 1% of facility
   devFinanceRolledUp?: boolean     // if true, interest accrues not monthly-serviced
+  devLenderValuationFee?: number   // £ RICS valuation paid to lender's surveyor (~£1k-£2k)
 
   // Exit
   devExitStrategy?: "sell-all" | "hold-and-refinance" | "hybrid"
@@ -220,6 +224,10 @@ export interface PropertyFormData {
   devSalesLegalPerUnit?: number    // £ per unit legal completion
   devMarketingCostsFixed?: number  // £ for the scheme (website, CGI, hoardings)
   devMarketingPerUnit?: number     // £ per unit (brochures, staging)
+  devShowHomeCost?: number         // £ fit-out / capex on dedicated show home (recovered at sale, treated as capex here)
+  devSalesPeriodMonths?: number    // Post-PC marketing window (extends finance interest if > facility term)
+  devAbsorptionRatePerMonth?: number // Units sold per month — used to derive sales period if not entered
+  devVATApplicable?: boolean       // Info flag — new-build residential is zero-rated; commercial 20%
 
   // Projections — user-supplied assumptions
   capitalGrowthRate?: number  // annual property appreciation %, default 4
