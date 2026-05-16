@@ -77,6 +77,8 @@ export interface DevelopmentResult {
   feePlanningConsultant: number
   feeBuildingControl: number
   feeWarranty: number
+  feeSapEpc: number                  // SAP + EPC certificate per unit × units
+  feePartyWall: number               // Party Wall Act surveyors' fees
   professionalFeesTotal: number
 
   // ── Planning obligations ────────────────────────────────
@@ -84,13 +86,19 @@ export interface DevelopmentResult {
   s106Total: number
   affordableHousingDiscount: number   // £ revenue reduction from affordable %
   buildingRegsFee: number
+  planningAppFee: number              // statutory LPA application fee
   planningObligationsTotal: number
 
   // ── Exit / sales costs ──────────────────────────────────
   salesAgentFee: number
   salesLegalTotal: number
-  marketingTotal: number
+  marketingTotal: number              // includes show home capex
+  showHomeCost: number                // surfaced separately for transparency
   exitCostsTotal: number
+  salesPeriodMonths: number           // effective sales window used in calc
+  absorptionRatePerMonth: number      // echo of input
+  impliedSalesPeriodMonths: number    // totalUnits ÷ absorption rate (if rate > 0)
+  vatApplicable: boolean              // echo of input — info only
 
   // ── Development finance ─────────────────────────────────
   financeFacilityLoan: number        // total loan facility: LTC × costs ex-finance
@@ -99,10 +107,12 @@ export interface DevelopmentResult {
   financeExitFee: number
   financeMonitoringTotal: number     // monthly × term
   financeInterest: number            // total interest over term (rolled or serviced)
-  financeCostTotal: number           // arrangement + exit + monitoring + interest
+  financeValuationFee: number        // RICS lender valuation
+  financeCostTotal: number           // arrangement + exit + monitoring + interest + valuation
   financeTermMonths: number
   financeRateUsed: number
   financeRolledUp: boolean
+  financeSalesOverrunInterest: number // extra interest if sales period exceeds facility term
 
   // ── Cost totals ─────────────────────────────────────────
   totalCostExFinance: number         // acq + construction + fees + planning + exit
@@ -205,6 +215,11 @@ export function calculateDevelopment(
   // Warranty (NHBC etc.) typically % of GDV
   const feeWarranty =
     totalGDV * ((Number(data.devWarrantyPercent) || 0) / 100)
+  // SAP + Predicted EPC per dwelling — required for Building Regs sign-off
+  const feeSapEpc =
+    totalUnits * (Number(data.devSapEpcCostPerUnit) || 0)
+  // Party Wall Act surveyors — for terraced / semi schemes
+  const feePartyWall = Number(data.devPartyWallCost) || 0
   const professionalFeesTotal =
     feeArchitect +
     feeStructural +
@@ -212,7 +227,9 @@ export function calculateDevelopment(
     feePM +
     feePlanningConsultant +
     feeBuildingControl +
-    feeWarranty
+    feeWarranty +
+    feeSapEpc +
+    feePartyWall
 
   // ── 5 · Planning obligations ────────────────────────────
   const cilTotal = totalGIA * (Number(data.devCILRatePerM2) || 0)
@@ -223,7 +240,9 @@ export function calculateDevelopment(
   const affordableHousingDiscount =
     totalGDV * (affordablePct / 100) * 0.5
   const buildingRegsFee = Number(data.devBuildingRegsFixed) || 0
-  const planningObligationsTotal = cilTotal + s106Total + buildingRegsFee
+  const planningAppFee = Number(data.devPlanningAppFee) || 0
+  const planningObligationsTotal =
+    cilTotal + s106Total + buildingRegsFee + planningAppFee
 
   // Net revenue after affordable discount — used from here onward
   const netGDV = totalGDV - affordableHousingDiscount
@@ -233,10 +252,21 @@ export function calculateDevelopment(
     netGDV * ((Number(data.devSalesAgentPercent) || 0) / 100)
   const salesLegalTotal =
     totalUnits * (Number(data.devSalesLegalPerUnit) || 0)
+  const showHomeCost = Number(data.devShowHomeCost) || 0
   const marketingTotal =
     (Number(data.devMarketingCostsFixed) || 0) +
-    totalUnits * (Number(data.devMarketingPerUnit) || 0)
+    totalUnits * (Number(data.devMarketingPerUnit) || 0) +
+    showHomeCost
   const exitCostsTotal = salesAgentFee + salesLegalTotal + marketingTotal
+
+  // Sales period (post-PC marketing). If absorption rate given, derive
+  // implied period; user-entered devSalesPeriodMonths takes priority.
+  const absorptionRatePerMonth = Number(data.devAbsorptionRatePerMonth) || 0
+  const impliedSalesPeriodMonths =
+    absorptionRatePerMonth > 0 ? totalUnits / absorptionRatePerMonth : 0
+  const salesPeriodMonths =
+    Number(data.devSalesPeriodMonths) || impliedSalesPeriodMonths || 0
+  const vatApplicable = Boolean(data.devVATApplicable)
 
   // ── 7 · Finance ─────────────────────────────────────────
   const ltcPct = Number(data.devFinanceLTC) || 0
@@ -270,6 +300,7 @@ export function calculateDevelopment(
   const financeExitFee = financeFacilityLoan * (exitPct / 100)
   const financeMonitoringTotal =
     monitoringFeeMonthly * financeTermMonths
+  const financeValuationFee = Number(data.devLenderValuationFee) || 0
 
   // Interest: day-1 draws for full term; construction tranche uses
   // 50% avg utilisation (industry convention for dev appraisals).
@@ -279,13 +310,39 @@ export function calculateDevelopment(
     financeDay1Drawdown * rateDecimal * yearsTerm
   const constructionInterest =
     constructionDrawdown * rateDecimal * yearsTerm * 0.5
-  const financeInterest = day1Interest + constructionInterest
+  const baseFinanceInterest = day1Interest + constructionInterest
+
+  // Sales overrun: if user-specified sales period exceeds remaining facility
+  // term after build, charge extra rolled-up interest on the peak balance.
+  // Build period heuristic: facility term - sales period (or default 6mo
+  // sales window if total finance term is given without a sales period).
+  // Conservative: only add overrun if salesPeriodMonths > implicit allowance.
+  const impliedBuildMonths = Math.max(
+    0,
+    financeTermMonths - (Number(data.devSalesPeriodMonths) ? 0 : 6),
+  )
+  const allowedSalesMonths = Math.max(
+    0,
+    financeTermMonths - impliedBuildMonths,
+  )
+  const salesOverrunMonths = Math.max(
+    0,
+    salesPeriodMonths - allowedSalesMonths,
+  )
+  // During overrun, assume peak loan is still outstanding earning interest
+  // at the same rate. Lenders typically extend at a higher default rate;
+  // we use base rate here for conservatism.
+  const peakLoanBalance = financeFacilityLoan
+  const financeSalesOverrunInterest =
+    peakLoanBalance * rateDecimal * (salesOverrunMonths / 12)
+  const financeInterest = baseFinanceInterest + financeSalesOverrunInterest
 
   const financeCostTotal =
     financeArrangementFee +
     financeExitFee +
     financeMonitoringTotal +
-    financeInterest
+    financeInterest +
+    financeValuationFee
 
   // ── 8 · Cost totals ─────────────────────────────────────
   const totalCostExFinance =
@@ -440,6 +497,27 @@ export function calculateDevelopment(
       message: `Finance term is ${financeTermMonths} months — most dev facilities are 12–24 months. Confirm this is realistic for your build programme.`,
     })
   }
+  if (salesOverrunMonths > 0) {
+    flags.push({
+      severity: "warn",
+      message: `Sales period (${salesPeriodMonths.toFixed(1)}mo) exceeds the facility's marketing allowance by ${salesOverrunMonths.toFixed(1)}mo — extra rolled-up interest of £${r(financeSalesOverrunInterest).toLocaleString()} added. Consider extending the facility term or raising absorption rate.`,
+    })
+  }
+  if (absorptionRatePerMonth > 0 && totalUnits > 0) {
+    const ratePerUnit = absorptionRatePerMonth
+    if (ratePerUnit < 0.5) {
+      flags.push({
+        severity: "warn",
+        message: `Absorption rate of ${ratePerUnit.toFixed(2)} units/month is slow — typical UK schemes sell 1–2 units/month. Verify market demand or stagger marketing.`,
+      })
+    }
+  }
+  if (vatApplicable) {
+    flags.push({
+      severity: "info",
+      message: "VAT flag set — ensure costs are entered NET of recoverable VAT and GDV includes 20% VAT on commercial / opted-to-tax units.",
+    })
+  }
 
   // ── 15 · Deal score ─────────────────────────────────────
   // 0-100, heavily weighted on profit-on-cost + LTGDV headroom.
@@ -516,6 +594,8 @@ export function calculateDevelopment(
     feePlanningConsultant: r(feePlanningConsultant),
     feeBuildingControl: r(feeBuildingControl),
     feeWarranty: r(feeWarranty),
+    feeSapEpc: r(feeSapEpc),
+    feePartyWall: r(feePartyWall),
     professionalFeesTotal: r(professionalFeesTotal),
 
     // Planning obligations
@@ -523,13 +603,19 @@ export function calculateDevelopment(
     s106Total: r(s106Total),
     affordableHousingDiscount: r(affordableHousingDiscount),
     buildingRegsFee: r(buildingRegsFee),
+    planningAppFee: r(planningAppFee),
     planningObligationsTotal: r(planningObligationsTotal),
 
     // Exit
     salesAgentFee: r(salesAgentFee),
     salesLegalTotal: r(salesLegalTotal),
     marketingTotal: r(marketingTotal),
+    showHomeCost: r(showHomeCost),
     exitCostsTotal: r(exitCostsTotal),
+    salesPeriodMonths: r2(salesPeriodMonths),
+    absorptionRatePerMonth: r2(absorptionRatePerMonth),
+    impliedSalesPeriodMonths: r2(impliedSalesPeriodMonths),
+    vatApplicable,
 
     // Finance
     financeFacilityLoan: r(financeFacilityLoan),
@@ -538,10 +624,12 @@ export function calculateDevelopment(
     financeExitFee: r(financeExitFee),
     financeMonitoringTotal: r(financeMonitoringTotal),
     financeInterest: r(financeInterest),
+    financeValuationFee: r(financeValuationFee),
     financeCostTotal: r(financeCostTotal),
     financeTermMonths,
     financeRateUsed,
     financeRolledUp,
+    financeSalesOverrunInterest: r(financeSalesOverrunInterest),
 
     // Totals
     totalCostExFinance: r(totalCostExFinance),
