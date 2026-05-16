@@ -526,13 +526,185 @@ export function scoreBtl(input: ScoringInput): ScoreResult {
   return { total, label, colour, categories, warnings, criticalFlags }
 }
 
+// ── HMO scorer ───────────────────────────────────────────────────────
+
+export function scoreHmo(input: ScoringInput): ScoreResult {
+  const warnings: string[] = []
+  const criticalFlags: CriticalFlag[] = []
+  const f = (s: number, max: number, name: string, value: string, note?: string): ScoreFactor =>
+    ({ name, score: s, maxScore: max, value, note })
+
+  // ── Category 1 — Financial Returns (30) ──
+  const gy = tierScore(input.grossYield, [
+    [12, 12], [9, 9], [7, 6], [5, 3],
+  ])
+  const cf = tierScore(input.monthlyCashflow, [
+    [600, 10], [400, 8], [200, 5], [0, 2],
+  ])
+  const coc = tierScore(input.cashOnCashRoi, [
+    [12, 8], [8, 6], [5, 3],
+  ])
+  const cat1: ScoreCategory = {
+    name: "Financial Returns",
+    score: gy + cf + coc,
+    maxScore: 30,
+    factors: [
+      f(gy, 12, "Gross HMO Yield", fmtPct(input.grossYield)),
+      f(cf, 10, "Monthly Cashflow", fmtGbp(input.monthlyCashflow)),
+      f(coc, 8, "Cash-on-Cash ROI", fmtPct(input.cashOnCashRoi)),
+    ],
+  }
+
+  // ── Category 2 — HMO Market Factors (30) ──
+  let a4 = 0
+  let a4Value = "Status unknown"
+  switch (input.article4Status) {
+    case "none":
+      a4 = 15
+      a4Value = "No Article 4 in this area"
+      break
+    case "proposed":
+      a4 = 5
+      a4Value = "Article 4 proposed / in consultation"
+      break
+    case "active":
+      a4 = 0
+      a4Value = "⚠ Article 4 ACTIVE — see warning"
+      break
+    case "unknown":
+    default:
+      a4 = 2
+      a4Value = "Article 4 status not confirmed"
+  }
+
+  let demand = 2
+  let demandValue = "No demand data"
+  switch (input.hmoRoomDemand) {
+    case "high":
+      demand = 8
+      demandValue = "HIGH demand"
+      break
+    case "moderate":
+      demand = 5
+      demandValue = "MODERATE demand"
+      break
+    case "low":
+      demand = 1
+      demandValue = "LOW demand"
+      break
+  }
+
+  let rentVsMkt = 0
+  let rentVsMktValue = "No market average"
+  if (input.userRentPerRoom && input.avgRoomRentMarket && input.avgRoomRentMarket > 0) {
+    const ratio = input.userRentPerRoom / input.avgRoomRentMarket
+    if (ratio >= 1.1) rentVsMkt = 7
+    else if (ratio >= 0.9) rentVsMkt = 5
+    else if (ratio >= 0.8) rentVsMkt = 2
+    else rentVsMkt = 0
+    rentVsMktValue = `${fmtGbp(input.userRentPerRoom)}/rm vs market ${fmtGbp(input.avgRoomRentMarket)} (${fmtPct((ratio - 1) * 100, 0)})`
+  }
+
+  const cat2: ScoreCategory = {
+    name: "HMO Market Factors",
+    score: a4 + demand + rentVsMkt,
+    maxScore: 30,
+    factors: [
+      f(a4, 15, "Article 4 Status", a4Value),
+      f(demand, 8, "HMO Room Demand", demandValue),
+      f(rentVsMkt, 7, "Room Rent vs Market", rentVsMktValue),
+    ],
+  }
+
+  // ── Category 3 — Risk Factors (25) ──
+  const rooms = input.numberOfRooms ?? input.bedrooms
+  let licence = 0
+  let licenceValue = `${rooms} rooms`
+  if (rooms >= 5 && input.article4Status !== "active") {
+    licence = 10
+    licenceValue = `${rooms} rooms · mandatory licence · no A4`
+  } else if (rooms >= 5 && input.article4Status === "active") {
+    licence = 2
+    licenceValue = `${rooms} rooms · mandatory licence · A4 active`
+  } else if (rooms === 4) {
+    licence = 7
+    licenceValue = `${rooms} rooms · possibly additional licensing tier`
+  } else if (rooms === 3) {
+    licence = 8
+    licenceValue = `${rooms} rooms (C4 — may not need licence)`
+  }
+
+  const beds = input.bedrooms
+  let suit = 0
+  let suitValue = `${beds} bedrooms`
+  if (beds >= 5) suit = 8
+  else if (beds === 4) suit = 6
+  else if (beds === 3) suit = 3
+
+  let ltv = 0
+  let ltvValue = `${fmtPct(input.mortgageLtv, 0)}`
+  if (input.mortgageLtv <= 65) ltv = 7
+  else if (input.mortgageLtv <= 75) ltv = 4
+
+  const cat3: ScoreCategory = {
+    name: "Risk Factors",
+    score: licence + suit + ltv,
+    maxScore: 25,
+    factors: [
+      f(licence, 10, "HMO Licence Risk", licenceValue),
+      f(suit, 8, "Property Suitability", suitValue),
+      f(ltv, 7, "Mortgage LTV", ltvValue),
+    ],
+  }
+
+  // ── Category 4 — Deal Fundamentals (15) ──
+  let pvm = 0
+  let pvmValue = "No comparables"
+  if (input.avgSoldPriceArea && input.avgSoldPriceArea > 0) {
+    const diff = (input.purchasePrice - input.avgSoldPriceArea) / input.avgSoldPriceArea
+    if (diff <= -0.15) pvm = 8
+    else if (diff <= -0.05) pvm = 5
+    else if (diff <= 0.02) pvm = 3
+    pvmValue = `${fmtPct(diff * 100, 1)} vs area avg`
+  }
+
+  let yvb = 0
+  let yvbValue = "No benchmark"
+  if (input.areaGrossYieldMedian && input.areaGrossYieldMedian > 0) {
+    const ratio = input.grossYield / input.areaGrossYieldMedian
+    if (ratio >= 2.0) yvb = 7
+    else if (ratio >= 1.5) yvb = 5
+    else if (ratio >= 1.0) yvb = 3
+    yvbValue = `${fmtPct(ratio * 100, 0)} of area median`
+  }
+
+  const cat4: ScoreCategory = {
+    name: "Deal Fundamentals",
+    score: pvm + yvb,
+    maxScore: 15,
+    factors: [
+      f(pvm, 8, "Purchase vs Area Avg", pvmValue),
+      f(yvb, 7, "Yield vs Area Benchmark", yvbValue),
+    ],
+  }
+
+  const categories = [cat1, cat2, cat3, cat4]
+  const rawTotal = sumCategories(categories)
+  const total = applyHardCaps(rawTotal, input, warnings, criticalFlags)
+  const { label, colour } = bandFromTotal(total)
+
+  return { total, label, colour, categories, warnings, criticalFlags }
+}
+
 // ── Public entry point ───────────────────────────────────────────────
 
 export function scoreDeal(input: ScoringInput): ScoreResult {
   switch (input.strategy) {
     case "btl":
       return scoreBtl(input)
-    // hmo, brr, flip, r2sa, development scorers added in subsequent sections
+    case "hmo":
+      return scoreHmo(input)
+    // brr, flip, r2sa, development scorers added in subsequent sections
     default:
       return {
         total: 0,
