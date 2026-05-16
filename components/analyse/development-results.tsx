@@ -571,6 +571,21 @@ export function DevelopmentResults({
               icon={Receipt}
             />
             <DevMetric
+              label="Lender Valuation"
+              value={formatCurrency(dev.financeValuationFee ?? 0)}
+              sub="RICS valuation fee"
+              icon={Receipt}
+            />
+            {(dev.financeSalesOverrunInterest ?? 0) > 0 && (
+              <DevMetric
+                label="Sales Overrun Interest"
+                value={formatCurrency(dev.financeSalesOverrunInterest ?? 0)}
+                sub={`Sales > facility window`}
+                icon={AlertTriangle}
+                positive={false}
+              />
+            )}
+            <DevMetric
               label="Peak Funding"
               value={formatCurrency(dev.peakFunding)}
               sub="At practical completion"
@@ -595,6 +610,73 @@ export function DevelopmentResults({
               icon={Wallet}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 5b · Cost Detail Breakdown ────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Receipt className="size-5 text-primary" /> Cost Detail
+          </CardTitle>
+          <CardDescription>
+            Granular line items inside the six cost-stack categories
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <CostDetailRow label="Architect"                value={dev.feeArchitect} />
+            <CostDetailRow label="Structural Engineer"      value={dev.feeStructural} />
+            <CostDetailRow label="Quantity Surveyor"        value={dev.feeQS} />
+            <CostDetailRow label="Project Manager"          value={dev.feePM} />
+            <CostDetailRow label="Planning Consultant"      value={dev.feePlanningConsultant} />
+            <CostDetailRow label="Building Control"         value={dev.feeBuildingControl} />
+            <CostDetailRow label="NHBC / Warranty"          value={dev.feeWarranty} />
+            <CostDetailRow label="SAP / EPC"                value={dev.feeSapEpc ?? 0} />
+            <CostDetailRow label="Party Wall"               value={dev.feePartyWall ?? 0} />
+            <CostDetailRow label="CIL"                      value={dev.cilTotal} />
+            <CostDetailRow label="S106"                     value={dev.s106Total} />
+            <CostDetailRow label="Building Regs"            value={dev.buildingRegsFee} />
+            <CostDetailRow label="Planning App Fee"         value={dev.planningAppFee ?? 0} />
+            <CostDetailRow label="Sales Agent Fee"          value={dev.salesAgentFee} />
+            <CostDetailRow label="Sales Legal"              value={dev.salesLegalTotal} />
+            <CostDetailRow label="Marketing (incl. show home)" value={dev.marketingTotal} />
+            <CostDetailRow label="Show Home (capex)"        value={dev.showHomeCost ?? 0} />
+          </div>
+          {((dev.salesPeriodMonths ?? 0) > 0 ||
+            (dev.absorptionRatePerMonth ?? 0) > 0) && (
+            <div className="mt-4 rounded-md border border-border/60 bg-background/60 p-3 text-xs">
+              <div className="font-semibold text-foreground">Sales Programme</div>
+              <div className="mt-1 grid grid-cols-1 gap-1 text-muted-foreground sm:grid-cols-3">
+                <span>
+                  Sales Period:{" "}
+                  <strong className="text-foreground">
+                    {(dev.salesPeriodMonths ?? 0).toFixed(1)} mo
+                  </strong>
+                </span>
+                <span>
+                  Absorption:{" "}
+                  <strong className="text-foreground">
+                    {(dev.absorptionRatePerMonth ?? 0).toFixed(2)} units/mo
+                  </strong>
+                </span>
+                {(dev.impliedSalesPeriodMonths ?? 0) > 0 && (
+                  <span>
+                    Implied period:{" "}
+                    <strong className="text-foreground">
+                      {(dev.impliedSalesPeriodMonths ?? 0).toFixed(1)} mo
+                    </strong>
+                  </span>
+                )}
+              </div>
+              {dev.vatApplicable && (
+                <div className="mt-2 text-amber-600 dark:text-amber-400">
+                  VAT applicable — confirm costs are net and GDV includes VAT
+                  on commercial / opted-to-tax units.
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -692,7 +774,15 @@ export function DevelopmentResults({
             <TimelineStep
               index={4}
               label="Marketing & sales"
-              detail={`~3 months · sales costs ${formatCurrency(dev.exitCostsTotal)} · redemption of facility`}
+              detail={`${
+                (dev.salesPeriodMonths ?? 0) > 0
+                  ? `${(dev.salesPeriodMonths ?? 0).toFixed(1)} months`
+                  : "~3 months"
+              }${
+                (dev.absorptionRatePerMonth ?? 0) > 0
+                  ? ` @ ${(dev.absorptionRatePerMonth ?? 0).toFixed(2)} units/mo`
+                  : ""
+              } · sales costs ${formatCurrency(dev.exitCostsTotal)} · redemption of facility`}
             />
             <TimelineStep
               index={5}
@@ -908,6 +998,23 @@ function DevMetric({
       {sub && (
         <div className="text-[10px] text-muted-foreground">{sub}</div>
       )}
+    </div>
+  )
+}
+
+function CostDetailRow({
+  label,
+  value,
+}: {
+  label: string
+  value: number
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-md border border-border/40 bg-background/40 px-3 py-2 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`font-semibold ${value > 0 ? "text-foreground" : "text-muted-foreground/50"}`}>
+        {formatCurrency(value)}
+      </span>
     </div>
   )
 }
