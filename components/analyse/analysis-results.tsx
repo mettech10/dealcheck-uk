@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
+import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
 import { DevelopmentResults } from "./development-results"
@@ -1518,8 +1519,14 @@ export function AnalysisResults({
        has its own border + page-break-inside: avoid via the print rules. */
     <div className="flex flex-col gap-6 print-results-root">
 
-      {/* ── Verdict Banner ──────────────────────────────────────────── */}
+      {/* ── Verdict Banner (legacy text strip from AI) ──────────────── */}
       <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
+
+      {/* ── Unified Deal Score Panel ────────────────────────────────── */}
+      {/* Replaces single-axis backend score. Renders critical flag
+          banners (hard-cap triggers + soft warnings), score dial,
+          colour-coded label, and collapsible category breakdown.      */}
+      <DealScorePanel result={scoreResult} />
 
       {/* ── Key Metrics Grid ────────────────────────────────────────── */}
       {/* Development: full panel renders all metrics + viability + cost stack
