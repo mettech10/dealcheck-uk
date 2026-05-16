@@ -22,7 +22,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import {
   Plus,
@@ -95,19 +94,29 @@ export default function PortfolioPage() {
   const [editing, setEditing] = useState<Property | null>(null)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
 
-  // ── Auth + initial fetch ───────────────────────────────────
+  // ── Auth probe via API (server-side cookie auth) ────────────
+  // Browser SDK can't see httpOnly session cookies, so we infer auth
+  // from a real API response status. 401 → unauthed; anything else →
+  // we're signed in and the response carries the portfolio payload.
   useEffect(() => {
     (async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
+      try {
+        const r = await fetch("/api/portfolio")
+        if (r.status === 401) {
+          setAuthChecked(true)
+          setLoading(false)
+          return
+        }
+        const j = await r.json()
+        setLoggedIn(true)
+        setProperties(j.properties || [])
+        setStats(j.stats)
+      } catch (e) {
+        console.error("[portfolio] auth probe failed:", e)
+      } finally {
         setAuthChecked(true)
         setLoading(false)
-        return
       }
-      setLoggedIn(true)
-      setAuthChecked(true)
-      await reload()
     })()
   }, [])
 

@@ -25,7 +25,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import {
   ArrowLeft,
@@ -77,29 +76,35 @@ export default function ComparePage() {
   const [loadedDeals, setLoadedDeals] = useState<SavedDealFull[]>([])
   const [comparing, setComparing] = useState(false)
 
-  // ── Auth + initial fetch ───────────────────────────────────
+  // ── Auth probe via API (server-side cookie auth) ────────────
+  // Browser SDK can't see httpOnly session cookies. Probe /api/analyses
+  // directly; 401 → unauthed, success → user is signed in and we have
+  // their saved deals in the response. Then fetch tier in parallel.
   useEffect(() => {
     (async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setAuthChecked(true)
-        return
-      }
-      setLoggedIn(true)
-      // Fetch tier
       try {
-        const tierRes = await fetch("/api/usage")
-        if (tierRes.ok) {
-          const tj = await tierRes.json()
-          setIsPro(tj.tier === "pro" || tj.tier === "enterprise")
+        const r = await fetch("/api/analyses")
+        if (r.status === 401) {
+          setAuthChecked(true)
+          return
         }
-      } catch { /* ignore */ }
-      // Fetch saved deals
-      const r = await fetch("/api/analyses")
-      const j = await r.json()
-      if (r.ok) setSaved(j.analyses || [])
-      setAuthChecked(true)
+        const j = await r.json()
+        setLoggedIn(true)
+        setSaved(j.analyses || [])
+        // Tier in parallel (non-blocking — defaults to Free if /api/usage
+        // fails or the user is on a free plan).
+        try {
+          const tierRes = await fetch("/api/usage")
+          if (tierRes.ok) {
+            const tj = await tierRes.json()
+            setIsPro(tj.tier === "pro" || tj.tier === "enterprise")
+          }
+        } catch { /* ignore */ }
+      } catch (e) {
+        console.error("[compare] auth probe failed:", e)
+      } finally {
+        setAuthChecked(true)
+      }
     })()
   }, [])
 
