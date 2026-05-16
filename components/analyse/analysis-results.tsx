@@ -2356,12 +2356,32 @@ export function AnalysisResults({
                     <span className="font-medium text-destructive">-{formatCurrency(Math.round(data.insurance / 12))}</span>
                   </div>
                 )}
-                {data.maintenance > 0 && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Maintenance</span>
-                    <span className="font-medium text-destructive">-{formatCurrency(Math.round(data.maintenance / 12))}</span>
-                  </div>
-                )}
+                {/* Maintenance — calc engine prefers maintenancePercent
+                    of (void-adjusted) annual rent when > 0, else falls
+                    back to the flat annual maintenance amount. The row
+                    was previously gated on data.maintenance > 0 only,
+                    so when the user had a non-zero maintenancePercent
+                    and zero flat amount the line disappeared from the
+                    breakdown while still being deducted from cashflow. */}
+                {(data.maintenancePercent > 0 || data.maintenance > 0) && (() => {
+                  const voidFactor = (52 - (data.voidWeeks ?? 0)) / 52
+                  const monthlyMaint =
+                    data.maintenancePercent > 0
+                      ? data.monthlyRent * (data.maintenancePercent / 100) * voidFactor
+                      : data.maintenance / 12
+                  const label =
+                    data.maintenancePercent > 0
+                      ? `Maintenance (${data.maintenancePercent}% of rent)`
+                      : "Maintenance"
+                  return (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-medium text-destructive">
+                        -{formatCurrency(Math.round(monthlyMaint))}
+                      </span>
+                    </div>
+                  )
+                })()}
                 {data.groundRent > 0 && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Ground Rent</span>
@@ -2374,6 +2394,29 @@ export function AnalysisResults({
                     <span className="font-medium text-destructive">-{formatCurrency(Math.round(data.bills))}</span>
                   </div>
                 )}
+                {/* HMO licence — calc engine amortises hmoLicenceCost over
+                    hmoLicenceTermYears (default 5) and folds it into
+                    running costs for HMO strategy. Was deducted from
+                    cashflow but never shown on this breakdown. */}
+                {data.investmentType === "hmo"
+                  && (data.hmoLicenceCost ?? 0) > 0
+                  && (() => {
+                    const termYears =
+                      data.hmoLicenceTermYears && data.hmoLicenceTermYears > 0
+                        ? data.hmoLicenceTermYears
+                        : 5
+                    const monthlyAmort = (data.hmoLicenceCost ?? 0) / termYears / 12
+                    return (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          HMO Licence ({formatCurrency(data.hmoLicenceCost ?? 0)} over {termYears}yr)
+                        </span>
+                        <span className="font-medium text-destructive">
+                          -{formatCurrency(Math.round(monthlyAmort))}
+                        </span>
+                      </div>
+                    )
+                  })()}
 
                 <Separator className="my-1" />
                 <div className="flex items-center justify-between text-sm">
