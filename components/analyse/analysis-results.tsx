@@ -44,6 +44,8 @@ import {
 } from "recharts"
 import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark } from "@/lib/types"
 import { formatCurrency, formatPercent, calculateDealScore, calculateAll, estimateRefurbCost } from "@/lib/calculations"
+import { scoreDeal, type ScoreResult } from "@/lib/dealScoring"
+import { buildScoringInput } from "@/lib/buildScoringInput"
 import {
   TrendingUp,
   TrendingDown,
@@ -1452,13 +1454,18 @@ export function AnalysisResults({
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
 
   const parsedAI = parseAIAnalysis(aiText)
-  const dealScore =
-    backendData?.deal_score ??
-    parsedAI.score ??
-    calculateDealScore(results.cashOnCashReturn)
 
+  // New unified multi-factor scorer (lib/dealScoring.ts) — replaces the
+  // backend single-axis dealScore + verdictLabel. Computed client-side so
+  // it can see Article 4 / benchmark / comparables alongside form inputs.
+  const scoreResult: ScoreResult = useMemo(
+    () => scoreDeal(buildScoringInput(data, results, backendData ?? undefined)),
+    [data, results, backendData],
+  )
+  const dealScore = scoreResult.total
   const verdict = backendData?.verdict
-  const verdictLabel = backendData?.deal_score_label
+  const verdictLabel = scoreResult.label
+  void parsedAI // legacy score path retained for now; new engine is SSOT
 
   const cashFlowData = [
     {
