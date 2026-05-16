@@ -1005,6 +1005,210 @@ export function scoreFlip(input: ScoringInput): ScoreResult {
   return { total, label, colour, categories, warnings, criticalFlags }
 }
 
+// ── SA / R2SA scorer ─────────────────────────────────────────────────
+
+export function scoreSa(input: ScoringInput): ScoreResult {
+  const warnings: string[] = []
+  const criticalFlags: CriticalFlag[] = []
+  const f = (s: number, max: number, name: string, value: string, note?: string): ScoreFactor =>
+    ({ name, score: s, maxScore: max, value, note })
+
+  // ── Category 1 — Financial Returns (30) ──
+  const np = input.monthlyNetProfit ?? input.monthlyCashflow
+  let npPts = 0
+  if (np >= 800) npPts = 15
+  else if (np >= 500) npPts = 12
+  else if (np >= 300) npPts = 8
+  else if (np >= 100) npPts = 4
+  else if (np >= 0) npPts = 1
+
+  const rcr = input.revenueToCostsRatio ?? 0
+  let rcrPts = 0
+  if (rcr >= 2) rcrPts = 10
+  else if (rcr >= 1.5) rcrPts = 7
+  else if (rcr >= 1.2) rcrPts = 4
+  else if (rcr >= 1) rcrPts = 1
+
+  let gyPts = 3
+  let gyValue = "N/A (rent-to-SA)"
+  if (input.ownershipType === "own") {
+    const gy = input.grossYield
+    if (gy >= 12) gyPts = 5
+    else if (gy >= 8) gyPts = 3
+    else if (gy >= 5) gyPts = 1
+    else gyPts = 0
+    gyValue = fmtPct(gy)
+  }
+
+  const cat1: ScoreCategory = {
+    name: "Financial Returns",
+    score: npPts + rcrPts + gyPts,
+    maxScore: 30,
+    factors: [
+      f(npPts, 15, "Monthly Net Profit", fmtGbp(np)),
+      f(rcrPts, 10, "Revenue : Costs Ratio", `${rcr.toFixed(2)}×`),
+      f(gyPts, 5, "Gross Yield (if owned)", gyValue),
+    ],
+  }
+
+  // ── Category 2 — Market Demand (30) ──
+  const occAvg = input.airroiOccupancyAvg ?? 0
+  let occPts = 0
+  let occValue = "No Airroi data"
+  if (occAvg > 0) {
+    if (occAvg >= 75) occPts = 15
+    else if (occAvg >= 65) occPts = 11
+    else if (occAvg >= 55) occPts = 6
+    else if (occAvg >= 45) occPts = 2
+    occValue = `Area avg ${fmtPct(occAvg, 0)}`
+  }
+
+  let ratePts = 0
+  let rateValue = "No market rate"
+  if (input.userNightlyRate && input.airroiNightlyRate && input.airroiNightlyRate > 0) {
+    const ratio = input.userNightlyRate / input.airroiNightlyRate
+    if (ratio <= 1.0) ratePts = 10
+    else if (ratio <= 1.15) ratePts = 7
+    else if (ratio <= 1.3) ratePts = 3
+    else ratePts = 0
+    rateValue = `User ${fmtGbp(input.userNightlyRate)}/nt vs market ${fmtGbp(input.airroiNightlyRate)} (${fmtPct((ratio - 1) * 100, 0)})`
+  }
+
+  const listings = input.activeListingsArea ?? 0
+  let listPts = 0
+  let listValue = "No data"
+  if (listings > 0) {
+    if (listings < 100) listPts = 5
+    else if (listings < 300) listPts = 3
+    else if (listings < 700) listPts = 1
+    listValue = `${listings} active listings`
+  }
+
+  const cat2: ScoreCategory = {
+    name: "Market Demand",
+    score: occPts + ratePts + listPts,
+    maxScore: 30,
+    factors: [
+      f(occPts, 15, "Airroi Area Occupancy", occValue),
+      f(ratePts, 10, "User Rate vs Market", rateValue),
+      f(listPts, 5, "Active Listings in Area", listValue),
+    ],
+  }
+
+  // ── Category 3 — Risk Factors (25) ──
+  let occRiskPts = 0
+  let occRiskValue = "No comparison available"
+  if (
+    typeof input.userOccupancyRate === "number" &&
+    typeof input.airroiOccupancyAvg === "number" &&
+    input.airroiOccupancyAvg > 0
+  ) {
+    const diff = input.userOccupancyRate - input.airroiOccupancyAvg
+    if (diff <= 0) occRiskPts = 10
+    else if (diff <= 10) occRiskPts = 6
+    else if (diff <= 20) occRiskPts = 2
+    else occRiskPts = 0
+    occRiskValue = `User ${fmtPct(input.userOccupancyRate, 0)} vs market ${fmtPct(input.airroiOccupancyAvg, 0)}`
+  }
+
+  let saA4Pts = 8
+  let saA4Value = "No SA restrictions known"
+  switch (input.saArticle4Risk) {
+    case "none":
+      saA4Pts = 8
+      saA4Value = "No SA restrictions known"
+      break
+    case "some":
+      saA4Pts = 3
+      saA4Value = "Some short-let restrictions"
+      break
+    case "active":
+      saA4Pts = 0
+      saA4Value = "Known SA A4 / 90-night rule"
+      break
+  }
+
+  const be = input.breakEvenOccupancy ?? 0
+  let bePts = 0
+  let beValue = "Not calculated"
+  if (be > 0) {
+    if (be < 40) bePts = 7
+    else if (be < 55) bePts = 5
+    else if (be < 65) bePts = 2
+    else bePts = 0
+    beValue = `${fmtPct(be, 0)} break-even`
+  }
+
+  const cat3: ScoreCategory = {
+    name: "Risk Factors",
+    score: occRiskPts + saA4Pts + bePts,
+    maxScore: 25,
+    factors: [
+      f(occRiskPts, 10, "Occupancy Assumption Risk", occRiskValue),
+      f(saA4Pts, 8, "Article 4 / Short-Let Rules", saA4Value),
+      f(bePts, 7, "Break-Even Occupancy", beValue),
+    ],
+  }
+
+  // ── Category 4 — Setup & Structure (15) ──
+  let ownPts = 0
+  let ownValue = "Ownership not specified"
+  switch (input.ownershipType) {
+    case "own":
+      ownPts = 5
+      ownValue = "Own property"
+      break
+    case "rent-to-sa":
+      ownPts = 3
+      ownValue = "Rent-to-SA with consent"
+      break
+    case "rent-to-sa-no-consent":
+      ownPts = 0
+      ownValue = "Rent-to-SA — consent unconfirmed"
+      criticalFlags.push({
+        type: "rent_to_sa_no_consent",
+        message: "⚠ Landlord Consent Not Confirmed",
+        impact:
+          "Operating SA without explicit landlord consent breaches most ASTs and may be illegal. Get written permission before proceeding.",
+      })
+      break
+  }
+
+  const pf = input.platformFeePct ?? 0
+  let pfPts = 0
+  if (pf < 15) pfPts = 5
+  else if (pf <= 20) pfPts = 3
+  else pfPts = 1
+
+  const pb = input.capitalPaybackMonths ?? 0
+  let pbPts = 0
+  let pbValue = "Not calculable"
+  if (pb > 0) {
+    if (pb < 12) pbPts = 5
+    else if (pb < 24) pbPts = 3
+    else if (pb < 36) pbPts = 1
+    pbValue = `${pb.toFixed(1)} months`
+  }
+
+  const cat4: ScoreCategory = {
+    name: "Setup & Structure",
+    score: ownPts + pfPts + pbPts,
+    maxScore: 15,
+    factors: [
+      f(ownPts, 5, "Ownership Type", ownValue),
+      f(pfPts, 5, "Platform Fee Efficiency", `${fmtPct(pf, 0)} of revenue`),
+      f(pbPts, 5, "Capital Payback", pbValue),
+    ],
+  }
+
+  const categories = [cat1, cat2, cat3, cat4]
+  const rawTotal = sumCategories(categories)
+  const total = applyHardCaps(rawTotal, input, warnings, criticalFlags)
+  const { label, colour } = bandFromTotal(total)
+
+  return { total, label, colour, categories, warnings, criticalFlags }
+}
+
 // ── Public entry point ───────────────────────────────────────────────
 
 export function scoreDeal(input: ScoringInput): ScoreResult {
@@ -1017,7 +1221,9 @@ export function scoreDeal(input: ScoringInput): ScoreResult {
       return scoreBrrrr(input)
     case "flip":
       return scoreFlip(input)
-    // r2sa, development scorers added in subsequent sections
+    case "r2sa":
+      return scoreSa(input)
+    // development scorer added in next section
     default:
       return {
         total: 0,
