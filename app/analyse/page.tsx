@@ -831,26 +831,14 @@ export default function AnalysePage() {
               Metalyzi
             </span>
           </Link>
-          <div className="flex items-center gap-1">
-            {/* Quick links to standalone tools */}
-            <div className="mr-2 hidden items-center gap-1 border-r border-border/40 pr-2 md:flex">
-              <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs">
-                <Link href="/tools/sdlt-calculator">SDLT Calc</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs">
-                <Link href="/tools/portfolio">Portfolio</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm" className="h-8 px-2 text-xs">
-                <Link href="/tools/compare">Compare</Link>
-              </Button>
-            </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/">
-                <ArrowLeft className="size-3.5" />
-                Back
-              </Link>
-            </Button>
-          </div>
+          {/* Top-bar Quick Tools strip removed — the global navbar
+              dropdown now covers all tool entry points. */}
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/">
+              <ArrowLeft className="size-3.5" />
+              Back
+            </Link>
+          </Button>
         </div>
       </header>
 
