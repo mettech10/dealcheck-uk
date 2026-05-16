@@ -862,6 +862,149 @@ export function scoreBrrrr(input: ScoringInput): ScoreResult {
   return { total, label, colour, categories, warnings, criticalFlags }
 }
 
+// ── Flip scorer ──────────────────────────────────────────────────────
+
+export function scoreFlip(input: ScoringInput): ScoreResult {
+  const warnings: string[] = []
+  const criticalFlags: CriticalFlag[] = []
+  const f = (s: number, max: number, name: string, value: string, note?: string): ScoreFactor =>
+    ({ name, score: s, maxScore: max, value, note })
+
+  // ── Category 1 — Profit Metrics (35) ──
+  const np = input.netProfit ?? 0
+  let npPts = 0
+  if (np >= 50000) npPts = 15
+  else if (np >= 30000) npPts = 12
+  else if (np >= 20000) npPts = 8
+  else if (np >= 10000) npPts = 4
+  else if (np >= 5000) npPts = 1
+
+  const nr = input.netRoi ?? 0
+  const nrPts = tierScore(nr, [
+    [25, 12], [15, 9], [10, 5], [5, 2],
+  ])
+
+  const pm = input.profitMarginPct ?? 0
+  const pmPts = tierScore(pm, [
+    [15, 8], [10, 6], [7, 3], [4, 1],
+  ])
+
+  const cat1: ScoreCategory = {
+    name: "Profit Metrics",
+    score: npPts + nrPts + pmPts,
+    maxScore: 35,
+    factors: [
+      f(npPts, 15, "Net Profit (post-tax)", fmtGbp(np)),
+      f(nrPts, 12, "Net ROI", fmtPct(nr)),
+      f(pmPts, 8, "Profit Margin (vs ARV)", fmtPct(pm)),
+    ],
+  }
+
+  // ── Category 2 — Deal Structure (25) ──
+  const rule70 = input.rule70Passes
+  let rulePts = 0
+  let ruleValue = "Not assessed"
+  if (rule70 === true) {
+    rulePts = 10
+    ruleValue = "Passes 70% rule"
+  } else if (rule70 === false) {
+    rulePts = 0
+    ruleValue = "Fails 70% rule"
+  }
+
+  let pvm = 0
+  let pvmValue = "No comparables"
+  if (input.avgSoldPriceArea && input.avgSoldPriceArea > 0) {
+    const diff = (input.purchasePrice - input.avgSoldPriceArea) / input.avgSoldPriceArea
+    if (diff <= -0.2) pvm = 8
+    else if (diff <= -0.1) pvm = 5
+    else if (diff < 0) pvm = 2
+    pvmValue = `${fmtPct(diff * 100, 1)} vs area avg`
+  }
+
+  const ac = input.arvCompsCount ?? 0
+  let acPts = 0
+  if (ac >= 5) acPts = 7
+  else if (ac >= 3) acPts = 5
+  else if (ac >= 1) acPts = 2
+  const acValue = `${ac} ARV comparable${ac === 1 ? "" : "s"}`
+
+  const cat2: ScoreCategory = {
+    name: "Deal Structure",
+    score: rulePts + pvm + acPts,
+    maxScore: 25,
+    factors: [
+      f(rulePts, 10, "70% Rule Compliance", ruleValue),
+      f(pvm, 8, "Purchase vs Market", pvmValue),
+      f(acPts, 7, "ARV Confidence", acValue),
+    ],
+  }
+
+  // ── Category 3 — Risk Factors (25) ──
+  const months = input.flipMonths ?? 0
+  let timePts = 0
+  if (months <= 4) timePts = 8
+  else if (months <= 6) timePts = 6
+  else if (months <= 9) timePts = 3
+
+  const contPct = input.contingencyPct ?? 0
+  let contPts = 0
+  if (contPct >= 20) contPts = 8
+  else if (contPct >= 15) contPts = 6
+  else if (contPct >= 10) contPts = 3
+
+  // Bridging exit — based on totalCost / ARV
+  const tcvr = input.totalCostVsArvPct ?? 0
+  let exitPts = 0
+  let exitValue = "Not calculable"
+  if (tcvr > 0) {
+    if (tcvr <= 80) exitPts = 9
+    else if (tcvr <= 90) exitPts = 4
+    else exitPts = 0
+    exitValue = `Total cost ${fmtPct(tcvr, 1)} of ARV`
+  }
+
+  const cat3: ScoreCategory = {
+    name: "Risk Factors",
+    score: timePts + contPts + exitPts,
+    maxScore: 25,
+    factors: [
+      f(timePts, 8, "Timeline Risk", `${months} months`),
+      f(contPts, 8, "Refurb Contingency", fmtPct(contPct, 0)),
+      f(exitPts, 9, "Bridging Exit Margin", exitValue),
+    ],
+  }
+
+  // ── Category 4 — Market Conditions (15) ──
+  const growth = input.flipAreaPriceGrowth ?? input.areaPriceGrowth5yr ?? 0
+  const growthPts = tierScore(growth, [
+    [5, 8], [3, 5], [1, 2],
+  ])
+
+  const sold = input.flipSoldComps ?? input.soldComparablesCount ?? 0
+  let absPts = 0
+  if (sold >= 10) absPts = 7
+  else if (sold >= 5) absPts = 4
+  else if (sold >= 1) absPts = 1
+
+  const cat4: ScoreCategory = {
+    name: "Market Conditions",
+    score: growthPts + absPts,
+    maxScore: 15,
+    factors: [
+      f(growthPts, 8, "Area Price Trend", `${fmtPct(growth, 1)} pa`),
+      f(absPts, 7, "Absorption Rate", `${sold} recent sales`),
+    ],
+  }
+
+  const categories = [cat1, cat2, cat3, cat4]
+  const rawTotal = sumCategories(categories)
+  const total = applyHardCaps(rawTotal, input, warnings, criticalFlags)
+  const { label, colour } = bandFromTotal(total)
+
+  return { total, label, colour, categories, warnings, criticalFlags }
+}
+
 // ── Public entry point ───────────────────────────────────────────────
 
 export function scoreDeal(input: ScoringInput): ScoreResult {
@@ -872,7 +1015,9 @@ export function scoreDeal(input: ScoringInput): ScoreResult {
       return scoreHmo(input)
     case "brr":
       return scoreBrrrr(input)
-    // flip, r2sa, development scorers added in subsequent sections
+    case "flip":
+      return scoreFlip(input)
+    // r2sa, development scorers added in subsequent sections
     default:
       return {
         total: 0,
