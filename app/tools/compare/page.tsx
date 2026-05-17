@@ -27,7 +27,6 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
 import {
-  ArrowLeft,
   Scale,
   Trophy,
   AlertTriangle,
@@ -35,6 +34,7 @@ import {
   Lock,
   Download,
 } from "lucide-react"
+import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/calculations"
@@ -150,50 +150,51 @@ export default function ComparePage() {
   }
   if (!isLoggedIn) {
     return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16 text-center">
-        <Scale className="mx-auto size-12 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Deal Comparison</h1>
-        <p className="text-sm text-muted-foreground">
-          Sign in to compare your saved property analyses side-by-side and see
-          which deal wins on yield, cashflow, capital required, and deal score.
-        </p>
-        <div className="flex justify-center gap-3">
-          <Button asChild>
-            <Link href="/login?redirect=/tools/compare">Sign in</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/tools">All Tools</Link>
-          </Button>
+      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+        <ToolsTopBar />
+        <div className="flex flex-col gap-6 pt-6 text-center">
+          <Scale className="mx-auto size-12 text-primary" />
+          <h1 className="text-2xl font-bold text-foreground">Deal Comparison</h1>
+          <p className="text-sm text-muted-foreground">
+            Sign in to compare your saved property analyses side-by-side and see
+            which deal wins on yield, cashflow, capital required, and deal score.
+          </p>
+          <div className="flex justify-center gap-3">
+            <Button asChild>
+              <Link href="/login?redirect=/tools/compare">Sign in</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/">Home</Link>
+            </Button>
+          </div>
         </div>
       </div>
     )
   }
   if (saved.length < 2) {
     return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16 text-center">
-        <Scale className="mx-auto size-12 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Deal Comparison</h1>
-        <p className="text-sm text-muted-foreground">
-          You need at least 2 saved analyses to compare deals. Run an analysis
-          and save it, then come back here.
-        </p>
-        <Button asChild>
-          <Link href="/analyse">Analyse a Deal</Link>
-        </Button>
+      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+        <ToolsTopBar />
+        <div className="flex flex-col gap-6 pt-6 text-center">
+          <Scale className="mx-auto size-12 text-primary" />
+          <h1 className="text-2xl font-bold text-foreground">Deal Comparison</h1>
+          <p className="text-sm text-muted-foreground">
+            You need at least 2 saved analyses to compare deals. Run an analysis
+            and save it, then come back here.
+          </p>
+          <Button asChild>
+            <Link href="/analyse">Analyse a Deal</Link>
+          </Button>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-10">
+      <ToolsTopBar />
       {/* Header */}
       <div>
-        <Button asChild variant="ghost" size="sm" className="-ml-2 mb-1 gap-1.5">
-          <Link href="/tools">
-            <ArrowLeft className="size-4" />
-            All Tools
-          </Link>
-        </Button>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Deal Comparison
         </h1>

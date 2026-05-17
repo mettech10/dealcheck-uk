@@ -23,12 +23,12 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 import {
   Calculator,
-  ArrowLeft,
   ArrowRight,
   Copy,
   CheckCircle2,
   Info,
 } from "lucide-react"
+import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -84,16 +84,9 @@ export default function SdltCalculatorPage() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-10">
+      <ToolsTopBar />
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="sm" className="-ml-2 gap-1.5">
-            <Link href="/tools">
-              <ArrowLeft className="size-4" />
-              All Tools
-            </Link>
-          </Button>
-        </div>
         <div className="flex items-start gap-4">
           <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Calculator className="size-6" />

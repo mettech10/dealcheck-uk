@@ -31,11 +31,11 @@ import {
   TrendingUp,
   Wallet,
   PoundSterling,
-  ArrowLeft,
   Sparkles,
   X,
   Home,
 } from "lucide-react"
+import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -151,21 +151,24 @@ export default function PortfolioPage() {
   // ── Non-auth state ──────────────────────────────────────────
   if (authChecked && !isLoggedIn) {
     return (
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16 text-center">
-        <Building2 className="mx-auto size-12 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Portfolio Tracker</h1>
-        <p className="text-sm text-muted-foreground">
-          Sign in to track all your investment properties in one place — total
-          value, yield, monthly income, equity, and LTV across your entire
-          portfolio.
-        </p>
-        <div className="flex justify-center gap-3">
-          <Button asChild>
-            <Link href="/login?redirect=/tools/portfolio">Sign in</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/tools">All Tools</Link>
-          </Button>
+      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+        <ToolsTopBar />
+        <div className="flex flex-col gap-6 pt-6 text-center">
+          <Building2 className="mx-auto size-12 text-primary" />
+          <h1 className="text-2xl font-bold text-foreground">Portfolio Tracker</h1>
+          <p className="text-sm text-muted-foreground">
+            Sign in to track all your investment properties in one place — total
+            value, yield, monthly income, equity, and LTV across your entire
+            portfolio.
+          </p>
+          <div className="flex justify-center gap-3">
+            <Button asChild>
+              <Link href="/login?redirect=/tools/portfolio">Sign in</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/">Home</Link>
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -176,15 +179,10 @@ export default function PortfolioPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
+      <ToolsTopBar />
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-1 gap-1.5">
-            <Link href="/tools">
-              <ArrowLeft className="size-4" />
-              All Tools
-            </Link>
-          </Button>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Portfolio Tracker
           </h1>
