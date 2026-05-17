@@ -1502,11 +1502,17 @@ export function AnalysisResults({
   const hasLocation = !!(backendData?.location?.council || backendData?.location?.region)
   // Always show valuation card — it handles its own loading/empty states
   const hasValuation = true
+  // Truthy if backendData carries ANY AI-generated content. The strengths /
+  // risks / next_steps cards only render when their array is non-empty,
+  // so the OR includes verdict + area as well — that way a partial Claude
+  // response (e.g. one section empty) doesn't drop us into the blank
+  // fallback card.
   const hasAIInsights = !!(
     backendData?.ai_strengths?.length ||
     backendData?.ai_risks?.length ||
     backendData?.ai_next_steps?.length ||
-    backendData?.ai_area
+    backendData?.ai_area ||
+    backendData?.ai_verdict
   )
   const hasRiskFlags = (backendData?.risk_flags?.length ?? 0) > 0
   const hasBenchmark = !!backendData?.regional_benchmark
@@ -2640,6 +2646,19 @@ export function AnalysisResults({
               <div className="flex items-center gap-3 py-8 text-muted-foreground">
                 <Loader2 className="size-5 animate-spin text-primary" />
                 <span className="text-sm">Analysing your deal...</span>
+              </div>
+            ) : !aiText && parsedAI.sections.length === 0 ? (
+              // No insights at all — show an explicit message so the user
+              // knows AI generation failed, instead of seeing a blank card.
+              <div className="flex flex-col items-start gap-3 py-6">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <AlertTriangle className="size-4 text-warning" />
+                  AI insights couldn&apos;t be generated for this analysis.
+                </div>
+                <p className="text-xs text-muted-foreground/80">
+                  This usually clears on a retry. Re-run the analysis or
+                  reload the saved deal to fetch fresh commentary.
+                </p>
               </div>
             ) : (
               <div className="prose prose-sm prose-invert max-w-none">
