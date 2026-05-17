@@ -24,7 +24,11 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ postcode, strategy, dealData, benchmark, articleFour, marketContext }),
-      signal: AbortSignal.timeout(45_000),
+      // Render free tier + Anthropic latency on a large strategy-aware
+      // prompt routinely lands at 30-60s. 45s was breaching mid-call;
+      // 90s gives Claude enough headroom while still failing fast
+      // enough that the UI shows the error instead of hanging forever.
+      signal: AbortSignal.timeout(90_000),
     })
 
     const data = await upstream.json().catch(() => null)
