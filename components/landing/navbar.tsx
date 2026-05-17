@@ -31,6 +31,17 @@ const TOOLS: ToolItem[] = [
   { href: "/tools/compare",         name: "Deal Comparison" },
 ]
 
+/** Map raw tier id from /api/usage to a friendly label + badge tone. */
+function tierMeta(tier: string | null): { label: string; tone: "teal" | "muted" | "amber" } {
+  switch (tier) {
+    case "pro":              return { label: "Pro",              tone: "teal" }
+    case "enterprise":       return { label: "Enterprise",       tone: "teal" }
+    case "pay_per_analysis": return { label: "Pay Per Analysis", tone: "amber" }
+    case "free":
+    default:                 return { label: "Free",             tone: "muted" }
+  }
+}
+
 export function Navbar({ user }: NavbarProps) {
   const pathname = usePathname()
   const isToolsActive = pathname?.startsWith("/tools") ?? false
@@ -46,6 +57,24 @@ export function Navbar({ user }: NavbarProps) {
   const dropdownRef = useRef<HTMLDivElement | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── Desktop Account popover (replaces standalone Account link) ──
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [tierId, setTierId] = useState<string | null>(null)
+  const [tierLoading, setTierLoading] = useState(false)
+  const accountTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const accountPopoverRef = useRef<HTMLDivElement | null>(null)
+
+  // Fetch tier the first time the popover opens (cached after).
+  useEffect(() => {
+    if (!accountOpen || !user || tierId !== null) return
+    setTierLoading(true)
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((j) => setTierId(j.tier ?? "free"))
+      .catch(() => setTierId("free"))
+      .finally(() => setTierLoading(false))
+  }, [accountOpen, user, tierId])
+
   const cancelClose = () => {
     if (closeTimer.current) {
       clearTimeout(closeTimer.current)
@@ -57,27 +86,36 @@ export function Navbar({ user }: NavbarProps) {
     closeTimer.current = setTimeout(() => setToolsOpen(false), 150)
   }
 
-  // Click-outside close
+  // Click-outside close (Tools + Account popover)
   useEffect(() => {
-    if (!toolsOpen) return
+    if (!toolsOpen && !accountOpen) return
     const onMouseDown = (e: MouseEvent) => {
       const t = e.target as Node
       if (
+        toolsOpen &&
         triggerRef.current && !triggerRef.current.contains(t) &&
         dropdownRef.current && !dropdownRef.current.contains(t)
       ) {
         setToolsOpen(false)
       }
+      if (
+        accountOpen &&
+        accountTriggerRef.current && !accountTriggerRef.current.contains(t) &&
+        accountPopoverRef.current && !accountPopoverRef.current.contains(t)
+      ) {
+        setAccountOpen(false)
+      }
     }
     document.addEventListener("mousedown", onMouseDown)
     return () => document.removeEventListener("mousedown", onMouseDown)
-  }, [toolsOpen])
+  }, [toolsOpen, accountOpen])
 
-  // Escape closes both desktop dropdown + mobile sub-menu
+  // Escape closes both desktop dropdowns
   useEffect(() => {
     const onEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setToolsOpen(false)
+        setAccountOpen(false)
       }
     }
     document.addEventListener("keydown", onEscape)
@@ -171,12 +209,8 @@ export function Navbar({ user }: NavbarProps) {
             )}
           </div>
 
-          <Link
-            href="/account"
-            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Account
-          </Link>
+          {/* Account link removed — the user pill on the right is now
+              the entry point for account / billing via a popover.    */}
         </div>
 
         {/* Desktop auth area */}
@@ -186,14 +220,38 @@ export function Navbar({ user }: NavbarProps) {
               <Button asChild size="default">
                 <Link href="/analyse">Analyse a Deal</Link>
               </Button>
-              <div className="flex items-center gap-2 rounded-md border border-border/50 bg-card px-3 py-1.5">
-                <div className="flex size-6 items-center justify-center rounded-full bg-primary/20">
-                  <User className="size-3 text-primary" />
-                </div>
-                <span className="max-w-[120px] truncate text-xs text-muted-foreground">
-                  {user.name || user.email}
-                </span>
+
+              {/* ── User pill → Account popover ────────────────────── */}
+              <div className="relative">
+                <button
+                  ref={accountTriggerRef}
+                  type="button"
+                  onClick={() => setAccountOpen((v) => !v)}
+                  aria-expanded={accountOpen}
+                  aria-haspopup="dialog"
+                  className={`flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 transition-colors hover:border-primary/60 ${
+                    accountOpen ? "border-primary/60" : "border-border/50"
+                  }`}
+                >
+                  <div className="flex size-6 items-center justify-center rounded-full bg-primary/20">
+                    <User className="size-3 text-primary" />
+                  </div>
+                  <span className="max-w-[120px] truncate text-xs text-muted-foreground">
+                    {user.name || user.email}
+                  </span>
+                </button>
+
+                {accountOpen && (
+                  <AccountPopover
+                    popoverRef={accountPopoverRef}
+                    user={user}
+                    tierId={tierId}
+                    tierLoading={tierLoading}
+                    onClose={() => setAccountOpen(false)}
+                  />
+                )}
               </div>
+
               <form action={signOut}>
                 <Button variant="ghost" size="sm" type="submit">
                   <LogOut className="size-3.5" />
@@ -284,22 +342,12 @@ export function Navbar({ user }: NavbarProps) {
               )}
             </div>
 
-            <Link
-              href="/account"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => setMobileOpen(false)}
-            >
-              Account
-            </Link>
+            {/* Mobile Account link removed; identity + tier shown in
+                the auth block below alongside the sign-out button. */}
 
             {user ? (
               <>
-                <div className="flex items-center gap-2 py-1 text-sm text-muted-foreground">
-                  <User className="size-3.5" />
-                  <span className="truncate">
-                    {user.name || user.email}
-                  </span>
-                </div>
+                <MobileAccountCard user={user} />
                 <Button
                   asChild
                   size="default"
@@ -337,5 +385,119 @@ export function Navbar({ user }: NavbarProps) {
         </div>
       )}
     </header>
+  )
+}
+
+// ── Desktop Account popover ──────────────────────────────────────────
+
+function AccountPopover({
+  popoverRef,
+  user,
+  tierId,
+  tierLoading,
+  onClose,
+}: {
+  popoverRef: React.RefObject<HTMLDivElement | null>
+  user: { email?: string; name?: string }
+  tierId: string | null
+  tierLoading: boolean
+  onClose: () => void
+}) {
+  const tier = tierMeta(tierId)
+  const toneClass: Record<typeof tier.tone, string> = {
+    teal:  "border-primary/30 bg-primary/10 text-primary",
+    amber: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    muted: "border-border/50 bg-muted/40 text-muted-foreground",
+  }
+  return (
+    <div
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Account"
+      className="absolute right-0 top-full z-[1000] mt-2 w-[280px] animate-tools-account-pop rounded-xl border border-border/60 bg-background p-4 shadow-2xl"
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex size-10 items-center justify-center rounded-full bg-primary/15">
+          <User className="size-4 text-primary" />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold text-foreground">
+            {user.name || user.email?.split("@")[0] || "Signed in"}
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            {user.email}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between rounded-lg border border-border/40 bg-card/40 px-3 py-2">
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+          Plan
+        </span>
+        {tierLoading && tierId === null ? (
+          <span className="text-xs text-muted-foreground">Loading…</span>
+        ) : (
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${toneClass[tier.tone]}`}
+          >
+            {tier.label}
+          </span>
+        )}
+      </div>
+
+      <Link
+        href="/account"
+        onClick={onClose}
+        className="mt-3 block rounded-md border border-border/40 bg-background/60 px-3 py-2 text-center text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+      >
+        Manage Account
+      </Link>
+    </div>
+  )
+}
+
+// ── Mobile Account card (inline in the hamburger menu) ───────────────
+
+function MobileAccountCard({
+  user,
+}: {
+  user: { email?: string; name?: string }
+}) {
+  const [tierId, setTierId] = useState<string | null>(null)
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((j) => setTierId(j.tier ?? "free"))
+      .catch(() => setTierId("free"))
+  }, [])
+  const tier = tierMeta(tierId)
+  const toneClass: Record<typeof tier.tone, string> = {
+    teal:  "border-primary/30 bg-primary/10 text-primary",
+    amber: "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    muted: "border-border/50 bg-muted/40 text-muted-foreground",
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border/50 bg-card/40 p-3">
+      <div className="flex items-center gap-2 text-sm">
+        <User className="size-3.5 text-primary" />
+        <span className="truncate text-foreground">
+          {user.name || user.email}
+        </span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Plan</span>
+        <span
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold ${toneClass[tier.tone]}`}
+        >
+          {tier.label}
+        </span>
+      </div>
+      <Link
+        href="/account"
+        className="text-center text-xs text-muted-foreground underline decoration-dotted underline-offset-4 hover:text-foreground"
+      >
+        Manage Account
+      </Link>
+    </div>
   )
 }
