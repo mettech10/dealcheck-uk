@@ -6,6 +6,14 @@ import { checkCanAnalyse, recordAnalysisUsed } from "@/lib/usageGate"
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
+// Vercel function duration cap. /ai-analyze on Flask routinely takes
+// 60-90s for HMO deals (long Article 4 + planning + Claude pipeline);
+// the default 10s hobby limit kills the request before Flask responds
+// and the UI falls into the "AI insights couldn't be generated" empty
+// state. 300s is the Vercel Pro Plus ceiling — caller's plan caps it.
+export const maxDuration = 300
+export const runtime = "nodejs"
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -349,6 +357,10 @@ export async function POST(req: Request) {
       // avoiding contradictions between headline metrics and benchmark panel.
       const response = await fetch(`${BACKEND_API_URL}/ai-analyze`, {
         method: "POST",
+        // Bound the upstream fetch so a stuck Flask call surfaces a clean
+        // 504 instead of riding the function out to maxDuration and
+        // returning nothing. 270s = maxDuration (300) minus headroom.
+        signal: AbortSignal.timeout(270_000),
         headers: {
           "Content-Type": "application/json",
           // Passed as header so Flask can gate without touching the body

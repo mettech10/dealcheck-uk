@@ -3,6 +3,13 @@ import { NextResponse } from "next/server"
 const BACKEND_API_URL =
   process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
+// Same rationale as /api/analyse — strategy-aware area analysis builds
+// a large prompt + waits on Claude. Default 10s hobby cap was the
+// underlying reason the UI showed "The operation was aborted due to
+// timeout" on fresh runs.
+export const maxDuration = 120
+export const runtime = "nodejs"
+
 /**
  * Proxies POST /api/analysis/area to the Flask backend, which generates
  * a 5-section AI area analysis (market overview, fundamentals, deal in
