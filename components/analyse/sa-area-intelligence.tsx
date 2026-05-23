@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useLoadingTracker } from "@/lib/useLoadingTracker"
 import {
   Card,
   CardContent,
@@ -55,9 +56,13 @@ export function SAAreaIntelligence({
   const [market, setMarket] = useState<AirroiMarket | null>(null)
   const [loading, setLoading] = useState(true)
   const district = postcode.split(" ")[0] || postcode
+  const { markDone } = useLoadingTracker()
 
   useEffect(() => {
-    if (!postcode) return
+    if (!postcode) {
+      markDone("airroi")
+      return
+    }
     setLoading(true)
     fetch("/api/comparables/sa", {
       method: "POST",
@@ -70,8 +75,11 @@ export function SAAreaIntelligence({
         setMarket(data?.airroiMarket ?? null)
       })
       .catch((err) => console.error("[SA AREA INTEL] fetch error:", err))
-      .finally(() => setLoading(false))
-  }, [postcode, bedrooms])
+      .finally(() => {
+        setLoading(false)
+        markDone("airroi")
+      })
+  }, [postcode, bedrooms, markDone])
 
   if (loading) {
     return (

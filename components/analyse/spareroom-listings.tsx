@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { ExternalLink, Loader2, Home } from "lucide-react"
+import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 interface SpareRoomListing {
   title: string
@@ -26,6 +27,7 @@ interface SpareRoomListingsProps {
 }
 
 export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
+  const { markDone } = useLoadingTracker()
   const [listings, setListings] = useState<SpareRoomListing[]>([])
   const [loading, setLoading] = useState(true)
   const [source, setSource] = useState("")
@@ -34,7 +36,13 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
   const district = postcode.split(" ")[0] || postcode
 
   useEffect(() => {
-    if (!postcode) return
+    if (!postcode) {
+      // Component rendered without a postcode (shouldn't happen on the
+      // HMO results path but be defensive) — don't leave the overlay
+      // hanging on this key.
+      markDone("spareRoom")
+      return
+    }
 
     setLoading(true)
 
@@ -58,8 +66,11 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
       .catch((err) => {
         console.error("[Room Listings tab] Error:", err)
       })
-      .finally(() => setLoading(false))
-  }, [postcode])
+      .finally(() => {
+        setLoading(false)
+        markDone("spareRoom")
+      })
+  }, [postcode, markDone])
 
   if (loading) {
     return (

@@ -458,6 +458,12 @@ function AnalysePage() {
       const skipKeys: SourceKey[] = []
       if (strategy !== "hmo") skipKeys.push("spareRoom")
       if (strategy !== "r2sa" && strategy !== "sa") skipKeys.push("airroi")
+      // r2sa renders SAComparables instead of PropertyComparables, so
+      // the propertyData + comparables keys are never reported from
+      // a child — skip them up-front for SA flows.
+      if (strategy === "r2sa" || strategy === "sa") {
+        skipKeys.push("propertyData", "comparables")
+      }
       if (skipKeys.length) loadingTracker.skip(skipKeys)
 
       try {

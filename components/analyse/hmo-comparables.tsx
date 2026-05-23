@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { ExternalLink, Loader2, TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react"
+import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 interface RoomListing {
   title: string
@@ -90,6 +91,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [loadingListings, setLoadingListings] = useState(true)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { markDone } = useLoadingTracker()
 
   useEffect(() => {
     let cancelled = false
@@ -225,12 +227,13 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           setLoadingListings(false)
           setLoadingAnalysis(false)
         }
+        markDone("spareRoom")
       }
     }
 
     fetchData()
     return () => { cancelled = true }
-  }, [postcode])
+  }, [postcode, markDone])
 
   if (loadingListings) {
     return (

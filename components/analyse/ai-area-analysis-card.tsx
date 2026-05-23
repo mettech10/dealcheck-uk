@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { MapPin, Loader2, Sparkles } from "lucide-react"
+import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 /**
  * Two shapes are accepted from the backend, to allow a gradual rollout:
@@ -84,9 +85,15 @@ export function AiAreaAnalysisCard({
   const [data, setData] = useState<AreaPayload | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { markDone } = useLoadingTracker()
 
   useEffect(() => {
-    if (!postcode) return
+    if (!postcode) {
+      // No postcode → the card itself renders nothing; still flip
+      // the key so the overlay can lift.
+      markDone("aiAreaAnalysis")
+      return
+    }
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -117,11 +124,12 @@ export function AiAreaAnalysisCard({
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
+        markDone("aiAreaAnalysis")
       })
     return () => {
       cancelled = true
     }
-  }, [postcode, strategy])
+  }, [postcode, strategy, markDone])
 
   if (!postcode && !fallbackText) return null
 

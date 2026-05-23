@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useLoadingTracker } from "@/lib/useLoadingTracker"
 import {
   Card,
   CardContent,
@@ -105,9 +106,13 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
   const [airroiListings, setAirroiListings] = useState<AirroiListing[]>([])
 
   const district = postcode.split(" ")[0] || postcode
+  const { markDone } = useLoadingTracker()
 
   useEffect(() => {
-    if (!postcode) return
+    if (!postcode) {
+      markDone("airroi")
+      return
+    }
 
     setLoading(true)
     fetch("/api/comparables/sa", {
@@ -138,8 +143,11 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
         )
         setMessage("Could not fetch SA comparables")
       })
-      .finally(() => setLoading(false))
-  }, [postcode, bedrooms, district])
+      .finally(() => {
+        setLoading(false)
+        markDone("airroi")
+      })
+  }, [postcode, bedrooms, district, markDone])
 
   const demandIcon =
     summary?.demand === "high" ? (

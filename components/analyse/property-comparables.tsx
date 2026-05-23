@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/calculations"
 import { Home, PoundSterling, TrendingUp, MapPin, ExternalLink, BedDouble } from "lucide-react"
 import { SpareRoomListings } from "./spareroom-listings"
+import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 // ── Sold Comparables Types ────────────────────────────────────────────────
 interface ComparableSale {
@@ -94,6 +95,11 @@ export function PropertyComparables({
   investmentType,
   onDataLoaded,
 }: PropertyComparablesProps) {
+  // Loading-tracker key for the full-page overlay on /analyse. Both
+  // `propertyData` (sold + rental from PropertyData) and `comparables`
+  // (the comp lists this component renders) are driven by this one
+  // fetch — mark both done together so the overlay can lift.
+  const { markDone } = useLoadingTracker()
   const [soldData, setSoldData] = useState<SoldData | null>(null)
   const [rentalEstimate, setRentalEstimate] = useState<RentalEstimate | null>(null)
   const [rentalListings, setRentalListings] = useState<RentalData | null>(null)
@@ -108,7 +114,13 @@ export function PropertyComparables({
   // Fetch sold comparables + rental estimate
   useEffect(() => {
     async function fetchComparables() {
-      if (!postcode) return
+      if (!postcode) {
+        // No postcode supplied → component renders nothing; still flip
+        // the tracker keys so the overlay can lift.
+        markDone("propertyData")
+        markDone("comparables")
+        return
+      }
       setLoading(true)
       setError(null)
 
@@ -179,11 +191,13 @@ export function PropertyComparables({
         setError("Failed to load comparables")
       } finally {
         setLoading(false)
+        markDone("propertyData")
+        markDone("comparables")
       }
     }
 
     fetchComparables()
-  }, [postcode, bedrooms, propertyType, propertyTypeDetail, tenureType])
+  }, [postcode, bedrooms, propertyType, propertyTypeDetail, tenureType, markDone])
 
   // Fetch live rental listings (separate call — only for rental strategies)
   useEffect(() => {
