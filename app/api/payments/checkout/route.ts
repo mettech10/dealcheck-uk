@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   const userEmail = user.email ?? undefined
 
   // ── Validate tier ───────────────────────────────────────────────────
-  let body: { tier?: string; returnTo?: string } = {}
+  let body: { tier?: string; returnTo?: string; analysisId?: string } = {}
   try {
     body = await req.json()
   } catch {
@@ -77,6 +77,15 @@ export async function POST(req: Request) {
   const rawReturn = (body.returnTo || "").trim()
   const safeReturn =
     rawReturn.startsWith("/") && !rawReturn.startsWith("//") ? rawReturn : ""
+
+  // Optional bind-at-checkout: when the frontend has a saved-analysis
+  // id at click time (e.g. "Buy 1 Analysis" rendered on a deal that's
+  // already persisted), we ride the id through Stripe metadata so the
+  // webhook stores it on payment_history immediately. Pure UUIDv4
+  // shape check — webhook validates against saved_analyses by FK.
+  const rawAnalysisId = (body.analysisId || "").trim()
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const safeAnalysisId = UUID_RE.test(rawAnalysisId) ? rawAnalysisId : ""
 
   // ── Find or create Stripe customer ──────────────────────────────────
   // For Pro we want the same Stripe customer across renewals so invoices
@@ -154,6 +163,9 @@ export async function POST(req: Request) {
       metadata: {
         user_id: userId,
         tier: tier.id,
+        // Empty string when not bind-at-checkout — webhook treats
+        // both "" and missing as "floating credit".
+        analysis_id: safeAnalysisId,
       },
       ...(tierId === "pro"
         ? {

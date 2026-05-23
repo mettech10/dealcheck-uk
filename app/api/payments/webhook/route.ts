@@ -112,13 +112,23 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       : session.subscription?.id ?? null
 
   if (tier === "pay_per_analysis") {
-    // +1 credit + payment_history entry — atomic in the RPC.
+    // Optional bind-at-checkout: when the frontend knew the
+    // saved-analysis id at click time it lands here as metadata
+    // and the RPC stores it on payment_history.analysis_id
+    // immediately. Empty / missing → floating credit (the
+    // consume RPC binds it on first Save / PDF click).
+    const rawAnalysisId = (session.metadata?.analysis_id || "").trim()
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const boundAnalysisId = UUID_RE.test(rawAnalysisId) ? rawAnalysisId : null
+
+    // +1 credit + payment_history entry (bound or floating) — atomic in the RPC.
     const { error } = await admin.rpc("add_analysis_credits", {
       p_user_id: userId,
       p_credits: 1,
       p_tier: "pay_per_analysis",
       p_stripe_session_id: session.id,
       p_amount_gbp: 2.99,
+      p_analysis_id: boundAnalysisId,
     })
     if (error) console.error("[webhook] add_analysis_credits RPC failed:", error)
     // Stash the Stripe customer id for future billing-portal links + reuse.
