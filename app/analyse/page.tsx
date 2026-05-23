@@ -14,6 +14,12 @@ import { UpgradeModal, type UpgradeReason } from "@/components/UpgradeModal"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useUserPermissions } from "@/lib/useUserPermissions"
 import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
+import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
+import {
+  LoadingTrackerProvider,
+  useLoadingTracker,
+  type SourceKey,
+} from "@/lib/useLoadingTracker"
 import type { ScrapedListing } from "@/components/analyse/property-listing-card"
 import { calculateAll, calculateDealScore } from "@/lib/calculations"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
@@ -304,11 +310,14 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
 type InputMode = "url" | "manual"
 
 /**
- * Default export wraps the actual page in <Suspense> because
- * useSearchParams() forces client-side bailout during prerender
- * (Next 16 build error: "useSearchParams() should be wrapped in a
- * suspense boundary"). The fallback is the existing app-shell
- * spinner — keeps the layout from jumping.
+ * Default export wraps the actual page in:
+ *   - <Suspense> because useSearchParams() forces client-side bailout
+ *     during prerender (Next 16 build error).
+ *   - <LoadingTrackerProvider> so every results-page data source
+ *     (parent /ai-analyze call + child components like spareroom-
+ *     listings, ai-area-analysis-card, property-comparables, …) can
+ *     report `done` into a single tracker that gates the full-page
+ *     loading overlay.
  */
 export default function AnalysePageWrapper() {
   return (
@@ -319,7 +328,9 @@ export default function AnalysePageWrapper() {
         </div>
       }
     >
-      <AnalysePage />
+      <LoadingTrackerProvider>
+        <AnalysePage />
+      </LoadingTrackerProvider>
     </Suspense>
   )
 }
@@ -328,6 +339,12 @@ function AnalysePage() {
   // Tier-driven gating (PDF export, save-deal flow). Single source: the
   // /api/usage route + lib/permissions.permissionsForTier.
   const { permissions: userPermissions, authenticated: isAuthenticated } = useUserPermissions()
+
+  // Full-page loading overlay tracker. The parent reports keys it owns
+  // (calculations + the bundled /ai-analyze response, which carries
+  // article4 + benchmarks); child components report the rest via
+  // useLoadingTracker().markDone(...) in their fetch finally blocks.
+  const loadingTracker = useLoadingTracker()
 
   // Stripe payment return handling. After Stripe redirects back here
   // with ?payment=success&session_id=cs_…, we:
@@ -427,6 +444,21 @@ function AnalysePage() {
     async (body: Record<string, unknown>) => {
       setAiText("")
       setAiLoading(true)
+      // Arm the loading-overlay tracker — every key flips to false
+      // and the 30s safety timeout starts. Children + the main
+      // analyse response progressively flip them back to true.
+      loadingTracker.start()
+      // Pre-skip data sources irrelevant to the current strategy
+      // so they don't block the overlay. The bundled /ai-analyze
+      // response already covers article4 + benchmarks; we mark
+      // those as done in this fetch's finally block.
+      const strategy = String(
+        (body.propertyData as Record<string, unknown> | undefined)?.investmentType ?? "btl",
+      ).toLowerCase()
+      const skipKeys: SourceKey[] = []
+      if (strategy !== "hmo") skipKeys.push("spareRoom")
+      if (strategy !== "r2sa" && strategy !== "sa") skipKeys.push("airroi")
+      if (skipKeys.length) loadingTracker.skip(skipKeys)
 
       try {
         const res = await fetch("/api/analyse", {
@@ -578,9 +610,17 @@ function AnalysePage() {
         }
       } finally {
         setAiLoading(false)
+        // The bundled /ai-analyze response carries the AI narrative,
+        // calculations, article4 + benchmark data. Mark all four keys
+        // done — error or success, the overlay shouldn't block on a
+        // request that's already returned.
+        loadingTracker.markDone("aiDealAnalysis")
+        loadingTracker.markDone("calculations")
+        loadingTracker.markDone("article4")
+        loadingTracker.markDone("benchmarks")
       }
     },
-    []
+    [loadingTracker]
   )
 
   // Manual form submission -- runs local calculations then sends to backend
@@ -953,6 +993,9 @@ function AnalysePage() {
     setRentalDetected(false)
     setRentalMonthlyRent(null)
     savedKeyRef.current = null
+    // Stop the loading-overlay tracker so the overlay doesn't briefly
+    // flash on a new analysis kick-off (start() arms it again).
+    loadingTracker.stop()
   }
 
   // Save-as-PDF: print the actual on-screen results view rather than a
@@ -975,8 +1018,20 @@ function AnalysePage() {
     setTimeout(() => window.print(), 50)
   }
 
+  // Full-page overlay gate: shown while the tracker is active AND not
+  // every key has resolved. The underlying page tree stays mounted
+  // (invisible, not hidden) so in-flight child fetches keep running
+  // and we don't tear down state when the overlay lifts.
+  const showOverlay = loadingTracker.active && !loadingTracker.isFullyLoaded
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <>
+      {showOverlay && <AnalysisLoadingOverlay />}
+      <div
+        className={`flex min-h-screen flex-col bg-background ${
+          showOverlay ? "invisible" : "visible"
+        }`}
+      >
       {/* Top Bar */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
@@ -1498,6 +1553,7 @@ function AnalysePage() {
         freeUsed={upgradeFreeUsed}
         onClose={() => setShowUpgrade(false)}
       />
-    </div>
+      </div>
+    </>
   )
 }
