@@ -13,6 +13,7 @@ import { PropertyListingCard } from "@/components/analyse/property-listing-card"
 import { UpgradeModal, type UpgradeReason } from "@/components/UpgradeModal"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useUserPermissions } from "@/lib/useUserPermissions"
+import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 import type { ScrapedListing } from "@/components/analyse/property-listing-card"
 import { calculateAll, calculateDealScore } from "@/lib/calculations"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
@@ -734,6 +735,11 @@ export default function AnalysePage() {
   const [recentDealsVersion, setRecentDealsVersion] = useState(0)
   const [savedThisRun, setSavedThisRun] = useState(false)
   const [savingNow, setSavingNow] = useState(false)
+  // Saved-analysis id for the current run — drives the per-deal
+  // access lookup so PDF / Save buttons reflect the right entitlement
+  // (bound PPA credit, floating credit, or Pro).
+  const [savedAnalysisId, setSavedAnalysisId] = useState<string | null>(null)
+  const { access, refresh: refreshAccess } = useAnalysisAccess(savedAnalysisId)
 
   const persistAnalysis = useCallback(async () => {
     if (!aiText || !formData) return false
@@ -762,7 +768,11 @@ export default function AnalysePage() {
       if (r.ok) {
         setSavedThisRun(true)
         setRecentDealsVersion((v) => v + 1)
-        return true
+        // Capture the new saved-analysis id so the per-deal access
+        // hook can resolve credit binding for PDF unlock.
+        const data = (await r.json().catch(() => null)) as { id?: string } | null
+        if (data?.id) setSavedAnalysisId(data.id)
+        return data?.id ?? true
       }
     } catch {
       /* swallow — saving is best-effort */
@@ -771,6 +781,30 @@ export default function AnalysePage() {
     }
     return false
   }, [aiText, formData, results, backendData])
+
+  /**
+   * Save Deal handler for Free users holding a floating PPA credit.
+   * Saves the analysis (so we get an id) then binds the credit to it
+   * via /api/payments/consume-credit. On success, refresh the access
+   * state so the PDF button flips to "enabled".
+   */
+  const saveAndConsumeCredit = useCallback(async () => {
+    const saved = await persistAnalysis()
+    if (typeof saved !== "string") return
+    try {
+      const r = await fetch("/api/payments/consume-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId: saved }),
+      })
+      if (!r.ok) {
+        const err = (await r.json().catch(() => ({}))) as { error?: string }
+        console.warn("[analyse] consume-credit failed:", r.status, err)
+      }
+    } finally {
+      refreshAccess()
+    }
+  }, [persistAnalysis, refreshAccess])
 
   useEffect(() => {
     // Only fire when AI loading just completed and we have data
@@ -781,6 +815,7 @@ export default function AnalysePage() {
     if (savedKeyRef.current === key) return
     savedKeyRef.current = key
     setSavedThisRun(false)
+    setSavedAnalysisId(null)
 
     // Always increment the global deal counter (no auth required)
     fetch("/api/stats/increment", {
@@ -1288,10 +1323,11 @@ export default function AnalysePage() {
                 New Analysis
               </Button>
 
-              {/* Save Deal — visible to everyone, gated for Free. The
-                  PPA/Pro auto-save runs on success too; this button
-                  is the explicit affordance + the upgrade entrypoint
-                  for Free users. */}
+              {/* Save Deal — three states based on per-deal access:
+                  (1) Pro / PPA-with-bound-credit: straight-through save.
+                  (2) Free user holding a floating PPA credit: save + bind
+                      the credit in one action (label flags the cost).
+                  (3) Free with no credit: opens upgrade modal. */}
               {aiText && !aiLoading && userPermissions && (
                 userPermissions.canSaveDeals ? (
                   <Button
@@ -1303,6 +1339,21 @@ export default function AnalysePage() {
                   >
                     <FileDown className="size-3.5" />
                     {savedThisRun ? "Saved ✓" : savingNow ? "Saving…" : "Save Deal"}
+                  </Button>
+                ) : access && access.floatingCredits > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={savingNow || savedThisRun}
+                    onClick={saveAndConsumeCredit}
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <FileDown className="size-3.5" />
+                    {savedThisRun
+                      ? "Saved ✓"
+                      : savingNow
+                        ? "Saving…"
+                        : `Save Deal · use 1 credit (${access.floatingCredits} left)`}
                   </Button>
                 ) : (
                   <Button
@@ -1320,12 +1371,15 @@ export default function AnalysePage() {
                 )
               )}
 
-              {/* Save as PDF — gated by tier (free = locked, PPA/Pro = unlocked).
-                  Free users see the button greyed out with an upgrade tooltip
-                  rather than the button being hidden, so the upgrade path is
-                  always discoverable. */}
+              {/* Save as PDF — per-analysis gate. access.canExportPDF is
+                  true for Pro/Ent and for PPA users whose credit is
+                  already bound to this analysis (either bind-at-checkout
+                  or via the Save Deal "use 1 credit" flow above). Free
+                  users with an unbound floating credit must save first
+                  to bind the credit, then PDF unlocks on the next
+                  access refresh. */}
               {aiText && !aiLoading && (
-                userPermissions?.canExportPDF || userPermissions?.tier === "pay_per_analysis" ? (
+                access?.canExportPDF ? (
                   <Button
                     variant="outline"
                     size="sm"
