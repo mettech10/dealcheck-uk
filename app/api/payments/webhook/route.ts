@@ -374,6 +374,12 @@ export async function POST(req: Request) {
   }
   const secret = process.env.STRIPE_WEBHOOK_SECRET
   if (!secret) {
+    // Log loudly — silent 503s are the most common cause of "Stripe
+    // webhook fires but nothing happens" reports.
+    console.error(
+      "[Stripe Webhook] STRIPE_WEBHOOK_SECRET not set — every event will 503. " +
+        "Set the secret in Vercel env vars and redeploy.",
+    )
     return NextResponse.json(
       { error: "Webhook secret not configured" },
       { status: 503 },
@@ -395,6 +401,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Webhook signature failed" }, { status: 400 })
   }
 
+  // Highly visible top-of-handler log — fires before any of the
+  // per-event handlers that might throw, so a missing PPA email can
+  // be traced back to "webhook never received this event" vs.
+  // "received but handler crashed".
+  console.log("[Stripe Webhook] Event received:", event.type, event.id)
   console.log("[webhook] processing", event.type, event.id)
 
   try {
