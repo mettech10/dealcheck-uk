@@ -36,16 +36,37 @@ export async function openCheckout(tier: Extract<TierId, "pay_per_analysis" | "p
     }
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      console.error("[Stripe] Checkout session creation failed:", err)
-      alert("Failed to start checkout. Please try again.")
+      const err = (await res.json().catch(() => ({}))) as { error?: string }
+      console.error(
+        "[Stripe] Checkout session creation failed:",
+        res.status,
+        err,
+      )
+      // Surface the actual reason so the user can act / report it. The
+      // backend returns: 503 = Stripe not configured, 502 = Stripe API
+      // error (e.g. invalid price id), 400 = bad tier.
+      const reason = err?.error || `HTTP ${res.status}`
+      if (res.status === 503) {
+        alert(
+          "Payments are not yet configured for this site. Please contact support.",
+        )
+      } else if (res.status === 502) {
+        alert(
+          `Stripe rejected the checkout request: ${reason}\n\nThis usually means a Stripe price id env var is missing or stale. Please contact support.`,
+        )
+      } else {
+        alert(`Failed to start checkout: ${reason}`)
+      }
       return
     }
 
-    const { url } = await res.json()
+    const { url } = (await res.json()) as { url?: string }
     if (url) {
       window.location.href = url
+      return
     }
+    console.error("[Stripe] Checkout session response missing url")
+    alert("Failed to start checkout: server did not return a redirect URL.")
   } catch (err) {
     console.error("[Stripe] Network error during checkout:", err)
     alert("Failed to start checkout. Please check your connection and try again.")
