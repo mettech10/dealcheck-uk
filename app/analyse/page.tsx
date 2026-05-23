@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -304,7 +305,77 @@ type InputMode = "url" | "manual"
 export default function AnalysePage() {
   // Tier-driven gating (PDF export, save-deal flow). Single source: the
   // /api/usage route + lib/permissions.permissionsForTier.
-  const { permissions: userPermissions } = useUserPermissions()
+  const { permissions: userPermissions, authenticated: isAuthenticated } = useUserPermissions()
+
+  // Stripe payment return handling. After Stripe redirects back here
+  // with ?payment=success&session_id=cs_…, we:
+  //   1. If signed out → bounce to /login?returnTo=<this url> so the
+  //      session params survive the round-trip.
+  //   2. If signed in  → call /api/payments/verify-session, show a
+  //      success banner, and strip the query params via router.replace
+  //      so a refresh doesn't re-trigger the verify call.
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [paymentBanner, setPaymentBanner] = useState<
+    | { kind: "success"; recorded: boolean }
+    | { kind: "cancelled" }
+    | { kind: "error"; message: string }
+    | null
+  >(null)
+  const verifyRanRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    const paymentFlag = searchParams.get("payment")
+    const sessionId = searchParams.get("session_id") || ""
+
+    if (paymentFlag === "cancelled") {
+      setPaymentBanner({ kind: "cancelled" })
+      router.replace("/analyse")
+      return
+    }
+
+    if (paymentFlag !== "success" || !sessionId) return
+
+    // Anonymous landing — preserve URL through login.
+    if (!userPermissions) return // still loading /api/usage
+    if (!isAuthenticated) {
+      const target = `/analyse?payment=success&session_id=${encodeURIComponent(sessionId)}`
+      router.replace(`/login?returnTo=${encodeURIComponent(target)}`)
+      return
+    }
+
+    // Only verify once per session id (StrictMode + re-renders).
+    if (verifyRanRef.current === sessionId) return
+    verifyRanRef.current = sessionId
+
+    fetch(`/api/payments/verify-session?session_id=${encodeURIComponent(sessionId)}`)
+      .then(async (r) => {
+        const data = (await r.json().catch(() => ({}))) as {
+          success?: boolean
+          recorded?: boolean
+          error?: string
+        }
+        if (r.ok && data.success) {
+          setPaymentBanner({ kind: "success", recorded: !!data.recorded })
+        } else {
+          setPaymentBanner({
+            kind: "error",
+            message: data.error || `verify failed (${r.status})`,
+          })
+        }
+      })
+      .catch((e) => {
+        setPaymentBanner({
+          kind: "error",
+          message: e instanceof Error ? e.message : "network error",
+        })
+      })
+      .finally(() => {
+        // Strip the query params so a refresh doesn't re-fire.
+        router.replace("/analyse")
+      })
+  }, [searchParams, router, userPermissions, isAuthenticated])
+
   const [inputMode, setInputMode] = useState<InputMode>("url")
   const [formData, setFormData] = useState<PropertyFormData | null>(null)
   const [results, setResults] = useState<CalculationResults | null>(null)
@@ -877,6 +948,66 @@ export default function AnalysePage() {
       </header>
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 py-8">
+        {/* Post-payment banner — set by the Stripe-return useEffect.
+            Dismissible via the close button; auto-cleared on next nav. */}
+        {paymentBanner && (
+          <div
+            className={`mb-6 flex items-start justify-between gap-3 rounded-xl border p-4 text-sm ${
+              paymentBanner.kind === "success"
+                ? "border-emerald-500/40 bg-emerald-500/5 text-emerald-200"
+                : paymentBanner.kind === "cancelled"
+                  ? "border-amber-500/40 bg-amber-500/5 text-amber-200"
+                  : "border-red-500/40 bg-red-500/5 text-red-200"
+            }`}
+            role="status"
+          >
+            <div className="flex-1">
+              {paymentBanner.kind === "success" && (
+                <>
+                  <strong className="font-semibold">✅ Payment confirmed.</strong>{" "}
+                  PDF export and saved deal are now unlocked for this analysis.
+                  {!paymentBanner.recorded && (
+                    <span className="ml-1 text-emerald-300/80">
+                      Credit is processing — refresh in a moment if the lock
+                      icons don&apos;t clear.
+                    </span>
+                  )}
+                </>
+              )}
+              {paymentBanner.kind === "cancelled" && (
+                <>
+                  <strong className="font-semibold">Payment cancelled.</strong>{" "}
+                  No charge was made. You can retry checkout from the analysis
+                  view at any time.
+                </>
+              )}
+              {paymentBanner.kind === "error" && (
+                <>
+                  <strong className="font-semibold">
+                    Couldn&apos;t verify payment.
+                  </strong>{" "}
+                  {paymentBanner.message}. Email{" "}
+                  <a
+                    className="underline"
+                    href="mailto:contact@metalyzi.co.uk"
+                  >
+                    contact@metalyzi.co.uk
+                  </a>{" "}
+                  with this page open and we&apos;ll sort it.
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPaymentBanner(null)}
+              className="rounded-md p-1 text-current opacity-70 transition-opacity hover:opacity-100"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
