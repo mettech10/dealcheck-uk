@@ -10,6 +10,8 @@ import { AnalysisResults } from "@/components/analyse/analysis-results"
 import { RecentDeals } from "@/components/analyse/recent-deals"
 import { PropertyListingCard } from "@/components/analyse/property-listing-card"
 import { UpgradeModal, type UpgradeReason } from "@/components/UpgradeModal"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useUserPermissions } from "@/lib/useUserPermissions"
 import type { ScrapedListing } from "@/components/analyse/property-listing-card"
 import { calculateAll, calculateDealScore } from "@/lib/calculations"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
@@ -300,6 +302,9 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
 type InputMode = "url" | "manual"
 
 export default function AnalysePage() {
+  // Tier-driven gating (PDF export, save-deal flow). Single source: the
+  // /api/usage route + lib/permissions.permissionsForTier.
+  const { permissions: userPermissions } = useUserPermissions()
   const [inputMode, setInputMode] = useState<InputMode>("url")
   const [formData, setFormData] = useState<PropertyFormData | null>(null)
   const [results, setResults] = useState<CalculationResults | null>(null)
@@ -1123,17 +1128,46 @@ export default function AnalysePage() {
                 New Analysis
               </Button>
 
-              {/* Save as PDF — available once analysis text is ready */}
+              {/* Save as PDF — gated by tier (free = locked, PPA/Pro = unlocked).
+                  Free users see the button greyed out with an upgrade tooltip
+                  rather than the button being hidden, so the upgrade path is
+                  always discoverable. */}
               {aiText && !aiLoading && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSavePDF}
-                  className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
-                >
-                  <FileDown className="size-3.5" />
-                  Save as PDF
-                </Button>
+                userPermissions?.canExportPDF || userPermissions?.tier === "pay_per_analysis" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSavePDF}
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <FileDown className="size-3.5" />
+                    Save as PDF
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          aria-disabled
+                          onClick={() => {
+                            setUpgradeReason("free_limit_reached")
+                            setShowUpgrade(true)
+                          }}
+                          className="gap-1.5 border-border/40 text-muted-foreground"
+                        >
+                          <FileDown className="size-3.5" />
+                          Save as PDF
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Upgrade to Pro or buy this analysis to export PDF
+                    </TooltipContent>
+                  </Tooltip>
+                )
               )}
 
               {formData?.address && (

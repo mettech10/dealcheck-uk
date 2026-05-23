@@ -14,9 +14,10 @@
  *      weighted overall recommendation
  *   6. Pro: PDF export
  *
- * Tier rules (Section 7):
- *   - Free: 2-deal cap. Third slot is "+ Add Third Deal · Pro feature"
- *   - Pro:  3 deals + PDF export
+ * Tier rules (2026-05):
+ *   - Free:              2-deal cap, no PDF
+ *   - Pay Per Analysis:  3-deal cap, no PDF
+ *   - Pro / Enterprise:  3-deal cap + PDF export
  *
  * The scoring engine (lib/dealScoring.ts) re-runs client-side from
  * each deal's stored form_data / results / backend_data so verdicts
@@ -40,6 +41,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { formatCurrency } from "@/lib/calculations"
 import { scoreDeal, type ScoreResult } from "@/lib/dealScoring"
 import { buildScoringInput } from "@/lib/buildScoringInput"
+import { permissionsForTier } from "@/lib/permissions"
+import type { TierId } from "@/lib/tiers"
 import type {
   PropertyFormData,
   CalculationResults,
@@ -70,7 +73,10 @@ interface SavedDealFull {
 export default function ComparePage() {
   const [authChecked, setAuthChecked] = useState(false)
   const [isLoggedIn, setLoggedIn] = useState(false)
-  const [isPro, setIsPro] = useState(false)
+  // Tier-driven gating — single source of truth via permissionsForTier
+  const [tier, setTier] = useState<TierId>("free")
+  const perms = permissionsForTier(tier)
+  const isPro = perms.compareDealsCanExportPDF
   const [saved, setSaved] = useState<SavedDealSummary[]>([])
   const [selected, setSelected] = useState<(string | null)[]>([null, null, null])
   const [loadedDeals, setLoadedDeals] = useState<SavedDealFull[]>([])
@@ -97,7 +103,7 @@ export default function ComparePage() {
           const tierRes = await fetch("/api/usage")
           if (tierRes.ok) {
             const tj = await tierRes.json()
-            setIsPro(tj.tier === "pro" || tj.tier === "enterprise")
+            if (tj.tier) setTier(tj.tier as TierId)
           }
         } catch { /* ignore */ }
       } catch (e) {
@@ -108,7 +114,7 @@ export default function ComparePage() {
     })()
   }, [])
 
-  const maxSlots = isPro ? 3 : 2
+  const maxSlots = perms.compareDealsLimit
 
   const runCompare = async () => {
     const ids = selected.filter((s, i) => s && i < maxSlots) as string[]
@@ -210,12 +216,12 @@ export default function ComparePage() {
           <CardTitle className="text-base">
             Select up to {maxSlots} deals to compare
           </CardTitle>
-          {!isPro && (
+          {maxSlots < 3 && (
             <CardDescription className="text-xs">
               <Link href="/account" className="text-primary hover:underline">
-                Upgrade to Pro
+                Upgrade to Pay Per Analysis or Pro
               </Link>{" "}
-              to compare 3 deals and export PDF reports.
+              to compare 3 deals{!isPro ? " and export PDF reports" : ""}.
             </CardDescription>
           )}
         </CardHeader>
@@ -223,7 +229,7 @@ export default function ComparePage() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             {[0, 1, 2].map((i) => {
               const isThird = i === 2
-              const locked = isThird && !isPro
+              const locked = isThird && maxSlots < 3
               return (
                 <div key={i}>
                   <label className="text-xs font-semibold text-muted-foreground">
