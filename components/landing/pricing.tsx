@@ -1,11 +1,17 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Check, Lock } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Lock } from "lucide-react"
 import { openStripeCheckout } from "@/lib/stripe"
 import { TIERS } from "@/lib/tiers"
+
+/** Number of feature rows shown before the "Show more" toggle kicks in.
+ *  Picked to fit comfortably on one screen at typical laptop sizes
+ *  without dwarfing the CTA. */
+const COLLAPSED_FEATURES = 5
 
 /**
  * Pricing — 4 tiers. Free / Pay Per Analysis / Pro / Enterprise.
@@ -82,20 +88,7 @@ function PricingCard({ tier }: { tier: (typeof TIERS)[number] }) {
         )}
       </div>
 
-      <ul className="mb-8 flex flex-1 flex-col gap-3">
-        {tier.features.map((feature) => (
-          <li key={feature.text} className="flex items-start gap-2.5 text-sm">
-            {feature.locked ? (
-              <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" />
-            ) : (
-              <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-            )}
-            <span className={feature.locked ? "text-muted-foreground/60" : "text-muted-foreground"}>
-              {feature.text}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <FeatureList features={tier.features} />
 
       <PricingCta tier={tier} />
 
@@ -103,6 +96,70 @@ function PricingCard({ tier }: { tier: (typeof TIERS)[number] }) {
         <p className="mt-3 text-center text-[11px] text-muted-foreground/70">
           {tier.footnote}
         </p>
+      )}
+    </div>
+  )
+}
+
+/** Collapsible feature list — shows the first COLLAPSED_FEATURES rows
+ *  and reveals the rest behind a toggle. Cards with few features
+ *  render the full list with no toggle (Pro, Enterprise, PPA are all
+ *  well below the cap after the 2026-05 copy trim — only Free needs
+ *  the toggle today, but the behaviour is per-card so any tier that
+ *  grows past the cap stays compact automatically). */
+function FeatureList({
+  features,
+}: {
+  features: (typeof TIERS)[number]["features"]
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const overflowing = features.length > COLLAPSED_FEATURES
+  const visible = expanded || !overflowing
+    ? features
+    : features.slice(0, COLLAPSED_FEATURES)
+  const hiddenCount = features.length - COLLAPSED_FEATURES
+
+  return (
+    <div className="mb-8 flex flex-1 flex-col">
+      <ul className="flex flex-col gap-3">
+        {visible.map((feature) => (
+          <li key={feature.text} className="flex items-start gap-2.5 text-sm">
+            {feature.locked ? (
+              <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" />
+            ) : (
+              <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+            )}
+            <span
+              className={
+                feature.locked
+                  ? "text-muted-foreground/60"
+                  : "text-muted-foreground"
+              }
+            >
+              {feature.text}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {overflowing && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-3 inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline"
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <>
+              Show less
+              <ChevronUp className="size-3.5" />
+            </>
+          ) : (
+            <>
+              Show {hiddenCount} more
+              <ChevronDown className="size-3.5" />
+            </>
+          )}
+        </button>
       )}
     </div>
   )
