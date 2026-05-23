@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
@@ -303,7 +303,28 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
 
 type InputMode = "url" | "manual"
 
-export default function AnalysePage() {
+/**
+ * Default export wraps the actual page in <Suspense> because
+ * useSearchParams() forces client-side bailout during prerender
+ * (Next 16 build error: "useSearchParams() should be wrapped in a
+ * suspense boundary"). The fallback is the existing app-shell
+ * spinner — keeps the layout from jumping.
+ */
+export default function AnalysePageWrapper() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Loader2 className="size-6 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <AnalysePage />
+    </Suspense>
+  )
+}
+
+function AnalysePage() {
   // Tier-driven gating (PDF export, save-deal flow). Single source: the
   // /api/usage route + lib/permissions.permissionsForTier.
   const { permissions: userPermissions, authenticated: isAuthenticated } = useUserPermissions()
