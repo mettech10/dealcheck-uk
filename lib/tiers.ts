@@ -9,11 +9,13 @@
  *  - app/api/payments/checkout/route.ts (maps tier id → Stripe price + mode)
  *  - lib/paymentEmails.ts               (tier-specific email templates)
  *
- * The four tiers:
- *  - free               → 3 analyses / month, BTL + HMO only, no PDF, no AI area
- *  - pay_per_analysis   → £2.99 each (one-time), unlocks full feature set for 1 deal
- *  - pro                → £19.99 / month recurring, unlimited + all strategies
- *  - enterprise         → bespoke pricing (mailto: CTA)
+ * The four tiers (2026-05 rules — Free upgraded to full feature visibility):
+ *  - free               → 3 analyses / month, ALL 6 strategies, full results
+ *                         page, NO PDF export, NO saved deals
+ *  - pay_per_analysis   → £2.99 each (one-time), PDF + save for that deal
+ *  - pro                → £19.99 / month recurring, unlimited everything
+ *  - enterprise         → bespoke pricing (mailto: CTA); same frontend
+ *                         gating as Pro
  *
  * Free-tier monthly limit and reset behaviour are enforced by the
  * get_user_tier Supabase RPC + lib/usageGate.ts. The "limit reset 1st
@@ -62,39 +64,50 @@ export interface Tier {
   }
 }
 
-/** Free tier — every signed-up user starts here. */
+/** Free tier — every signed-up user starts here.
+ *
+ * 2026-05 policy: Free gets the full feature set visible on results;
+ * only PDF export and saved-deal persistence stay paid. The 3/month
+ * cap on analyses is unchanged. All 6 strategies are unlocked so
+ * Free can try BRRRR / Flip / SA / Development before paying.
+ */
 const FREE: Tier = {
   id: "free",
   name: "Free",
-  description: "Try the analyser with basic financials",
+  description: "Full analyser, 3 deals a month",
   price: "0",
   period: "forever",
   cta: "Get Started Free",
   href: "/analyse",
   freeAnalysesPerMonth: 3,
-  strategies: ["btl", "hmo"],
+  strategies: ["btl", "hmo", "brr", "flip", "r2sa", "development"],
   unlocks: {
-    aiAreaAnalysis: false,
+    aiAreaAnalysis: true,
     pdfExport: false,
-    marketComparables: false,
-    spareroomListings: false,
-    airroiSaData: false,
-    sensitivityAnalysis: false,
-    fiveYearProjection: false,
-    regionalBenchmarks: false,
+    marketComparables: true,
+    spareroomListings: true,
+    airroiSaData: true,
+    sensitivityAnalysis: true,
+    fiveYearProjection: true,
+    regionalBenchmarks: true,
   },
   features: [
     { text: "3 deal analyses per month" },
-    { text: "BTL and HMO strategies only" },
-    { text: "SDLT calculator (unlimited)" },
+    { text: "All 6 strategies (BTL, HMO, BRRRR, Flip, SA, Development)" },
+    { text: "AI area analysis" },
+    { text: "Market comparables with photos" },
+    { text: "SpareRoom room listings (HMO)" },
+    { text: "Airroi SA market data" },
+    { text: "Article 4 check" },
+    { text: "Sensitivity analysis" },
+    { text: "5-year projections" },
+    { text: "Live regional benchmarks" },
+    { text: "Deal score" },
+    { text: "SDLT calculator (unlimited, no login)" },
     { text: "Portfolio tracker: 3 properties" },
     { text: "Deal comparison: 2 deals" },
-    { text: "Gross & net yield" },
-    { text: "Monthly cashflow" },
-    { text: "Deal score" },
-    { text: "AI area analysis", locked: true },
     { text: "PDF report export", locked: true },
-    { text: "Market comparables", locked: true },
+    { text: "Saved deals history", locked: true },
   ],
   footnote: "Resets on the 1st of each month",
 }
@@ -119,19 +132,12 @@ const PAY_PER_ANALYSIS: Tier = {
     regionalBenchmarks: true,
   },
   features: [
-    { text: "All 6 investment strategies" },
-    { text: "Full AI-powered insights" },
-    { text: "Market comparables with photos" },
-    { text: "SpareRoom room listings (HMO)" },
-    { text: "Airroi SA market data" },
-    { text: "Article 4 check" },
-    { text: "PDF report export" },
-    { text: "AI area analysis" },
-    { text: "Sensitivity analysis" },
-    { text: "5-year projections" },
-    { text: "Live regional benchmarks" },
+    { text: "Everything in Free" },
+    { text: "PDF report export for this analysis" },
+    { text: "Save this deal (1 deal per purchase)" },
+    { text: "Deal comparison: up to 3 deals" },
   ],
-  footnote: "One-off · unlocks the full feature set for a single deal",
+  footnote: "One-off · unlocks PDF + save for a single deal",
 }
 
 const PRO: Tier = {
@@ -156,11 +162,11 @@ const PRO: Tier = {
   features: [
     { text: "Everything in Pay Per Analysis" },
     { text: "Unlimited deal analyses" },
-    { text: "Saved deals history (unlimited)" },
+    { text: "PDF export on every analysis" },
+    { text: "Saved deals (unlimited)" },
     { text: "Portfolio tracker: unlimited properties" },
-    { text: "Deal comparison: 3 deals + PDF export" },
     { text: "Portfolio summary PDF export" },
-    { text: "BRRRR, Flip, SA, Development" },
+    { text: "Deal comparison: 3 deals + PDF export" },
     { text: "Priority support" },
     { text: "Early access to new features" },
   ],
