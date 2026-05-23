@@ -1472,24 +1472,25 @@ function AnalysePage() {
                     Save as PDF
                   </Button>
                 ) : (
+                  // NOT disabled — a disabled <button> doesn't dispatch
+                  // onClick, which previously made the locked PDF
+                  // button look dead. We style it as locked-looking
+                  // but keep it clickable so it opens the upgrade
+                  // modal, mirroring the Save Deal locked path.
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span tabIndex={0}>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled
-                          aria-disabled
-                          onClick={() => {
-                            setUpgradeReason("pdf_locked")
-                            setShowUpgrade(true)
-                          }}
-                          className="gap-1.5 border-border/40 text-muted-foreground"
-                        >
-                          <FileDown className="size-3.5" />
-                          Save as PDF
-                        </Button>
-                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setUpgradeReason("pdf_locked")
+                          setShowUpgrade(true)
+                        }}
+                        className="gap-1.5 border-border/40 text-muted-foreground hover:text-foreground"
+                      >
+                        <FileDown className="size-3.5" />
+                        Save as PDF
+                      </Button>
                     </TooltipTrigger>
                     <TooltipContent>
                       Upgrade to Pro or buy this analysis to export PDF
