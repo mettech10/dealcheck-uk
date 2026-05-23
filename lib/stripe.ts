@@ -23,15 +23,25 @@ import type { TierId } from "@/lib/tiers"
 
 export async function openCheckout(tier: Extract<TierId, "pay_per_analysis" | "pro">) {
   try {
+    // Capture the page the user came from so the success_url can carry
+    // it back. If Supabase ever bounces the user through /login on the
+    // return trip (session expiry, etc.) the login page reads
+    // returnTo and we still end up on the right page.
+    const returnTo =
+      typeof window !== "undefined"
+        ? `${window.location.pathname}${window.location.search}`
+        : ""
+
     const res = await fetch("/api/payments/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tier }),
+      body: JSON.stringify({ tier, returnTo }),
     })
 
     if (res.status === 401) {
-      // Anonymous → bounce to login with a return-to redirect.
-      window.location.href = `/login?redirect=${encodeURIComponent("/pricing")}`
+      // Anonymous → bounce to login, preserve where they were.
+      const target = returnTo || "/pricing"
+      window.location.href = `/login?returnTo=${encodeURIComponent(target)}`
       return
     }
 

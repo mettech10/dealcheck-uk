@@ -5,11 +5,25 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/brevo-email"
 
+/**
+ * Whitelist a returnTo path to relative URLs only — never let a caller
+ * push us to an external host (open-redirect protection). Anything that
+ * doesn't start with a single "/" (and isn't "//something") falls back
+ * to the default landing page.
+ */
+function safeReturnTo(raw: string | null | undefined, fallback = "/analyse"): string {
+  if (!raw) return fallback
+  if (!raw.startsWith("/")) return fallback
+  if (raw.startsWith("//")) return fallback // protocol-relative external
+  return raw
+}
+
 export async function signInWithEmail(formData: FormData) {
   const supabase = await createClient()
 
   const email = formData.get("email") as string
   const password = formData.get("password") as string
+  const returnTo = safeReturnTo(formData.get("returnTo") as string | null)
 
   const { error } = await supabase.auth.signInWithPassword({
     email,
@@ -20,7 +34,7 @@ export async function signInWithEmail(formData: FormData) {
     return { error: error.message }
   }
 
-  redirect("/analyse")
+  redirect(returnTo)
 }
 
 export async function signUpWithEmail(formData: FormData) {
@@ -72,7 +86,7 @@ export async function signUpWithEmail(formData: FormData) {
   return { success: "Check your email to confirm your account." }
 }
 
-export async function signInWithGoogle() {
+export async function signInWithGoogle(returnTo?: string) {
   const supabase = await createClient()
 
   const { headers } = await import("next/headers")
@@ -81,10 +95,18 @@ export async function signInWithGoogle() {
   const protocol = headersList.get("x-forwarded-proto") || "https"
   const origin = `${protocol}://${host}`
 
+  const safe = safeReturnTo(returnTo)
+  // /auth/callback already reads `next` (defaults to /analyse). Only
+  // tack it on if the user actually came from somewhere non-default,
+  // otherwise leave the URL clean.
+  const callbackUrl = safe && safe !== "/analyse"
+    ? `${origin}/auth/callback?next=${encodeURIComponent(safe)}`
+    : `${origin}/auth/callback`
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin}/auth/callback`,
+      redirectTo: callbackUrl,
       queryParams: {
         access_type: "offline",
         prompt: "consent",

@@ -42,6 +42,10 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const authError = searchParams.get("error")
+  // Where to land after successful auth. Set by anything that bounces
+  // the user here mid-flow (Stripe return, gated tool pages, etc.).
+  // Whitelisted to relative paths in safeReturnTo() before redirect.
+  const returnTo = searchParams.get("returnTo") || searchParams.get("redirect") || ""
 
   const [mode, setMode] = useState<"login" | "signup">("login")
   const [showPassword, setShowPassword] = useState(false)
@@ -81,6 +85,11 @@ function LoginForm() {
       if (!valid) return
     }
 
+    // Carry returnTo through the server action so the redirect after
+    // sign-in lands the user back where they started (Stripe return,
+    // gated tool, etc.) rather than the hardcoded /analyse default.
+    if (returnTo) formData.set("returnTo", returnTo)
+
     startTransition(async () => {
       if (mode === "login") {
         const result = await signInWithEmail(formData)
@@ -103,7 +112,7 @@ function LoginForm() {
   const handleGoogleLogin = () => {
     setError(null)
     startTransition(async () => {
-      const result = await signInWithGoogle()
+      const result = await signInWithGoogle(returnTo)
       if (result?.error) {
         setError(result.error)
       }

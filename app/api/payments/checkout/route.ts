@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   const userEmail = user.email ?? undefined
 
   // ── Validate tier ───────────────────────────────────────────────────
-  let body: { tier?: string } = {}
+  let body: { tier?: string; returnTo?: string } = {}
   try {
     body = await req.json()
   } catch {
@@ -70,6 +70,13 @@ export async function POST(req: Request) {
     )
   }
   const tier = TIERS_BY_ID[tierId]
+
+  // Whitelisted return path — only relative paths (open-redirect guard).
+  // Echoed into success_url so the post-payment page knows where to
+  // send the user if /analyse needs to redirect them onward.
+  const rawReturn = (body.returnTo || "").trim()
+  const safeReturn =
+    rawReturn.startsWith("/") && !rawReturn.startsWith("//") ? rawReturn : ""
 
   // ── Find or create Stripe customer ──────────────────────────────────
   // For Pro we want the same Stripe customer across renewals so invoices
@@ -158,8 +165,12 @@ export async function POST(req: Request) {
       success_url:
         tierId === "pro"
           ? `${SITE_URL}/account?upgraded=pro&session_id={CHECKOUT_SESSION_ID}`
-          : `${SITE_URL}/analyse?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${SITE_URL}/pricing?cancelled=true`,
+          : safeReturn
+            ? `${SITE_URL}/analyse?payment=success&session_id={CHECKOUT_SESSION_ID}&returnTo=${encodeURIComponent(safeReturn)}`
+            : `${SITE_URL}/analyse?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: safeReturn
+        ? `${SITE_URL}${safeReturn}${safeReturn.includes("?") ? "&" : "?"}payment=cancelled`
+        : `${SITE_URL}/pricing?cancelled=true`,
       allow_promotion_codes: true,
     })
 
