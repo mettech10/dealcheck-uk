@@ -656,8 +656,51 @@ export default function AnalysePage() {
   const aiTextRef = useRef("")
   useEffect(() => { aiTextRef.current = aiText }, [aiText])
 
-  // Auto-save to Supabase after AI analysis finishes (aiLoading → false with content)
+  // Saved-deal tracking — explicit (no longer auto-save for everyone).
+  // Free tier does NOT persist analyses (per 2026-05 tier rules); the
+  // user sees a Save Deal button that opens the upgrade modal. PPA and
+  // Pro tiers still auto-save so they don't have to think about it.
   const [recentDealsVersion, setRecentDealsVersion] = useState(0)
+  const [savedThisRun, setSavedThisRun] = useState(false)
+  const [savingNow, setSavingNow] = useState(false)
+
+  const persistAnalysis = useCallback(async () => {
+    if (!aiText || !formData) return false
+    const scoreMatch = aiText.match(/SCORE:\s*(\d+)/i) || aiText.match(/⭐ SCORE:\s*(\d+)/i)
+    const dealScore = scoreMatch ? parseInt(scoreMatch[1]) : null
+    setSavingNow(true)
+    try {
+      const r = await fetch("/api/analyses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          address: formData.address || "Unknown",
+          postcode: formData.postcode || null,
+          investment_type: formData.investmentType || "btl",
+          purchase_price: formData.purchasePrice || 0,
+          deal_score: dealScore,
+          monthly_cashflow: results?.monthlyCashFlow ?? null,
+          annual_cashflow: results?.annualCashFlow ?? null,
+          gross_yield: results?.grossYield ?? null,
+          form_data: formData,
+          results: results,
+          ai_text: aiText,
+          backend_data: backendData || null,
+        }),
+      })
+      if (r.ok) {
+        setSavedThisRun(true)
+        setRecentDealsVersion((v) => v + 1)
+        return true
+      }
+    } catch {
+      /* swallow — saving is best-effort */
+    } finally {
+      setSavingNow(false)
+    }
+    return false
+  }, [aiText, formData, results, backendData])
+
   useEffect(() => {
     // Only fire when AI loading just completed and we have data
     if (aiLoading || !aiText || !formData) return
@@ -666,10 +709,7 @@ export default function AnalysePage() {
     const key = `${formData.address}|${formData.purchasePrice}|${aiText.length}`
     if (savedKeyRef.current === key) return
     savedKeyRef.current = key
-
-    // Extract score from AI text
-    const scoreMatch = aiText.match(/SCORE:\s*(\d+)/i) || aiText.match(/⭐ SCORE:\s*(\d+)/i)
-    const dealScore = scoreMatch ? parseInt(scoreMatch[1]) : null
+    setSavedThisRun(false)
 
     // Always increment the global deal counter (no auth required)
     fetch("/api/stats/increment", {
@@ -678,27 +718,16 @@ export default function AnalysePage() {
       body: JSON.stringify({ ts: Date.now() }),
     }).catch(() => {})
 
+    // Auto-save only when the user's tier permits saved deals. Free
+    // users must click the Save Deal button explicitly (which opens
+    // the upgrade modal); their analysis runs but is not persisted.
+    if (!userPermissions?.canSaveDeals) return
+
     // Save full analysis to user's account (requires auth — fails silently if not logged in)
-    fetch("/api/analyses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        address: formData.address || "Unknown",
-        postcode: formData.postcode || null,
-        investment_type: formData.investmentType || "btl",
-        purchase_price: formData.purchasePrice || 0,
-        deal_score: dealScore,
-        monthly_cashflow: results?.monthlyCashFlow ?? null,
-        annual_cashflow: results?.annualCashFlow ?? null,
-        gross_yield: results?.grossYield ?? null,
-        form_data: formData,
-        results: results,
-        ai_text: aiText,
-        backend_data: backendData || null,
-      }),
-    })
-      .then((r) => {
-        if (r.ok) setRecentDealsVersion((v) => v + 1)
+    persistAnalysis()
+      .then((ok) => {
+        // Compatibility no-op — persistAnalysis already toggled state.
+        void ok
       })
       .catch(() => {
         // Not logged in or DB error — silently skip, saving is best-effort
@@ -1128,6 +1157,38 @@ export default function AnalysePage() {
                 New Analysis
               </Button>
 
+              {/* Save Deal — visible to everyone, gated for Free. The
+                  PPA/Pro auto-save runs on success too; this button
+                  is the explicit affordance + the upgrade entrypoint
+                  for Free users. */}
+              {aiText && !aiLoading && userPermissions && (
+                userPermissions.canSaveDeals ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={savingNow || savedThisRun}
+                    onClick={persistAnalysis}
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <FileDown className="size-3.5" />
+                    {savedThisRun ? "Saved ✓" : savingNow ? "Saving…" : "Save Deal"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setUpgradeReason("save_deal_locked")
+                      setShowUpgrade(true)
+                    }}
+                    className="gap-1.5 border-border/40 text-muted-foreground"
+                  >
+                    <FileDown className="size-3.5" />
+                    Save Deal
+                  </Button>
+                )
+              )}
+
               {/* Save as PDF — gated by tier (free = locked, PPA/Pro = unlocked).
                   Free users see the button greyed out with an upgrade tooltip
                   rather than the button being hidden, so the upgrade path is
@@ -1153,7 +1214,7 @@ export default function AnalysePage() {
                           disabled
                           aria-disabled
                           onClick={() => {
-                            setUpgradeReason("free_limit_reached")
+                            setUpgradeReason("pdf_locked")
                             setShowUpgrade(true)
                           }}
                           className="gap-1.5 border-border/40 text-muted-foreground"

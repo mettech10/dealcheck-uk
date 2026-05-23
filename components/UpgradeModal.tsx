@@ -21,7 +21,12 @@ import { FREE_MONTHLY_CAP } from "@/lib/tiers"
  * navigation needed); the cancel button just closes the modal.
  */
 
-export type UpgradeReason = "free_limit_reached" | "no_credits" | "not_logged_in"
+export type UpgradeReason =
+  | "free_limit_reached"
+  | "no_credits"
+  | "not_logged_in"
+  | "save_deal_locked"
+  | "pdf_locked"
 
 interface UpgradeModalProps {
   open: boolean
@@ -80,9 +85,21 @@ export function UpgradeModal({
   }
 
   const isFreeExhausted = reason === "free_limit_reached"
-  const title = isFreeExhausted ? "Free analyses used" : "No credits remaining"
+  const isSaveLocked = reason === "save_deal_locked"
+  const isPdfLocked = reason === "pdf_locked"
+  const title = isFreeExhausted
+    ? "Free analyses used"
+    : isSaveLocked
+    ? "Save this deal"
+    : isPdfLocked
+    ? "Export PDF report"
+    : "No credits remaining"
   const message = isFreeExhausted
     ? `You've used all ${FREE_MONTHLY_CAP} of your free analyses this month (${freeUsed}/${FREE_MONTHLY_CAP}). Upgrade to continue analysing deals.`
+    : isSaveLocked
+    ? "Saving deals to your history is available on Pay Per Analysis (£2.99) or Pro (£19.99/month). The analysis itself stays free — only the saved-deal storage is paid."
+    : isPdfLocked
+    ? "PDF report export is available on Pay Per Analysis (£2.99 for this deal) or Pro (£19.99/month, every deal)."
     : `You're out of Pay Per Analysis credits. Buy another one, or switch to Pro for unlimited analyses.`
 
   const onBuy = async (tier: "pay_per_analysis" | "pro") => {
