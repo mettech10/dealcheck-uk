@@ -121,6 +121,24 @@ export async function recordAnalysisUsed(
     if (tier === "pay_per_analysis") {
       const { error } = await admin.rpc("decrement_paid_credits", { p_user_id: userId })
       if (error) console.warn("[usageGate] decrement_paid_credits failed:", error)
+      // Audit trail: surface this consumption on the user's Credit
+      // History card (/account) and the admin Credits view.
+      // event_type='analysis_used' + credit_delta=-1 is what the
+      // Credit History row renderer keys off. Best-effort — log
+      // failures don't propagate.
+      try {
+        await admin.from("payment_history").insert({
+          user_id: userId,
+          amount_gbp: 0,
+          tier: "pay_per_analysis",
+          status: "succeeded",
+          description: "Analysis credit consumed",
+          event_type: "analysis_used",
+          credit_delta: -1,
+        })
+      } catch (e) {
+        console.warn("[usageGate] payment_history audit row failed:", e)
+      }
       return
     }
     // Pro / Enterprise — no quota, but still bump the totals counter

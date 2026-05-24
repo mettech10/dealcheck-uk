@@ -14,6 +14,7 @@ import { UpgradeModal, type UpgradeReason } from "@/components/UpgradeModal"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useUserPermissions } from "@/lib/useUserPermissions"
 import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
+import { useCreditGate } from "@/lib/useCreditGate"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
@@ -632,6 +633,21 @@ function AnalysePage() {
   // Manual form submission -- runs local calculations then sends to backend
   const handleManualSubmit = useCallback(
     async (data: PropertyFormData) => {
+      // Pre-submit credit gate. Server enforces too (402), but
+      // short-circuiting here saves a round-trip + spins the
+      // upgrade modal straight away.
+      if (gate && !gate.canAnalyse) {
+        if (!gate.authenticated) {
+          setUpgradeReason("not_logged_in")
+        } else if (gate.tier === "free") {
+          setUpgradeReason("free_limit_reached")
+        } else {
+          setUpgradeReason("no_credits")
+        }
+        setShowUpgrade(true)
+        return
+      }
+
       setError(null)
       setIsLoading(true)
 
@@ -654,9 +670,12 @@ function AnalysePage() {
         )
       } finally {
         setIsLoading(false)
+        // Refresh credit gate so balance/banner reflect the
+        // server-side deduction.
+        refreshGate()
       }
     },
-    [callAnalysisAPI]
+    [callAnalysisAPI, gate, refreshGate]
   )
 
   // URL-based submission -- scrapes data then transitions to manual form with pre-filled fields
@@ -807,6 +826,11 @@ function AnalysePage() {
   // (bound PPA credit, floating credit, or Pro).
   const [savedAnalysisId, setSavedAnalysisId] = useState<string | null>(null)
   const { access, refresh: refreshAccess } = useAnalysisAccess(savedAnalysisId)
+  // Pre-submit credit gate — mirrors the server-side checkCanAnalyse
+  // so we don't let the user fire a doomed request. Refresh after
+  // every successful analysis so the "1 left" banner downgrades to
+  // "blocked" immediately. See lib/useCreditGate.ts.
+  const { gate, refresh: refreshGate } = useCreditGate()
 
   const persistAnalysis = useCallback(async () => {
     if (!aiText || !formData) return false
@@ -1158,6 +1182,46 @@ function AnalysePage() {
           <div className="mb-8">
             <RecentDeals key={recentDealsVersion} onLoad={handleLoadSavedDeal} />
           </div>
+        )}
+
+        {/* Credit gate banner — only shown when the form is visible
+            (i.e. user hasn't run an analysis yet this session) AND
+            the gate has resolved. Three states:
+              blocked         → amber-border block + Buy/Pro CTAs
+              one credit left → amber warning banner
+              unlimited / >1  → render nothing
+            Pre-submit short-circuit lives in handleManualSubmit. */}
+        {!hasResults && gate && (
+          gate.authenticated && !gate.canAnalyse ? (
+            <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+              <p className="font-medium">
+                {gate.tier === "free"
+                  ? `You've used your ${gate.freeLimit} free analyses this month.`
+                  : "You're out of analysis credits."}{" "}
+                Buy a credit (£2.99) or go Pro to continue.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+                >
+                  Buy 1 Analysis — £2.99
+                </Link>
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/40 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-foreground/5"
+                >
+                  Go Pro — £19.99/month
+                </Link>
+              </div>
+            </div>
+          ) : gate.authenticated &&
+            !gate.isUnlimited &&
+            gate.creditBalance === 1 ? (
+            <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-200">
+              You have <strong>1</strong> analysis credit remaining.
+            </div>
+          ) : null
         )}
 
         {/* Input Mode Selector -- hidden once we have results */}
