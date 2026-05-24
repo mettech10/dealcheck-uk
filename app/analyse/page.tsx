@@ -14,13 +14,11 @@ import { UpgradeModal, type UpgradeReason } from "@/components/UpgradeModal"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useUserPermissions } from "@/lib/useUserPermissions"
 import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
-// useCreditGate import removed — was introducing a production-only
-// TDZ ("Cannot access 'eb' before initialization") on /analyse.
-// The server-side checkCanAnalyse in /api/analyse still enforces
-// the gate (returns 402 → opens upgrade modal), so user-visible
-// behaviour is unchanged. Will re-attempt the inline form gate
-// in a follow-up using a different code path (probably an
-// async-loaded island component) once the TDZ is root-caused.
+// useCreditGate hook is NOT imported here — pulling the gate logic
+// into a third React hook on this component reliably triggers a
+// production TDZ (see b43cd13 revert). The inline gate banner is
+// re-introduced as a self-contained client island below.
+import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
@@ -1169,9 +1167,13 @@ function AnalysePage() {
           </div>
         )}
 
-        {/* Credit-gate banner removed in revert of Stage F (TDZ on
-            production /analyse). Server-side 402 from /api/analyse
-            still triggers the upgrade modal when out of credits. */}
+        {/* Credit-gate banner — isolated client island that fetches
+            /api/user/credits on its own. Renders nothing in the
+            happy path; shows amber block + Buy/Pro CTAs when the
+            user is out of credits, or a small "1 left" hint at the
+            edge. Server-side 402 is still the security gate; this
+            is a UX pre-warning. */}
+        {!hasResults && <CreditGateBanner />}
 
         {/* Input Mode Selector -- hidden once we have results */}
         {!hasResults && (
