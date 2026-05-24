@@ -7,15 +7,17 @@ const nextConfig = {
     unoptimized: true,
   },
   async rewrites() {
+    return []
+  },
+  // Old static admin HTML used to live at /admin/admin_dashboard.html
+  // and /admin/admin_login.html, exposed via rewrites at /admin/dashboard
+  // and /admin/login. The new Next.js dashboard at /admin replaces
+  // both. These redirects make sure existing bookmarks land on the
+  // new app instead of 404-ing or hitting a stale static file.
+  async redirects() {
     return [
-      {
-        source: '/admin/login',
-        destination: '/admin/admin_login.html',
-      },
-      {
-        source: '/admin/dashboard',
-        destination: '/admin/admin_dashboard.html',
-      },
+      { source: '/admin/dashboard', destination: '/admin', permanent: true },
+      { source: '/admin/login', destination: '/login?returnTo=/admin', permanent: true },
     ]
   },
   // Security headers
