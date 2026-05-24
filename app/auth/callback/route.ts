@@ -17,13 +17,6 @@ import type { EmailOtpType } from "@supabase/supabase-js"
  */
 function createClientForResponse(request: NextRequest, response: NextResponse) {
   const isProd = process.env.NODE_ENV === "production"
-  const baseOptions: CookieOptions = {
-    path: "/",
-    secure: isProd,
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7,
-  }
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -34,7 +27,21 @@ function createClientForResponse(request: NextRequest, response: NextResponse) {
         },
         setAll(cookiesToSet) {
           for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, { ...baseOptions, ...options })
+            // Keep Supabase's lifecycle bits (maxAge / expires /
+            // domain) but FORCE our security defaults to win. With
+            // the previous spread order, Supabase's defaults (which
+            // include sameSite='lax' or sometimes undefined) could
+            // override us — we want sameSite always 'lax', httpOnly
+            // always true, secure always true in prod, and path
+            // pinned to '/' so the cookie is sent on every route.
+            const finalOptions: CookieOptions = {
+              ...options,
+              path: "/",
+              httpOnly: true,
+              secure: isProd,
+              sameSite: "lax",
+            }
+            response.cookies.set(name, value, finalOptions)
           }
         },
       },
