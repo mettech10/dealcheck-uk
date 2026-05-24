@@ -26,7 +26,11 @@ const REQUIRED_VARS = [
   "BREVO_API_KEY",
   "BENCHMARK_CRON_SECRET",
   "AIRROI_API_KEY",
-  "EPC_API_TOKEN",
+  // EPC opendatacommunities needs BOTH email + key for Basic auth.
+  // EPC_API_TOKEN is the legacy alias the app falls back to if KEY
+  // is missing — list all three so it's obvious what's covered.
+  "EPC_API_EMAIL",
+  "EPC_API_KEY",
   "PROPERTYDATA_API_KEY",
   "BACKEND_API_URL",
   "ADMIN_EMAILS",

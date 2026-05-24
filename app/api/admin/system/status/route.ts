@@ -184,10 +184,13 @@ async function probePropertyData(): Promise<ProbeResult> {
       checkedAt: new Date().toISOString(),
     }
   }
-  // Light query that confirms the key works. SW1A1AA is well-formed
-  // and free for a known postcode. Quota impact: minimal.
+  // Real endpoint the app uses (property_data.py _make_request).
+  // valuation-rent is the cheapest real call; needs a valid postcode
+  // + bedrooms. SW1A 1AA is well-formed and central. Consumes 1
+  // credit per probe — accept the cost so the probe matches what
+  // the app actually does at request time.
   const r = await pingFetch(
-    `https://api.propertydata.co.uk/uk-house-prices?key=${encodeURIComponent(key)}&postcode=SW1A1AA`,
+    `https://api.propertydata.co.uk/valuation-rent?key=${encodeURIComponent(key)}&postcode=SW1A1AA&bedrooms=2`,
   )
   return {
     service: "PropertyData",
@@ -205,12 +208,16 @@ async function probeAirroi(): Promise<ProbeResult> {
       checkedAt: new Date().toISOString(),
     }
   }
-  // Airroi requires an authenticated request to anything useful;
-  // we ping the dashboard endpoint which 401s without a key (so a
-  // bad key surfaces immediately) and 200s with one.
-  const r = await pingFetch("https://api.airroi.com/v1/account", {
-    headers: { "x-api-key": key },
-  })
+  // Real endpoint pattern from metusa-deal-analyzer/airroi_service.py:
+  // base https://api.airroi.com + GET /markets/search?query=X with
+  // header 'X-api-key' (note the capital X, lowercase rest — Airroi
+  // is case-sensitive). 200 with results on a known city query.
+  const r = await pingFetch(
+    "https://api.airroi.com/markets/search?query=london",
+    {
+      headers: { "X-api-key": key, Accept: "application/json" },
+    },
+  )
   return {
     service: "Airroi API",
     ...classify(true, r.ok, r.ms, r.error || `HTTP ${r.status}`),
@@ -219,22 +226,31 @@ async function probeAirroi(): Promise<ProbeResult> {
 }
 
 async function probeEpc(): Promise<ProbeResult> {
-  const key = process.env.EPC_API_TOKEN
-  if (!key) {
+  const email = process.env.EPC_API_EMAIL
+  const key = process.env.EPC_API_KEY || process.env.EPC_API_TOKEN
+  if (!email || !key) {
+    const missing = [
+      !email && "EPC_API_EMAIL",
+      !key && "EPC_API_KEY",
+    ]
+      .filter(Boolean)
+      .join(" + ")
     return {
       service: "EPC API",
-      ...classify(false, false, 0, "EPC_API_TOKEN not set"),
+      ...classify(false, false, 0, `${missing} not set`),
       checkedAt: new Date().toISOString(),
     }
   }
-  // EPC uses HTTP basic auth with the token; the search endpoint
-  // returns 200 with no params + valid auth.
+  // EPC opendatacommunities uses HTTP basic auth with `email:key`
+  // — both halves are required. Previous probe sent ":key" which
+  // is why it 401'd.
+  const credentials = Buffer.from(`${email}:${key}`).toString("base64")
   const r = await pingFetch(
     "https://epc.opendatacommunities.org/api/v1/domestic/search?size=1",
     {
       headers: {
         Accept: "application/json",
-        Authorization: `Basic ${Buffer.from(`:${key}`).toString("base64")}`,
+        Authorization: `Basic ${credentials}`,
       },
     },
   )
