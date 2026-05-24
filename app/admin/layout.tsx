@@ -17,6 +17,7 @@
 
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { isAdminEmail } from "@/lib/admin"
 import { AdminSidebar } from "@/components/admin/sidebar"
 
@@ -42,9 +43,28 @@ export default async function AdminLayout({
     (user.user_metadata?.name as string | undefined) ||
     ""
 
+  // Unresolved-error count for the sidebar badge. Fail-soft: a
+  // missing table or RLS hiccup just hides the badge — the layout
+  // must not break the dashboard.
+  let unresolvedErrorCount = 0
+  try {
+    const admin = createAdminClient()
+    const { count } = await admin
+      .from("admin_error_log")
+      .select("id", { count: "exact", head: true })
+      .eq("resolved", false)
+    unresolvedErrorCount = count ?? 0
+  } catch {
+    /* swallow — table may not exist yet pre-migration */
+  }
+
   return (
     <div className="flex min-h-screen bg-[#0F1117] text-white">
-      <AdminSidebar adminName={name} adminEmail={user.email!} />
+      <AdminSidebar
+        adminName={name}
+        adminEmail={user.email!}
+        unresolvedErrorCount={unresolvedErrorCount}
+      />
       <main className="flex-1 overflow-x-hidden">
         <div className="mx-auto max-w-7xl px-8 py-8">{children}</div>
       </main>

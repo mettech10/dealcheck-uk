@@ -143,6 +143,21 @@ async function loadOverview(): Promise<OverviewData> {
     0,
   )
 
+  // ── Errors last 24h (admin_error_log) ────────────────────────────
+  // Fail-soft: missing table (pre-migration) just leaves the count
+  // null so the card renders "—" rather than 500-ing.
+  let errorsLast24h: number | null = null
+  try {
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { count } = await admin
+      .from("admin_error_log")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", since24h)
+    errorsLast24h = count ?? 0
+  } catch {
+    errorsLast24h = null
+  }
+
   // ── Tier lookup for signups table ────────────────────────────────
   const subsRes = await admin
     .from("user_subscriptions")
@@ -190,7 +205,7 @@ async function loadOverview(): Promise<OverviewData> {
     totalAnalysesAllTime,
     totalAnalysesToday,
     revenueThisMonthGbp,
-    errorsLast24h: null, // admin_error_log lands in stage 5
+    errorsLast24h,
     recentSignups,
     recentPayments,
   }
