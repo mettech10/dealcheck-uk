@@ -13,6 +13,7 @@
 
 import { CheckCircle2, XCircle } from "lucide-react"
 import { isAdminAllowListConfigured } from "@/lib/admin"
+import { ServiceStatusGrid } from "@/components/admin/service-status-grid"
 
 export const dynamic = "force-dynamic"
 
@@ -43,9 +44,11 @@ export default function AdminSystemPage() {
       <header>
         <h1 className="text-2xl font-semibold text-white">System</h1>
         <p className="mt-1 text-sm text-[#9CA3AF]">
-          Configuration health. Live service-status pings ship next.
+          Service status + configuration health.
         </p>
       </header>
+
+      <ServiceStatusGrid />
 
       <section className="rounded-xl border border-[#2A2D3E] bg-[#1A1D2E] p-6">
         <header className="mb-4 flex items-center justify-between">
