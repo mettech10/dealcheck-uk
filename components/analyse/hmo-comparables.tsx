@@ -1,7 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ExternalLink, Loader2, TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react"
+import {
+  ExternalLink,
+  Loader2,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  BarChart3,
+  RotateCcw,
+} from "lucide-react"
 import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 interface RoomListing {
@@ -91,6 +99,10 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [loadingListings, setLoadingListings] = useState(true)
   const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Manual retry counter — bumping it re-runs fetchData. Lives
+  // outside the loading-tracker dep so a retry can't re-block the
+  // full-page overlay.
+  const [retryNonce, setRetryNonce] = useState(0)
   const { markDone } = useLoadingTracker()
 
   useEffect(() => {
@@ -99,6 +111,11 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
     async function fetchData() {
       setLoadingListings(true)
       setError(null)
+      // Reset prior-attempt state so a retry can flip from
+      // manual-search fallback → fresh listings without stale UI.
+      setManualSearch(null)
+      setListings([])
+      setRoomSummaries([])
 
       try {
         console.log("[HMO] Fetching HMO data - postcode:", postcode)
@@ -246,7 +263,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
 
     fetchData()
     return () => { cancelled = true }
-  }, [postcode, markDone])
+  }, [postcode, markDone, retryNonce])
 
   if (loadingListings) {
     return (
@@ -354,6 +371,14 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
                 Search manually on SpareRoom or OpenRent to gauge HMO demand.
               </p>
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setRetryNonce((n) => n + 1)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
+                >
+                  <RotateCcw className="size-4" />
+                  Try again
+                </button>
                 <a
                   href={manualSearch.searchUrl}
                   target="_blank"
@@ -375,9 +400,19 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
               </div>
             </div>
           ) : listings.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">
-              No room listings found in the {searchArea || postcode.split(" ")[0]} area.
-            </p>
+            <div className="flex flex-col items-start gap-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                No room listings found in the {searchArea || postcode.split(" ")[0]} area.
+              </p>
+              <button
+                type="button"
+                onClick={() => setRetryNonce((n) => n + 1)}
+                className="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
+              >
+                <RotateCcw className="size-4" />
+                Try again
+              </button>
+            </div>
           ) : (
             <>
               <div className="flex flex-col divide-y divide-border/50 rounded-xl border border-border/50 overflow-hidden">

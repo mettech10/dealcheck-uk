@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ExternalLink, Loader2, Home } from "lucide-react"
+import { ExternalLink, Loader2, Home, RotateCcw } from "lucide-react"
 import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 interface SpareRoomListing {
@@ -32,6 +32,10 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
   const [loading, setLoading] = useState(true)
   const [source, setSource] = useState("")
   const [searchUrl, setSearchUrl] = useState("")
+  // Manual retry counter — incrementing it re-triggers the effect.
+  // Not in the loading-tracker dep so a retry can't re-block the
+  // overlay (overlay already lifted after first attempt).
+  const [retryNonce, setRetryNonce] = useState(0)
 
   const district = postcode.split(" ")[0] || postcode
 
@@ -70,7 +74,7 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
         setLoading(false)
         markDone("spareRoom")
       })
-  }, [postcode, markDone])
+  }, [postcode, markDone, retryNonce])
 
   if (loading) {
     return (
@@ -88,17 +92,27 @@ export function SpareRoomListings({ postcode }: SpareRoomListingsProps) {
         <p className="text-sm text-muted-foreground">
           No live room listings found for {district}.
         </p>
-        {searchUrl && (
-          <a
-            href={searchUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRetryNonce((n) => n + 1)}
+            className="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
           >
-            Search SpareRoom manually
-            <ExternalLink className="size-3.5 text-muted-foreground" />
-          </a>
-        )}
+            <RotateCcw className="size-3.5" />
+            Try again
+          </button>
+          {searchUrl && (
+            <a
+              href={searchUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-border/50 bg-muted/50 px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Search SpareRoom manually
+              <ExternalLink className="size-3.5 text-muted-foreground" />
+            </a>
+          )}
+        </div>
       </div>
     )
   }
