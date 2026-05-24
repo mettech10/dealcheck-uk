@@ -438,6 +438,21 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", userId)
+
+  // Log the cancellation as a credit event so it shows up in the
+  // user's Credit History card. credit_delta=0 because Pro is
+  // unlimited not credit-based — the row exists for the audit
+  // trail. event_type='pro_cancelled' is the gate.
+  await admin.from("payment_history").insert({
+    user_id: userId,
+    amount_gbp: 0,
+    tier: "pro",
+    status: "cancelled",
+    description: "Pro subscription cancelled",
+    event_type: "pro_cancelled",
+    credit_delta: 0,
+  })
+
   const email = await getUserEmailFromAuth(userId)
   if (email) {
     try {

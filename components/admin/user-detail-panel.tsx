@@ -80,6 +80,14 @@ export function UserDetailPanel({ userId, onClose }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [mutating, setMutating] = useState<string | null>(null)
+  // Grant-credit form state, kept local since it's a one-shot
+  // mutation that doesn't need to live in the parent detail object.
+  const [grantAmount, setGrantAmount] = useState<string>("1")
+  const [grantNotes, setGrantNotes] = useState<string>("")
+  const [grantStatus, setGrantStatus] = useState<
+    null | { ok: true; balance: number } | { ok: false; error: string }
+  >(null)
+  const [granting, setGranting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -120,6 +128,51 @@ export function UserDetailPanel({ userId, onClose }: Props) {
   const initial =
     (detail?.user.email ?? "?").charAt(0).toUpperCase() ||
     userId.charAt(0).toUpperCase()
+
+  // Current balance: sum of paid_analysis_credits on the current
+  // month's usage row. Cheap derivation from already-loaded data
+  // so we don't need a separate fetch.
+  const currentMonth = new Date().toISOString().slice(0, 7)
+  const currentBalance = (detail?.usage ?? [])
+    .filter((u) => u.period_start.startsWith(currentMonth))
+    .reduce((s, u) => s + (u.paid_analysis_credits ?? 0), 0)
+
+  const grantCredits = async (delta: number, reason?: string) => {
+    setGranting(true)
+    setGrantStatus(null)
+    try {
+      const r = await fetch("/api/admin/credits/grant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          amount: delta,
+          notes: reason ?? grantNotes ?? null,
+        }),
+      })
+      const data = (await r.json().catch(() => ({}))) as {
+        ok?: boolean
+        newBalance?: number
+        error?: string
+      }
+      if (!r.ok || !data.ok) {
+        setGrantStatus({
+          ok: false,
+          error: data.error || `HTTP ${r.status}`,
+        })
+      } else {
+        setGrantStatus({ ok: true, balance: data.newBalance ?? 0 })
+        await load()
+      }
+    } catch (e) {
+      setGrantStatus({
+        ok: false,
+        error: e instanceof Error ? e.message : "network error",
+      })
+    } finally {
+      setGranting(false)
+    }
+  }
 
   return (
     <>
@@ -189,6 +242,100 @@ export function UserDetailPanel({ userId, onClose }: Props) {
                     {detail.subscription.cancel_at_period_end ? " · cancelling" : ""}
                   </p>
                 )}
+              </section>
+
+              {/* ── Manage credits ────────────────────────────────── */}
+              <section className="flex flex-col gap-3 rounded-lg border border-[#2A2D3E] bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-[#9CA3AF]">
+                      Manage Credits
+                    </h3>
+                    <p className="mt-1 text-xs text-white">
+                      Current balance:{" "}
+                      <span className="font-semibold text-[#00BFA5]">
+                        {currentBalance} credit{currentBalance === 1 ? "" : "s"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-[#9CA3AF]">
+                    Amount
+                    <input
+                      type="number"
+                      step={1}
+                      value={grantAmount}
+                      onChange={(e) => setGrantAmount(e.target.value)}
+                      disabled={granting}
+                      className="h-9 w-24 rounded-md border border-[#2A2D3E] bg-[#1A1D2E] px-2 text-sm text-white focus:border-[#00BFA5] focus:outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-1 flex-col gap-1 text-[10px] uppercase tracking-wider text-[#9CA3AF]">
+                    Reason (optional)
+                    <input
+                      type="text"
+                      value={grantNotes}
+                      onChange={(e) => setGrantNotes(e.target.value)}
+                      disabled={granting}
+                      placeholder="e.g. support ticket #123"
+                      className="h-9 rounded-md border border-[#2A2D3E] bg-[#1A1D2E] px-2 text-sm text-white placeholder:text-[#9CA3AF]/60 focus:border-[#00BFA5] focus:outline-none"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      granting ||
+                      !Number.isFinite(Number(grantAmount)) ||
+                      Number(grantAmount) === 0
+                    }
+                    onClick={() => grantCredits(Number(grantAmount))}
+                    className="rounded-md border border-[#00BFA5]/40 bg-[#00BFA5]/10 px-3 py-1.5 text-xs font-medium text-[#00BFA5] transition-colors hover:bg-[#00BFA5]/20 disabled:opacity-40"
+                  >
+                    {granting ? "Working…" : "+ Add credits"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={granting || currentBalance === 0}
+                    onClick={() => {
+                      if (
+                        confirm(
+                          "Reset this user's credit balance to 0? This logs an admin grant of " +
+                            -currentBalance +
+                            " — undo by adding the same amount back.",
+                        )
+                      ) {
+                        grantCredits(-currentBalance, "Reset to 0 by admin")
+                      }
+                    }}
+                    className="rounded-md border border-[#EF4444]/30 px-3 py-1.5 text-xs text-[#EF4444] transition-colors hover:bg-[#EF4444]/10 disabled:opacity-40"
+                  >
+                    Reset to 0
+                  </button>
+                </div>
+
+                {grantStatus &&
+                  (grantStatus.ok ? (
+                    <p className="text-xs text-[#10B981]">
+                      ✓ New balance: {grantStatus.balance} credit
+                      {grantStatus.balance === 1 ? "" : "s"}. User has been
+                      emailed.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[#EF4444]">
+                      ✗ {grantStatus.error}
+                    </p>
+                  ))}
+
+                <p className="text-[10px] text-[#9CA3AF]">
+                  Logged in payment_history as admin_grant with your id +
+                  the reason note. User is emailed automatically on
+                  positive amounts.
+                </p>
               </section>
 
               {/* Tier actions */}
