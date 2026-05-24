@@ -14,6 +14,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { signOut } from "@/app/auth/actions"
+import { CreditsPill } from "@/components/landing/credits-pill"
 
 interface NavbarProps {
   user?: { email?: string; name?: string } | null
@@ -220,6 +221,12 @@ export function Navbar({ user }: NavbarProps) {
               <Button asChild size="default">
                 <Link href="/analyse">Analyse a Deal</Link>
               </Button>
+
+              {/* ── Credits pill ────────────────────────────────────
+                  Always-visible balance / Pro / free counter.
+                  Fetches /api/user/credits on mount; renders
+                  nothing while loading so the row doesn't shift. */}
+              <CreditsPill />
 
               {/* ── User pill → Account popover ────────────────────── */}
               <div className="relative">
