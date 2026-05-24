@@ -173,18 +173,16 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           return
         }
 
-        // If backend returned a manual search fallback
-        if (data.manualSearch && data.searchUrl) {
-          setManualSearch({
-            searchUrl: data.searchUrl,
-            openrentUrl: data.openrentUrl || "",
-            message: data.message || "",
-          })
-          setLoadingListings(false)
-          return
-        }
-
-        // Legacy path: individual listings from SpareRoom/OpenRent actors
+        // ── LISTINGS FIRST ──────────────────────────────────────────
+        // The backend sometimes returns BOTH a listings array AND a
+        // manualSearch fallback URL (e.g. SpareRoom scraper got
+        // some rooms but the count is below the comfort threshold).
+        // Previously we checked manualSearch before listings, so any
+        // response carrying both would render "No automated room
+        // listing data" even though the SpareRoomListings card
+        // above happily displayed the same listings — the two
+        // cards must mirror each other since they're driven by the
+        // same /api/comparables/spareroom payload.
         const rawListings = data.listings || []
         const fetchedListings: RoomListing[] = rawListings.map((l: Record<string, unknown>) => ({
           title: (l.title as string) || (l.ad_title as string) || "Room to rent",
@@ -200,8 +198,23 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           distance_km: (l.distanceKm as number) ?? null,
           source: (l.source as string) || source,
         }))
-        setListings(fetchedListings)
-        setLoadingListings(false)
+
+        if (fetchedListings.length > 0) {
+          setListings(fetchedListings)
+          setLoadingListings(false)
+        } else if (data.manualSearch && data.searchUrl) {
+          // No live listings at all — fall back to manual-search UI.
+          setManualSearch({
+            searchUrl: data.searchUrl,
+            openrentUrl: data.openrentUrl || "",
+            message: data.message || "",
+          })
+          setLoadingListings(false)
+          return
+        } else {
+          setListings([])
+          setLoadingListings(false)
+        }
 
         if (fetchedListings.length === 0) return
 
