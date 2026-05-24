@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Sparkles, CheckCircle2, AlertCircle, CreditCard, Calendar, ExternalLink } from "lucide-react"
 import { TIERS_BY_ID, FREE_MONTHLY_CAP, type TierId } from "@/lib/tiers"
 import { ManageSubscriptionButton, BuyUpgradeButtons } from "./buttons"
+import { CreditsCard } from "@/components/account/credits-card"
 
 /**
  * /account — user dashboard for plan + usage + payments.
@@ -46,6 +47,31 @@ export default async function AccountPage() {
   const freeUsed = (row?.free_analyses_used as number) ?? 0
   const paidCredits = (row?.paid_credits_remaining as number) ?? 0
 
+  // Full credit state for the prominent Credits card at the top.
+  // Backed by the new get_user_credit_state RPC so the join logic
+  // isn't duplicated across this page and /api/user/credits.
+  const { data: creditRpc } = await admin.rpc("get_user_credit_state", {
+    p_user_id: user.id,
+  })
+  const creditRow = (Array.isArray(creditRpc) ? creditRpc[0] : creditRpc) as
+    | {
+        is_unlimited: boolean | null
+        unlimited_until: string | null
+        credit_balance: number | null
+        total_credits_purchased: number | null
+        total_credits_used: number | null
+      }
+    | null
+  const creditState = {
+    isUnlimited: !!creditRow?.is_unlimited,
+    unlimitedUntil: creditRow?.unlimited_until
+      ? new Date(creditRow.unlimited_until)
+      : null,
+    creditBalance: creditRow?.credit_balance ?? 0,
+    totalPurchased: creditRow?.total_credits_purchased ?? 0,
+    totalUsed: creditRow?.total_credits_used ?? 0,
+  }
+
   // Subscription row for renewal date + Stripe customer id.
   const { data: sub } = await admin
     .from("user_subscriptions")
@@ -57,13 +83,18 @@ export default async function AccountPage() {
   const cancelAtPeriodEnd = !!sub?.cancel_at_period_end
   const hasStripeCustomer = !!sub?.stripe_customer_id
 
-  // Last 5 payments.
+  // Credit history — last 15 rows, including new non-Stripe events
+  // (admin_grant, analysis_used) added in the 20260524 migration. The
+  // event_type + credit_delta columns are nullable on pre-migration
+  // rows; we render them defensively in the table below.
   const { data: payments } = await admin
     .from("payment_history")
-    .select("id, created_at, amount_gbp, tier, status, description")
+    .select(
+      "id, created_at, amount_gbp, tier, status, description, event_type, credit_delta, notes",
+    )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(5)
+    .limit(15)
 
   const isUnlimited = tierId === "pro" || tierId === "enterprise"
 
@@ -78,6 +109,16 @@ export default async function AccountPage() {
           <Link href="/analyse">Back to Analyser</Link>
         </Button>
       </div>
+
+      {/* ── Credits (prominent, top of page) ──────────────────────── */}
+      <CreditsCard
+        isUnlimited={creditState.isUnlimited}
+        unlimitedUntil={creditState.unlimitedUntil}
+        creditBalance={creditState.creditBalance}
+        totalPurchased={creditState.totalPurchased}
+        totalUsed={creditState.totalUsed}
+        tierLabel={tier.name}
+      />
 
       {/* ── Current Plan ───────────────────────────────────────────── */}
       <Card>
@@ -178,44 +219,29 @@ export default async function AccountPage() {
         </CardContent>
       </Card>
 
-      {/* ── Payment history ───────────────────────────────────────── */}
+      {/* ── Credit history ─────────────────────────────────────────
+          Renamed from "Payment History" — same underlying table but
+          now surfaces all credit events (purchases, admin grants,
+          analysis consumption). Pre-migration rows have null
+          event_type / credit_delta — render defensively. */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CreditCard className="size-4 text-primary" />
-            Payment History
+            Credit History
           </CardTitle>
-          <CardDescription>Last 5 transactions</CardDescription>
+          <CardDescription>Last 15 events</CardDescription>
         </CardHeader>
         <CardContent>
           {!payments || payments.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No payments yet. When you buy a one-off analysis or subscribe to Pro,
-              your transactions appear here.
+              No activity yet. Purchases, admin grants and consumed
+              credits appear here.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
               {payments.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex items-start justify-between gap-3 rounded-md border border-border/40 p-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium text-foreground">
-                      {p.description ?? p.tier ?? "Payment"}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(p.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
-                      {p.tier ? ` · ${TIERS_BY_ID[p.tier as TierId]?.name ?? p.tier}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 text-right">
-                    <span className="font-semibold text-foreground">
-                      £{Number(p.amount_gbp ?? 0).toFixed(2)}
-                    </span>
-                    <PaymentStatusPill status={p.status} />
-                  </div>
-                </li>
+                <CreditHistoryRow key={p.id} entry={p} />
               ))}
             </ul>
           )}
@@ -232,6 +258,89 @@ export default async function AccountPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ── Credit history row ─────────────────────────────────────────────────────
+//
+// Renders one row from payment_history with event_type-aware labels +
+// signed credit delta in red/green. Pre-migration rows (event_type
+// = null / 'purchase_stripe' default) fall through to the Stripe-
+// purchase rendering.
+
+interface HistoryEntry {
+  id: string
+  created_at: string
+  amount_gbp: number | null
+  tier: string | null
+  status: string | null
+  description: string | null
+  event_type: string | null
+  credit_delta: number | null
+  notes: string | null
+}
+
+const EVENT_LABEL: Record<string, string> = {
+  purchase_stripe: "Analysis Credit Purchased",
+  admin_grant: "Admin Grant",
+  analysis_used: "Credit Used",
+  pro_cancelled: "Pro Cancelled",
+  refund: "Refunded",
+}
+
+function CreditHistoryRow({ entry }: { entry: HistoryEntry }) {
+  const eventType = entry.event_type ?? "purchase_stripe"
+  const tierName = entry.tier
+    ? TIERS_BY_ID[entry.tier as TierId]?.name ?? entry.tier
+    : null
+  // Friendly label: prefer event-type-aware copy. Pro purchases come
+  // through as tier='pro' + event_type='purchase_stripe' — surface
+  // the tier name in that case so the user sees "Metalyzi Pro" not
+  // generic "Analysis Credit Purchased".
+  const friendlyTitle =
+    eventType === "purchase_stripe" && entry.tier === "pro"
+      ? "Metalyzi Pro Activated"
+      : EVENT_LABEL[eventType] ?? entry.description ?? "Activity"
+
+  const delta = entry.credit_delta ?? 0
+  const isPro = entry.tier === "pro"
+
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-md border border-border/40 p-3 text-sm">
+      <div className="min-w-0">
+        <div className="font-medium text-foreground">{friendlyTitle}</div>
+        <div className="text-xs text-muted-foreground">
+          {new Date(entry.created_at).toLocaleDateString("en-GB", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })}
+          {tierName ? ` · ${tierName}` : ""}
+          {entry.notes ? ` · ${entry.notes}` : ""}
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1 text-right">
+        {isPro ? (
+          <span className="inline-flex items-center rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+            Pro
+          </span>
+        ) : delta !== 0 ? (
+          <span
+            className={`text-sm font-semibold ${
+              delta > 0 ? "text-success" : "text-destructive"
+            }`}
+          >
+            {delta > 0 ? "+" : ""}
+            {delta} credit{Math.abs(delta) === 1 ? "" : "s"}
+          </span>
+        ) : entry.amount_gbp ? (
+          <span className="font-semibold text-foreground">
+            £{Number(entry.amount_gbp).toFixed(2)}
+          </span>
+        ) : null}
+        <PaymentStatusPill status={entry.status} />
+      </div>
+    </li>
   )
 }
 
