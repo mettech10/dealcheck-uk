@@ -174,12 +174,17 @@ export async function POST(req: Request) {
             },
           }
         : {}),
+      // Both PPA and Pro now land on /payment-success — that page
+      // verifies the session, shows a 3-second confirmation, and
+      // routes onward to returnTo (or /analyse / /account for PPA /
+      // Pro respectively). Single landing reduces the support
+      // surface and gives the user a clear receipt step they can
+      // see, instead of dumping them on /analyse with stale query
+      // params they have to mentally decode.
       success_url:
         tierId === "pro"
-          ? `${SITE_URL}/account?upgraded=pro&session_id={CHECKOUT_SESSION_ID}`
-          : safeReturn
-            ? `${SITE_URL}/analyse?payment=success&session_id={CHECKOUT_SESSION_ID}&returnTo=${encodeURIComponent(safeReturn)}`
-            : `${SITE_URL}/analyse?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+          ? `${SITE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&returnTo=${encodeURIComponent(safeReturn || "/account")}`
+          : `${SITE_URL}/payment-success?session_id={CHECKOUT_SESSION_ID}&returnTo=${encodeURIComponent(safeReturn || "/analyse")}`,
       cancel_url: safeReturn
         ? `${SITE_URL}${safeReturn}${safeReturn.includes("?") ? "&" : "?"}payment=cancelled`
         : `${SITE_URL}/pricing?cancelled=true`,
