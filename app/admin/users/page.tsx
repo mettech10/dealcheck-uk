@@ -23,8 +23,9 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Search, Loader2 } from "lucide-react"
+import { Search, Loader2, Eye } from "lucide-react"
 import { TierBadge } from "@/components/admin/tier-badge"
+import { UserDetailPanel } from "@/components/admin/user-detail-panel"
 import { formatRelativeTime } from "@/lib/admin-format"
 
 interface UserRow {
@@ -57,6 +58,7 @@ export default function AdminUsersPage() {
   const [sortKey, setSortKey] = useState<SortKey>("joined")
   const [sortDesc, setSortDesc] = useState(true)
   const [page, setPage] = useState(1)
+  const [openUserId, setOpenUserId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -212,6 +214,7 @@ export default function AdminUsersPage() {
                 >
                   Last Active {sortIndicator("lastActive")}
                 </th>
+                <th className="px-3 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -243,6 +246,17 @@ export default function AdminUsersPage() {
                     <td className="px-3 py-3 text-[#9CA3AF]">
                       {u.lastSignInAt ? formatRelativeTime(u.lastSignInAt) : "—"}
                     </td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setOpenUserId(u.id)}
+                        className="inline-flex items-center gap-1 rounded-md border border-[#2A2D3E] px-2.5 py-1 text-xs text-[#9CA3AF] hover:bg-[#00BFA5]/10 hover:text-[#00BFA5]"
+                        aria-label={`View ${u.email}`}
+                      >
+                        <Eye className="size-3" />
+                        View
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
@@ -250,6 +264,13 @@ export default function AdminUsersPage() {
           </table>
         )}
       </section>
+
+      {openUserId && (
+        <UserDetailPanel
+          userId={openUserId}
+          onClose={() => setOpenUserId(null)}
+        />
+      )}
 
       {pageCount > 1 && (
         <div className="flex items-center justify-between text-sm text-[#9CA3AF]">
