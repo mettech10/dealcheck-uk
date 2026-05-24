@@ -7,6 +7,7 @@ import {
   sendRenewalConfirmationEmail,
   sendPaymentFailedEmail,
   sendCancellationEmail,
+  sendOwnerPaymentNotification,
 } from "@/lib/paymentEmails"
 import { logAdminActivity } from "@/lib/admin-logs"
 
@@ -149,6 +150,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       } catch (e) {
         console.warn("[webhook] PPA confirmation email failed:", e)
       }
+      // Owner / ops notification — separate try so a failed user
+      // confirmation doesn't suppress the owner email.
+      try {
+        await sendOwnerPaymentNotification({
+          kind: "ppa_purchase",
+          amountGbp: 2.99,
+          userEmail: email,
+          userId,
+          stripeSessionId: session.id,
+        })
+      } catch (e) {
+        console.warn("[webhook] PPA owner notification failed:", e)
+      }
     }
     // Admin activity feed — fire-and-forget.
     logAdminActivity({
@@ -228,6 +242,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       } catch (e) {
         console.warn("[webhook] Pro welcome email failed:", e)
       }
+      try {
+        await sendOwnerPaymentNotification({
+          kind: "pro_start",
+          amountGbp: amountPaid > 0 ? amountPaid : 19.99,
+          userEmail: email,
+          userId,
+          stripeSessionId: session.id,
+          stripeSubscriptionId: stripeSubId,
+        })
+      } catch (e) {
+        console.warn("[webhook] Pro owner notification failed:", e)
+      }
     }
     // Admin activity feed — fire-and-forget.
     logAdminActivity({
@@ -303,6 +329,18 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     } catch (e) {
       console.warn("[webhook] renewal email failed:", e)
     }
+    try {
+      await sendOwnerPaymentNotification({
+        kind: "pro_renewal",
+        amountGbp: amount,
+        userEmail: email,
+        userId,
+        stripeSessionId: null,
+        stripeSubscriptionId: subscriptionId,
+      })
+    } catch (e) {
+      console.warn("[webhook] renewal owner notification failed:", e)
+    }
   }
 }
 
@@ -334,6 +372,19 @@ async function handleInvoiceFailed(invoice: Stripe.Invoice) {
       await sendPaymentFailedEmail({ userEmail: email })
     } catch (e) {
       console.warn("[webhook] payment failed email failed:", e)
+    }
+    try {
+      await sendOwnerPaymentNotification({
+        kind: "pro_failed",
+        amountGbp: (invoice.amount_due ?? 0) / 100,
+        userEmail: email,
+        userId,
+        stripeSessionId: null,
+        stripeSubscriptionId: subscriptionId,
+        note: "Card declined / insufficient funds / expired card — user may lose access if not resolved.",
+      })
+    } catch (e) {
+      console.warn("[webhook] failed-payment owner notification failed:", e)
     }
   }
 }

@@ -249,3 +249,83 @@ export async function sendCancellationEmail(params: {
   `)
   return sendBrevoEmail(params.userEmail, "Your Metalyzi Pro has been cancelled", html)
 }
+
+// ── 6. Owner notification (internal) ───────────────────────────────────────
+//
+// Sent to contact@metalyzi.co.uk on every payment event (PPA purchase,
+// Pro start, Pro renewal, failed renewal). Plain operational message —
+// no marketing wrapper, no logo block, no CTA buttons. Subject line
+// carries the type + amount so the inbox view tells the whole story.
+//
+// The recipient address is configurable via OWNER_NOTIFICATION_EMAIL
+// env var so dev / staging can override.
+
+const OWNER_EMAIL =
+  process.env.OWNER_NOTIFICATION_EMAIL ?? "contact@metalyzi.co.uk"
+
+export type OwnerPaymentKind =
+  | "ppa_purchase"
+  | "pro_start"
+  | "pro_renewal"
+  | "pro_failed"
+  | "admin_grant"
+
+interface OwnerPaymentParams {
+  kind: OwnerPaymentKind
+  amountGbp: number
+  userEmail: string
+  userId: string
+  stripeSessionId?: string | null
+  stripeSubscriptionId?: string | null
+  note?: string | null
+}
+
+const KIND_SUBJECT: Record<OwnerPaymentKind, string> = {
+  ppa_purchase: "💷 New Payment — Metalyzi PPA",
+  pro_start: "🎉 New Pro Subscriber — Metalyzi",
+  pro_renewal: "🔁 Pro Renewal — Metalyzi",
+  pro_failed: "⚠ Failed Payment — Metalyzi",
+  admin_grant: "🛠 Admin Grant — Metalyzi",
+}
+
+const KIND_LABEL: Record<OwnerPaymentKind, string> = {
+  ppa_purchase: "Pay Per Analysis",
+  pro_start: "Pro Monthly (new)",
+  pro_renewal: "Pro Monthly (renewal)",
+  pro_failed: "Pro Monthly (FAILED)",
+  admin_grant: "Admin Credit Grant",
+}
+
+export async function sendOwnerPaymentNotification(
+  params: OwnerPaymentParams,
+): Promise<boolean> {
+  const amountFmt = `£${params.amountGbp.toFixed(2)}`
+  const subject = `${KIND_SUBJECT[params.kind]} ${amountFmt}`
+  const now = new Date().toISOString()
+
+  const stripeLine = params.stripeSessionId
+    ? `Stripe Session: ${params.stripeSessionId}
+View in Stripe: https://dashboard.stripe.com/payments/${params.stripeSessionId}`
+    : params.stripeSubscriptionId
+      ? `Stripe Subscription: ${params.stripeSubscriptionId}
+View in Stripe: https://dashboard.stripe.com/subscriptions/${params.stripeSubscriptionId}`
+      : "Stripe Session: (none — non-Stripe event)"
+
+  // Plain text body — operational, not marketing. Wrapped in basic
+  // HTML so Brevo's text/HTML auto-detection doesn't strip it.
+  const html = `<pre style="font-family:Menlo,Consolas,monospace;white-space:pre-wrap;color:#111;background:#fff;padding:16px;">
+${params.kind === "pro_failed" ? "⚠ PAYMENT FAILED ⚠" : "Payment received on Metalyzi."}
+
+Type:        ${KIND_LABEL[params.kind]}
+Amount:      ${amountFmt}
+User:        ${params.userEmail}
+User ID:     ${params.userId}
+${stripeLine}
+Time:        ${now}
+${params.note ? `Note:        ${params.note}` : ""}
+
+View in Admin: ${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.metalyzi.co.uk"}/admin/users
+</pre>`
+
+  return sendBrevoEmail(OWNER_EMAIL, subject, html)
+}
