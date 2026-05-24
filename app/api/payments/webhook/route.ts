@@ -8,6 +8,7 @@ import {
   sendPaymentFailedEmail,
   sendCancellationEmail,
 } from "@/lib/paymentEmails"
+import { logAdminActivity } from "@/lib/admin-logs"
 
 /**
  * POST /api/payments/webhook
@@ -149,6 +150,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         console.warn("[webhook] PPA confirmation email failed:", e)
       }
     }
+    // Admin activity feed — fire-and-forget.
+    logAdminActivity({
+      eventType: "payment",
+      userId,
+      userEmail: email ?? null,
+      metadata: {
+        tier: "pay_per_analysis",
+        amount_gbp: 2.99,
+        stripe_session_id: session.id,
+        bind_analysis_id: boundAnalysisId,
+      },
+    }).catch(() => {})
     return
   }
 
@@ -216,6 +229,18 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
         console.warn("[webhook] Pro welcome email failed:", e)
       }
     }
+    // Admin activity feed — fire-and-forget.
+    logAdminActivity({
+      eventType: "payment",
+      userId,
+      userEmail: email ?? null,
+      metadata: {
+        tier: "pro",
+        amount_gbp: amountPaid > 0 ? amountPaid : 19.99,
+        stripe_session_id: session.id,
+        stripe_subscription_id: stripeSubId,
+      },
+    }).catch(() => {})
     return
   }
 }

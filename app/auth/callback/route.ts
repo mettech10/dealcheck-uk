@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendWelcomeEmail } from "@/lib/brevo-email"
+import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
 import type { EmailOtpType } from "@supabase/supabase-js"
 
 /**
@@ -51,6 +52,7 @@ function createClientForResponse(request: NextRequest, response: NextResponse) {
 
 async function handleVerifiedUser(
   user: { id: string; email?: string | null; email_confirmed_at?: string | null; user_metadata?: Record<string, any> } | null,
+  request?: NextRequest,
 ) {
   if (!user) return
 
@@ -71,6 +73,17 @@ async function handleVerifiedUser(
     } else {
       console.error(`[Auth Callback] Welcome email failed to send to ${user.email}`)
     }
+    // Admin activity feed — first verified email signup. The `signup`
+    // event is bound to first-verification, not row creation, so the
+    // feed shows when a user actually became real (matches the
+    // welcome-email gate).
+    logAdminActivity({
+      eventType: "signup",
+      userId: user.id,
+      userEmail: user.email,
+      metadata: { source: "email_or_oauth_verified" },
+      ipAddress: request ? ipFromRequest(request) : null,
+    }).catch(() => {})
   } else {
     console.log(
       `[Auth Callback] Skipping welcome email for ${user?.email} (already sent or email not confirmed)`
@@ -138,7 +151,7 @@ export async function GET(request: NextRequest) {
 
     // Email verification (signup confirmation) — always show success page
     if (type === "signup" || type === "email" || source === "email_verify") {
-      await handleVerifiedUser(sessionUser)
+      await handleVerifiedUser(sessionUser, request)
       return redirectTo(`${origin}/auth/verified`)
     }
 

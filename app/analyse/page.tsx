@@ -1014,6 +1014,23 @@ function AnalysePage() {
   const handleSavePDF = () => {
     if (!aiText && !formData) return
     if (typeof document === "undefined") return
+    // Fire-and-forget activity event for the admin dashboard. Has to
+    // be client-side because the actual export is window.print, not
+    // a server call. Never blocks the print dialog.
+    fetch("/api/admin/log-activity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventType: "pdf_export",
+        metadata: {
+          analysis_id: savedAnalysisId,
+          address: formData?.address,
+          postcode: formData?.postcode,
+          investment_type: formData?.investmentType,
+        },
+      }),
+    }).catch(() => {})
+
     document.body.classList.add("print-results")
     const cleanup = () => {
       document.body.classList.remove("print-results")

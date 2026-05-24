@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
 
 // GET /api/analyses — fetch the logged-in user's saved analyses
 export async function GET() {
@@ -90,6 +91,23 @@ export async function POST(req: Request) {
     console.error("[POST /api/analyses]", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Fire-and-forget activity log so the admin dashboard surfaces
+  // saved-deal events without blocking the response on a Supabase
+  // round-trip. logAdminActivity swallows its own errors.
+  logAdminActivity({
+    eventType: "saved_deal",
+    userId: user.id,
+    userEmail: user.email ?? null,
+    metadata: {
+      analysis_id: data.id,
+      address: typeof address === "string" ? address : null,
+      postcode: typeof postcode === "string" ? postcode : null,
+      investment_type:
+        typeof investment_type === "string" ? investment_type : null,
+    },
+    ipAddress: ipFromRequest(req),
+  }).catch(() => {})
 
   return NextResponse.json({ id: data.id }, { status: 201 })
 }

@@ -57,6 +57,12 @@ interface OverviewData {
     tier: string
     created_at: string
   }>
+  recentActivity: Array<{
+    id: string
+    event_type: string
+    user_email: string | null
+    created_at: string
+  }>
 }
 
 async function loadOverview(): Promise<OverviewData> {
@@ -199,6 +205,32 @@ async function loadOverview(): Promise<OverviewData> {
     }
   })
 
+  // ── Recent activity (last 20) ────────────────────────────────────
+  let recentActivity: OverviewData["recentActivity"] = []
+  try {
+    const recentActRes = await admin
+      .from("admin_activity_log")
+      .select("id, event_type, user_email, created_at")
+      .order("created_at", { ascending: false })
+      .limit(20)
+    recentActivity = (recentActRes.data ?? []).map((row) => {
+      const r = row as {
+        id: string
+        event_type: string
+        user_email: string | null
+        created_at: string
+      }
+      return {
+        id: r.id,
+        event_type: r.event_type,
+        user_email: r.user_email,
+        created_at: r.created_at,
+      }
+    })
+  } catch {
+    /* table not yet created — leave list empty */
+  }
+
   return {
     totalUsers,
     signupsThisWeek,
@@ -208,6 +240,7 @@ async function loadOverview(): Promise<OverviewData> {
     errorsLast24h,
     recentSignups,
     recentPayments,
+    recentActivity,
   }
 }
 
@@ -341,16 +374,47 @@ export default async function AdminOverviewPage() {
         </div>
       </section>
 
-      {/* ── Activity feed (stage 6 placeholder) ────────────────────── */}
+      {/* ── Activity feed — last 20 from admin_activity_log ────────── */}
       <section className="rounded-xl border border-[#2A2D3E] bg-[#1A1D2E] p-6">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-[#9CA3AF]">
-          Recent Activity
-        </h2>
-        <p className="text-sm text-[#9CA3AF]">
-          Live activity feed ships in the next stage — needs an
-          admin_activity_log table + event instrumentation across the
-          app.
-        </p>
+        <header className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#9CA3AF]">
+            Recent Activity
+          </h2>
+          <a
+            href="/admin/activity"
+            className="text-xs text-[#00BFA5] hover:underline"
+          >
+            View all →
+          </a>
+        </header>
+        {data.recentActivity.length === 0 ? (
+          <p className="text-sm text-[#9CA3AF]">
+            No events yet — instrumentation just landed, give it a moment.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-[#2A2D3E]/60">
+            {data.recentActivity.map((event) => (
+              <li
+                key={event.id}
+                className="flex items-center justify-between gap-3 py-2.5 text-sm"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-white">
+                    <span className="font-medium">
+                      {event.user_email || "(anonymous)"}
+                    </span>{" "}
+                    <span className="text-[#9CA3AF]">
+                      · {event.event_type.replace("_", " ")}
+                    </span>
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs text-[#9CA3AF]">
+                  {formatRelativeTime(event.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   )

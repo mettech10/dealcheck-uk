@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
 import { checkCanAnalyse, recordAnalysisUsed } from "@/lib/usageGate"
+import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -515,6 +516,20 @@ export async function POST(req: Request) {
         recordAnalysisUsed(user.id, usage.tier).catch((e) =>
           console.warn("[analyse] recordAnalysisUsed failed:", e),
         )
+        // Admin activity feed — fire-and-forget so a Supabase blip
+        // doesn't taint the analyse response.
+        logAdminActivity({
+          eventType: "analysis",
+          userId: user.id,
+          userEmail: user.email ?? null,
+          metadata: {
+            strategy: propertyData?.investmentType ?? "btl",
+            postcode: propertyData?.postcode ?? null,
+            address: propertyData?.address ?? null,
+            tier: usage.tier,
+          },
+          ipAddress: ipFromRequest(req),
+        }).catch(() => {})
       }
       return NextResponse.json({ structured: data.results })
     }
