@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { AnalyticsTracker } from '@/components/admin/analytics-tracker'
 import { Footer } from '@/components/landing/footer'
 import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
@@ -29,7 +28,6 @@ export default function RootLayout({
         </div>
         <Footer />
         <CookieConsent />
-        <AnalyticsTracker />
         <ConditionalAnalytics />
       </body>
     </html>

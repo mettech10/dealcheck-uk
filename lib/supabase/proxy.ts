@@ -23,11 +23,18 @@ export async function updateSession(request: NextRequest) {
           supabaseResponse = NextResponse.next({
             request,
           })
+          // sameSite: 'lax' (not 'strict') — strict drops the session
+          // cookie on cross-site top-level navigations (e.g. the OAuth
+          // round-trip back from supabase.co), leaving users
+          // logged-out after a successful sign-in. Must stay in sync
+          // with lib/supabase/server.ts and app/auth/callback/route.ts
+          // — if any one of these writes strict, every other code path
+          // gets clobbered on the next session refresh.
           const secureCookieOptions = {
             path: '/',
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict' as const,
+            sameSite: 'lax' as const,
           }
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, { ...options, ...secureCookieOptions }),

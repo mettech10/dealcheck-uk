@@ -1,9 +1,81 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { updateSession } from "@/lib/supabase/proxy"
+import { isAdminEmail } from "@/lib/admin"
 
 // Secret key for developer access
 const DEV_SECRET = "metalyzi2026"
+
+const ADMIN_PATH_PREFIX = "/admin"
+
+/**
+ * Admin gate — runs ahead of the dev/coming-soon flow so admin routes
+ * are protected even with the dev key. Returns a NextResponse to
+ * short-circuit the proxy when access is denied, or `null` to let the
+ * rest of the proxy proceed.
+ *
+ * Rules:
+ *   - Unauthenticated → /login?returnTo=<pathname>
+ *   - Authenticated but email not in ADMIN_EMAILS → /
+ *   - Authenticated and on allow-list → null (continue)
+ */
+async function gateAdmin(request: NextRequest): Promise<NextResponse | null> {
+  const { pathname } = request.nextUrl
+  if (!pathname.startsWith(ADMIN_PATH_PREFIX)) return null
+
+  // Inline Supabase client bound to a response we can return cookies
+  // on. Cheaper than updateSession (no full refresh write path) and
+  // doesn't fight the existing flow.
+  let response = NextResponse.next({ request })
+  const isProd = process.env.NODE_ENV === "production"
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll(cookiesToSet) {
+          for (const { name, value, options } of cookiesToSet) {
+            const final: CookieOptions = {
+              ...options,
+              path: "/",
+              httpOnly: true,
+              secure: isProd,
+              sameSite: "lax",
+            }
+            response.cookies.set(name, value, final)
+          }
+        },
+      },
+    },
+  )
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/login"
+    url.search = `?returnTo=${encodeURIComponent(pathname)}`
+    const redirect = NextResponse.redirect(url)
+    for (const c of response.cookies.getAll()) redirect.cookies.set(c)
+    return redirect
+  }
+
+  if (!isAdminEmail(user.email)) {
+    // Silently bounce to homepage — don't leak admin gate existence
+    // to non-admin signed-in users.
+    const url = request.nextUrl.clone()
+    url.pathname = "/"
+    url.search = ""
+    const redirect = NextResponse.redirect(url)
+    for (const c of response.cookies.getAll()) redirect.cookies.set(c)
+    return redirect
+  }
+
+  return null
+}
 
 // Allowed origins for CORS
 const ALLOWED_ORIGINS = [
@@ -14,6 +86,12 @@ const ALLOWED_ORIGINS = [
 
 export async function proxy(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl
+
+  // Admin gate runs first — must short-circuit before the
+  // dev-key / coming-soon flow so admins can't be bypassed by either
+  // and non-admins can't slip through with a dev cookie.
+  const adminRedirect = await gateAdmin(request)
+  if (adminRedirect) return adminRedirect
 
   // Handle CORS preflight
   const origin = request.headers.get("origin")
