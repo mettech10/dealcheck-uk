@@ -13,7 +13,12 @@ export async function createClient() {
     path: '/',
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,  // ← CRITICAL: Prevents XSS access to cookies
-    sameSite: 'strict' as const,
+    // `lax`, not `strict` — `strict` strips the cookie on cross-site
+    // top-level navigations (e.g. the redirect from supabase.co back
+    // to our origin after Google OAuth), which left users logged out
+    // after a successful sign-in. `lax` keeps it for top-level
+    // navigations while still blocking it on cross-site XHR/iframe.
+    sameSite: 'lax' as const,
     maxAge: 60 * 60 * 24 * 7, // 7 days
   }
 

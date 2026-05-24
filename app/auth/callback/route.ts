@@ -1,8 +1,46 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { NextResponse, type NextRequest } from "next/server"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendWelcomeEmail } from "@/lib/brevo-email"
 import type { EmailOtpType } from "@supabase/supabase-js"
+
+/**
+ * Build a Supabase server client whose cookie writes target the
+ * supplied NextResponse. Required for OAuth callbacks because Next
+ * Route Handlers don't propagate `cookies()` mutations onto a
+ * returned `NextResponse.redirect(...)` — the session would be
+ * created server-side but never reach the browser.
+ *
+ * Cookie defaults mirror lib/supabase/server.ts (httpOnly, secure
+ * in prod, sameSite=lax, 7-day life) so the session cookie set here
+ * round-trips correctly on subsequent requests.
+ */
+function createClientForResponse(request: NextRequest, response: NextResponse) {
+  const isProd = process.env.NODE_ENV === "production"
+  const baseOptions: CookieOptions = {
+    path: "/",
+    secure: isProd,
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7,
+  }
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, { ...baseOptions, ...options })
+          }
+        },
+      },
+    },
+  )
+}
 
 async function handleVerifiedUser(
   user: { id: string; email?: string | null; email_confirmed_at?: string | null; user_metadata?: Record<string, any> } | null,
@@ -33,7 +71,7 @@ async function handleVerifiedUser(
   }
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get("code")
   const token_hash = searchParams.get("token_hash")
@@ -41,8 +79,25 @@ export async function GET(request: Request) {
   const source = searchParams.get("source")
   const next = searchParams.get("next") ?? "/analyse"
 
-  const supabase = await createClient()
-  let sessionUser: { id: string; email?: string | null; email_confirmed_at?: string | null; user_metadata?: Record<string, any> } | null = null
+  // Compute the final destination BEFORE we run auth so we can build
+  // the response now and bind the Supabase client's cookie writes to
+  // it. setAll() in createClientForResponse writes onto response.cookies
+  // so the session cookie travels with the 302 back to the browser.
+  let destination = `${origin}${next}`
+  // For type-dependent flows we may swap the destination below; the
+  // response object stays the same so cookies still propagate.
+  let response = NextResponse.redirect(destination)
+
+  const supabase = createClientForResponse(request, response)
+
+  let sessionUser:
+    | {
+        id: string
+        email?: string | null
+        email_confirmed_at?: string | null
+        user_metadata?: Record<string, any>
+      }
+    | null = null
   let authError: unknown = null
 
   if (code) {
@@ -60,27 +115,36 @@ export async function GET(request: Request) {
     authError = error
   }
 
+  // Helper: swap the redirect Location while preserving the cookies
+  // setAll() already wrote onto `response`.
+  const redirectTo = (url: string): NextResponse => {
+    const next = NextResponse.redirect(url)
+    for (const cookie of response.cookies.getAll()) next.cookies.set(cookie)
+    return next
+  }
+
   if (sessionUser && !authError) {
     // Password reset flow — send user to the reset password page
     if (type === "recovery") {
-      return NextResponse.redirect(`${origin}/reset-password`)
+      return redirectTo(`${origin}/reset-password`)
     }
 
     // Email verification (signup confirmation) — always show success page
     if (type === "signup" || type === "email" || source === "email_verify") {
       await handleVerifiedUser(sessionUser)
-      return NextResponse.redirect(`${origin}/auth/verified`)
+      return redirectTo(`${origin}/auth/verified`)
     }
 
-    return NextResponse.redirect(`${origin}${next}`)
+    // Default OAuth success path — destination already baked in.
+    return response
   }
 
   // Verification failed — redirect to dedicated failure page for email flows
   if (type === "signup" || type === "email" || token_hash || source === "email_verify") {
     console.error(`[Auth Callback] Verification failed:`, authError)
-    return NextResponse.redirect(`${origin}/verification-failed`)
+    return redirectTo(`${origin}/verification-failed`)
   }
 
   // Auth error — redirect to login with error param
-  return NextResponse.redirect(`${origin}/login?error=auth`)
+  return redirectTo(`${origin}/login?error=auth`)
 }
