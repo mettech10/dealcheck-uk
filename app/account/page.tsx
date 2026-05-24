@@ -47,32 +47,8 @@ export default async function AccountPage() {
   const freeUsed = (row?.free_analyses_used as number) ?? 0
   const paidCredits = (row?.paid_credits_remaining as number) ?? 0
 
-  // Full credit state for the prominent Credits card at the top.
-  // Backed by the new get_user_credit_state RPC so the join logic
-  // isn't duplicated across this page and /api/user/credits.
-  const { data: creditRpc } = await admin.rpc("get_user_credit_state", {
-    p_user_id: user.id,
-  })
-  const creditRow = (Array.isArray(creditRpc) ? creditRpc[0] : creditRpc) as
-    | {
-        is_unlimited: boolean | null
-        unlimited_until: string | null
-        credit_balance: number | null
-        total_credits_purchased: number | null
-        total_credits_used: number | null
-      }
-    | null
-  const creditState = {
-    isUnlimited: !!creditRow?.is_unlimited,
-    unlimitedUntil: creditRow?.unlimited_until
-      ? new Date(creditRow.unlimited_until)
-      : null,
-    creditBalance: creditRow?.credit_balance ?? 0,
-    totalPurchased: creditRow?.total_credits_purchased ?? 0,
-    totalUsed: creditRow?.total_credits_used ?? 0,
-  }
-
-  // Subscription row for renewal date + Stripe customer id.
+  // Subscription row for renewal date + Stripe customer id. Loaded
+  // first because the credit-state fallback below uses it.
   const { data: sub } = await admin
     .from("user_subscriptions")
     .select("current_period_end, cancel_at_period_end, stripe_customer_id")
@@ -83,18 +59,83 @@ export default async function AccountPage() {
   const cancelAtPeriodEnd = !!sub?.cancel_at_period_end
   const hasStripeCustomer = !!sub?.stripe_customer_id
 
-  // Credit history — last 15 rows, including new non-Stripe events
-  // (admin_grant, analysis_used) added in the 20260524 migration. The
-  // event_type + credit_delta columns are nullable on pre-migration
-  // rows; we render them defensively in the table below.
-  const { data: payments } = await admin
-    .from("payment_history")
-    .select(
-      "id, created_at, amount_gbp, tier, status, description, event_type, credit_delta, notes",
+  // Full credit state for the prominent Credits card at the top.
+  // Tries the new get_user_credit_state RPC first; falls back to
+  // derived values from the columns already loaded above (paidCredits
+  // + tier + sub) so the page renders cleanly even pre-migration.
+  let creditState = {
+    isUnlimited: tierId === "pro" || tierId === "enterprise",
+    unlimitedUntil: sub?.current_period_end
+      ? new Date(sub.current_period_end)
+      : null,
+    creditBalance: paidCredits,
+    totalPurchased: 0,
+    totalUsed: 0,
+  }
+  try {
+    const { data: creditRpc, error: creditErr } = await admin.rpc(
+      "get_user_credit_state",
+      { p_user_id: user.id },
     )
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(15)
+    if (creditErr) throw creditErr
+    const creditRow = (Array.isArray(creditRpc) ? creditRpc[0] : creditRpc) as
+      | {
+          is_unlimited: boolean | null
+          unlimited_until: string | null
+          credit_balance: number | null
+          total_credits_purchased: number | null
+          total_credits_used: number | null
+        }
+      | null
+    if (creditRow) {
+      creditState = {
+        isUnlimited: !!creditRow.is_unlimited,
+        unlimitedUntil: creditRow.unlimited_until
+          ? new Date(creditRow.unlimited_until)
+          : null,
+        creditBalance: creditRow.credit_balance ?? 0,
+        totalPurchased: creditRow.total_credits_purchased ?? 0,
+        totalUsed: creditRow.total_credits_used ?? 0,
+      }
+    }
+  } catch (e) {
+    console.warn("[/account] get_user_credit_state unavailable, using fallback:", e)
+  }
+
+  // Credit history — last 15 rows, including new non-Stripe events
+  // (admin_grant, analysis_used) added in the 20260524 migration.
+  // Pre-migration: the extended columns don't exist yet. Select
+  // them in a try and fall back to the legacy column set so the
+  // page renders cleanly either way.
+  let payments: HistoryEntry[] | null = null
+  try {
+    const { data, error } = await admin
+      .from("payment_history")
+      .select(
+        "id, created_at, amount_gbp, tier, status, description, event_type, credit_delta, notes",
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(15)
+    if (error) throw error
+    payments = (data ?? []) as HistoryEntry[]
+  } catch {
+    const { data } = await admin
+      .from("payment_history")
+      .select("id, created_at, amount_gbp, tier, status, description")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(15)
+    // Promote legacy rows to the extended shape with nulled-out
+    // event_type / credit_delta / notes — CreditHistoryRow handles
+    // those nulls and falls back to legacy rendering.
+    payments = (data ?? []).map((r) => ({
+      ...(r as Omit<HistoryEntry, "event_type" | "credit_delta" | "notes">),
+      event_type: null,
+      credit_delta: null,
+      notes: null,
+    }))
+  }
 
   const isUnlimited = tierId === "pro" || tierId === "enterprise"
 

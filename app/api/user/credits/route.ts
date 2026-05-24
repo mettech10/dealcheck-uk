@@ -66,28 +66,73 @@ export async function GET() {
   }
 
   const admin = createAdminClient()
-  const { data, error } = await admin.rpc("get_user_credit_state", {
-    p_user_id: user.id,
-  })
-  if (error) {
-    console.warn("[/api/user/credits] RPC failed:", error)
-  }
-  const row = (Array.isArray(data) ? data[0] : data) as CreditStateRow | null
 
-  const tier = (row?.tier as TierId) ?? "free"
-  const isUnlimited = !!row?.is_unlimited
-  const creditBalance = row?.credit_balance ?? 0
-  const freeUsed = row?.free_analyses_used ?? 0
-  const freeLimit = row?.free_limit ?? FREE_MONTHLY_CAP
+  // Try the new RPC first (post-migration). If it's missing (pre-
+  // migration deployment, or the RPC was removed), fall back to
+  // reading user_subscriptions + user_usage directly so the endpoint
+  // STILL returns a coherent shape — no 500, no broken gate.
+  let tier: TierId = "free"
+  let isUnlimited = false
+  let unlimitedUntil: string | null = null
+  let creditBalance = 0
+  let totalPurchased = 0
+  let totalUsed = 0
+  let freeUsed = 0
+  const freeLimit = FREE_MONTHLY_CAP
+
+  try {
+    const { data, error } = await admin.rpc("get_user_credit_state", {
+      p_user_id: user.id,
+    })
+    if (error) throw error
+    const row = (Array.isArray(data) ? data[0] : data) as CreditStateRow | null
+    if (row) {
+      tier = (row.tier as TierId) ?? "free"
+      isUnlimited = !!row.is_unlimited
+      unlimitedUntil = row.unlimited_until ?? null
+      creditBalance = row.credit_balance ?? 0
+      totalPurchased = row.total_credits_purchased ?? 0
+      totalUsed = row.total_credits_used ?? 0
+      freeUsed = row.free_analyses_used ?? 0
+    }
+  } catch (e) {
+    // RPC unavailable (migration not yet applied) — degrade
+    // gracefully via direct table reads.
+    console.warn("[/api/user/credits] RPC unavailable, using fallback:", e)
+    const [{ data: sub }, { data: usage }] = await Promise.all([
+      admin
+        .from("user_subscriptions")
+        .select("tier, status, current_period_end")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      admin
+        .from("user_usage")
+        .select("paid_analysis_credits, free_analyses_used, period_start")
+        .eq("user_id", user.id)
+        .order("period_start", { ascending: false })
+        .limit(12),
+    ])
+    tier = (sub?.tier as TierId) ?? "free"
+    const status = sub?.status ?? "active"
+    isUnlimited =
+      (tier === "pro" || tier === "enterprise") && status === "active"
+    unlimitedUntil = sub?.current_period_end ?? null
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    const currentUsage = (usage ?? []).find((u) =>
+      (u as { period_start: string }).period_start.startsWith(currentMonth),
+    ) as { paid_analysis_credits?: number; free_analyses_used?: number } | undefined
+    creditBalance = currentUsage?.paid_analysis_credits ?? 0
+    freeUsed = currentUsage?.free_analyses_used ?? 0
+  }
 
   return NextResponse.json({
     authenticated: true,
     tier,
     isUnlimited,
-    unlimitedUntil: row?.unlimited_until ?? null,
+    unlimitedUntil,
     creditBalance,
-    totalPurchased: row?.total_credits_purchased ?? 0,
-    totalUsed: row?.total_credits_used ?? 0,
+    totalPurchased,
+    totalUsed,
     freeUsed,
     freeLimit,
     canAnalyse:
