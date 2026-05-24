@@ -99,6 +99,23 @@ export async function GET(request: NextRequest) {
   const source = searchParams.get("source")
   const next = searchParams.get("next") ?? "/analyse"
 
+  // Loud entry log so we can confirm in Vercel logs whether the
+  // callback is even being reached. If you click Continue on
+  // Google and this never prints, Supabase isn't redirecting here
+  // — config issue (Site URL / Redirect URLs / provider Client
+  // Secret) rather than a code bug.
+  console.log(
+    "[Auth Callback] entry",
+    JSON.stringify({
+      hasCode: !!code,
+      hasTokenHash: !!token_hash,
+      type,
+      source,
+      next,
+      cookieNames: request.cookies.getAll().map((c) => c.name),
+    }),
+  )
+
   // Compute the final destination BEFORE we run auth so we can build
   // the response now and bind the Supabase client's cookie writes to
   // it. setAll() in createClientForResponse writes onto response.cookies
@@ -165,6 +182,28 @@ export async function GET(request: NextRequest) {
     return redirectTo(`${origin}/verification-failed`)
   }
 
-  // Auth error — redirect to login with error param
-  return redirectTo(`${origin}/login?error=auth`)
+  // OAuth / generic failure. Surface the real reason in a query
+  // param (URL-safe truncation) so the next /api/debug/auth round
+  // gives a definitive diagnosis instead of the generic "?error=auth".
+  // No code AND no token_hash → the request never carried auth
+  // material in the first place. That usually means Supabase
+  // bounced the user back via its Site URL without our callback
+  // being part of the OAuth chain — config / redirect-allowlist
+  // issue. With a code present but no session, exchangeCodeForSession
+  // returned an error which authError captures.
+  const reason =
+    !code && !token_hash
+      ? "no_code_in_callback"
+      : authError
+        ? (authError as { message?: string }).message ?? "exchange_failed"
+        : "session_missing"
+  console.error(
+    `[Auth Callback] failed → /login`,
+    JSON.stringify({ reason, hasCode: !!code, hasUser: !!sessionUser }),
+  )
+  return redirectTo(
+    `${origin}/login?error=auth&reason=${encodeURIComponent(
+      String(reason).slice(0, 120),
+    )}`,
+  )
 }
