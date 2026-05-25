@@ -106,51 +106,81 @@ function failOpen(_userId: string): UsageGateResult {
  * If this call fails we log + swallow — we'd rather over-count
  * occasionally than mis-charge a user.
  */
+export type CreditTypeUsed = "pro" | "credit" | "free"
+
+/**
+ * Record one successful analysis. Returns which type of credit was
+ * actually consumed so the analyse route can include it in the
+ * response (drives PDF/Save unlock state on the frontend).
+ *
+ * Priority order (changed 2026-05-25):
+ *   1. Pro / Enterprise → no deduction, bump totals only
+ *   2. Paid credit > 0  → deduct 1 paid credit (regardless of tier
+ *                          label — admin grants previously left tier
+ *                          as 'free' but the credit should still be
+ *                          spent first)
+ *   3. Otherwise         → free counter
+ *
+ * If this call fails we log + swallow — we'd rather over-count
+ * occasionally than mis-charge a user.
+ */
 export async function recordAnalysisUsed(
   userId: string,
   tier: TierId,
-): Promise<void> {
-  if (!userId) return
+): Promise<CreditTypeUsed> {
+  if (!userId) return "free"
+
   try {
     const admin = createAdminClient()
-    if (tier === "free") {
+
+    // 1. Pro / Enterprise → unlimited. Just bump the totals so
+    //    /admin metrics reflect the run. Free counter rises but
+    //    the gate ignores it for these tiers.
+    if (tier === "pro" || tier === "enterprise") {
       const { error } = await admin.rpc("increment_free_usage", { p_user_id: userId })
-      if (error) console.warn("[usageGate] increment_free_usage failed:", error)
-      return
+      if (error) console.warn("[usageGate] increment_free_usage (pro) failed:", error)
+      return "pro"
     }
-    if (tier === "pay_per_analysis") {
-      const { error } = await admin.rpc("decrement_paid_credits", { p_user_id: userId })
-      if (error) console.warn("[usageGate] decrement_paid_credits failed:", error)
-      // Audit trail: surface this consumption on the user's Credit
-      // History card (/account) and the admin Credits view.
-      // event_type='analysis_used' + credit_delta=-1 is what the
-      // Credit History row renderer keys off. Best-effort — log
-      // failures don't propagate.
-      try {
-        await admin.from("payment_history").insert({
-          user_id: userId,
-          amount_gbp: 0,
-          tier: "pay_per_analysis",
-          status: "succeeded",
-          description: "Analysis credit consumed",
-          event_type: "analysis_used",
-          credit_delta: -1,
-        })
-      } catch (e) {
-        console.warn("[usageGate] payment_history audit row failed:", e)
+
+    // 2. Paid credit > 0 → spend it first, regardless of tier.
+    //    deduct_one_credit raises 'insufficient_credits' if balance
+    //    is already 0; we catch that and fall through to free.
+    try {
+      const { error } = await admin.rpc("deduct_one_credit", { p_user_id: userId })
+      if (error) {
+        // PostgREST surfaces our P0001 RAISE here. Treat as
+        // "no paid credit" and fall through.
+        if (!String(error.message ?? "").includes("insufficient_credits")) {
+          console.warn("[usageGate] deduct_one_credit failed:", error)
+        }
+      } else {
+        // Paid credit was spent — log the audit row.
+        try {
+          await admin.from("payment_history").insert({
+            user_id: userId,
+            amount_gbp: 0,
+            tier: "pay_per_analysis",
+            status: "succeeded",
+            description: "Analysis credit consumed",
+            event_type: "analysis_used",
+            credit_delta: -1,
+          })
+        } catch (e) {
+          console.warn("[usageGate] payment_history audit row failed:", e)
+        }
+        return "credit"
       }
-      return
+    } catch (e) {
+      console.warn("[usageGate] deduct_one_credit threw:", e)
     }
-    // Pro / Enterprise — no quota, but still bump the totals counter
-    // so the metrics view + per-user usage display reflects the run.
-    // Reuse increment_free_usage because it increments BOTH
-    // free_analyses_used and total_analyses_this_period; the free
-    // counter is harmless for Pro since the gate ignores it for them.
-    // (If you want totals-only without bumping free, add a dedicated
-    // RPC; for now this is fine.)
+
+    // 3. Free counter — last resort. Caller already verified
+    //    free_used < free_limit via checkCanAnalyse.
     const { error } = await admin.rpc("increment_free_usage", { p_user_id: userId })
-    if (error) console.warn("[usageGate] increment_free_usage (pro) failed:", error)
+    if (error) console.warn("[usageGate] increment_free_usage failed:", error)
+    return "free"
   } catch (e) {
     console.warn("[usageGate] recordAnalysisUsed threw:", e)
+    return "free"
   }
 }
