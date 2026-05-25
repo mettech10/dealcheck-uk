@@ -512,10 +512,19 @@ export async function POST(req: Request) {
       // returning — fire-and-forget so an RPC blip doesn't fail the
       // response. The gate at the top of this handler already validated
       // that the user had quota; this is the post-debit step.
+      // accessLevel drives the frontend's PDF / Save Deal unlock
+      // state. Computed from what recordAnalysisUsed actually
+      // consumed (paid credit, free quota, or no deduction for
+      // Pro), NOT from the tier label at request time — so
+      // admin-granted users whose tier hadn't been promoted yet
+      // still get the correct "paid" access.
+      let accessLevel: "pro" | "credit" | "free" = "free"
       if (user?.id) {
-        recordAnalysisUsed(user.id, usage.tier).catch((e) =>
-          console.warn("[analyse] recordAnalysisUsed failed:", e),
-        )
+        try {
+          accessLevel = await recordAnalysisUsed(user.id, usage.tier)
+        } catch (e) {
+          console.warn("[analyse] recordAnalysisUsed failed:", e)
+        }
         // Admin activity feed — fire-and-forget so a Supabase blip
         // doesn't taint the analyse response.
         logAdminActivity({
@@ -527,11 +536,25 @@ export async function POST(req: Request) {
             postcode: propertyData?.postcode ?? null,
             address: propertyData?.address ?? null,
             tier: usage.tier,
+            access_level: accessLevel,
           },
           ipAddress: ipFromRequest(req),
         }).catch(() => {})
       }
-      return NextResponse.json({ structured: data.results })
+      // PDF + Save unlock when the user paid for THIS run (credit
+      // spent, or Pro/Enterprise tier covers everything). Free
+      // tier always sees the upgrade modal on PDF/Save. The
+      // frontend reads these flags off the response object — no
+      // second round-trip to /api/payments/access needed for the
+      // happy path.
+      const pdfUnlocked = accessLevel === "pro" || accessLevel === "credit"
+      const saveUnlocked = pdfUnlocked
+      return NextResponse.json({
+        structured: data.results,
+        accessLevel,
+        pdfUnlocked,
+        saveUnlocked,
+      })
     }
 
     return NextResponse.json({ error: "Invalid mode" }, { status: 400 })
