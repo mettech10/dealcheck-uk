@@ -20,8 +20,13 @@
  */
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Sparkles, Zap } from "lucide-react"
+
+/** Window event other components can dispatch to force the pill to
+ *  refetch. Fired by /analyse after a successful analysis so the
+ *  user sees their balance drop without a page reload. */
+export const CREDITS_REFRESH_EVENT = "metalyzi:credits-refresh"
 
 interface CreditsResponse {
   authenticated: boolean
@@ -35,7 +40,7 @@ interface CreditsResponse {
 export function CreditsPill() {
   const [state, setState] = useState<CreditsResponse | null>(null)
 
-  useEffect(() => {
+  const fetchOnce = useCallback(() => {
     let cancelled = false
     fetch("/api/user/credits")
       .then((r) => (r.ok ? (r.json() as Promise<CreditsResponse>) : null))
@@ -49,6 +54,22 @@ export function CreditsPill() {
       cancelled = true
     }
   }, [])
+
+  // Initial fetch on mount.
+  useEffect(() => {
+    return fetchOnce()
+  }, [fetchOnce])
+
+  // Refresh trigger — any component can dispatch
+  // window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT)) to force
+  // an immediate refetch. Used by /analyse after a successful run
+  // so the user sees their balance drop without reloading.
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const handler = () => fetchOnce()
+    window.addEventListener(CREDITS_REFRESH_EVENT, handler)
+    return () => window.removeEventListener(CREDITS_REFRESH_EVENT, handler)
+  }, [fetchOnce])
 
   if (!state) return null
 

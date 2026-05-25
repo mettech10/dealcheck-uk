@@ -19,6 +19,7 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 // production TDZ (see b43cd13 revert). The inline gate banner is
 // re-introduced as a self-contained client island below.
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
+import { CREDITS_REFRESH_EVENT } from "@/components/landing/credits-pill"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
@@ -433,6 +434,14 @@ function AnalysePage() {
   const [upgradeFreeUsed, setUpgradeFreeUsed] = useState(0)
   const [aiLoading, setAiLoading] = useState(false)
   const [backendData, setBackendData] = useState<BackendResults | null>(null)
+  // accessLevel for the CURRENT analysis run — populated from
+  // /api/analyse response (Stage 2 of 2026-05-25 credit-deduct-on-run
+  // fix). 'pro' / 'credit' unlock PDF + Save immediately, no second
+  // modal. 'free' keeps the upgrade-prompt path. Reset on new run /
+  // saved-deal load.
+  const [runAccessLevel, setRunAccessLevel] = useState<
+    "pro" | "credit" | "free" | null
+  >(null)
   const [prefillData, setPrefillData] = useState<Partial<PropertyFormData> | null>(null)
   const [sqftSource, setSqftSource] = useState<string | undefined>(undefined)
   const [scrapedFromUrl, setScrapedFromUrl] = useState(false)
@@ -542,6 +551,22 @@ function AnalysePage() {
         // Extract AI analysis text -- our API returns { aiAnalysis: "...", structured: {...} }
         let analysis = data.aiAnalysis || ""
         let parsedResults = null
+
+        // Pick up the access level for this run — drives PDF / Save
+        // unlock. Defaults to 'free' if the response shape is older
+        // (back-compat for in-flight requests during deploy).
+        const rawAccess = (data.accessLevel ?? "free") as string
+        const access: "pro" | "credit" | "free" =
+          rawAccess === "pro" || rawAccess === "credit" ? rawAccess : "free"
+        setRunAccessLevel(access)
+
+        // Tell the navbar credit pill to refetch — the user just
+        // spent a credit (or used a free analysis) and should see
+        // the new balance immediately. window event keeps this
+        // decoupled from any shared context.
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT))
+        }
 
         // Store structured backend data if returned directly
         if (data.structured) {
@@ -1040,6 +1065,10 @@ function AnalysePage() {
       setError(null)
       setInputMode("manual")
       savedKeyRef.current = null // allow re-save if user triggers a new analysis
+      // Saved-deal load — user already paid for this in their past
+      // session AND we successfully persisted it (otherwise we
+      // wouldn't have it to load). PDF + Save are unlocked.
+      setRunAccessLevel("credit")
       // Scroll to top so the user sees the loaded analysis results
       window.scrollTo({ top: 0, behavior: "smooth" })
     },
@@ -1058,6 +1087,7 @@ function AnalysePage() {
     setScrapedListing(null)
     setRentalDetected(false)
     setRentalMonthlyRent(null)
+    setRunAccessLevel(null)
     savedKeyRef.current = null
     // Stop the loading-overlay tracker so the overlay doesn't briefly
     // flash on a new analysis kick-off (start() arms it again).
@@ -1490,13 +1520,26 @@ function AnalysePage() {
                 New Analysis
               </Button>
 
-              {/* Save Deal — three states based on per-deal access:
-                  (1) Pro / PPA-with-bound-credit: straight-through save.
-                  (2) Free user holding a floating PPA credit: save + bind
-                      the credit in one action (label flags the cost).
-                  (3) Free with no credit: opens upgrade modal. */}
-              {aiText && !aiLoading && userPermissions && (
-                userPermissions.canSaveDeals ? (
+              {/* Save Deal — primary unlock signal is runAccessLevel
+                  (the credit type spent at run time). If the user
+                  paid for this analysis (Pro or credit), save is
+                  free. Falls back to the older per-deal binding
+                  paths only for the historical "floating credit
+                  granted after analysis" case. Last resort: upgrade
+                  modal. */}
+              {aiText && !aiLoading && (
+                runAccessLevel === "pro" || runAccessLevel === "credit" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={savingNow || savedThisRun}
+                    onClick={persistAnalysis}
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <FileDown className="size-3.5" />
+                    {savedThisRun ? "Saved ✓" : savingNow ? "Saving…" : "Save Deal"}
+                  </Button>
+                ) : userPermissions && userPermissions.canSaveDeals ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1538,19 +1581,27 @@ function AnalysePage() {
                 )
               )}
 
-              {/* Save as PDF — per-analysis gate. Three states:
-                    1. access.canExportPDF=true (Pro/Ent or bound
-                       credit for this deal) → straight through.
-                    2. access.floatingCredits>0 (user has an unbound
-                       PPA credit, including admin grants) → "Use
-                       1 credit to export PDF" — saves the deal if
-                       needed, consumes the credit, then prints.
-                    3. Neither → upgrade modal.
-                  Server still enforces the PDF gate, this is the
-                  UX layer that turns a 1-click admin grant into a
-                  1-click PDF. */}
+              {/* Save as PDF — primary unlock signal is runAccessLevel
+                  (same as Save Deal above). If the user paid for
+                  this analysis (Pro or credit), PDF is free — no
+                  modal, no extra click. Falls back to per-deal
+                  binding paths for the legacy floating-credit case.
+                  Server-side PDF gate (per-analysis access) still
+                  exists but doesn't fire for the happy path now
+                  that the analysis run already consumed the credit
+                  to unlock everything. */}
               {aiText && !aiLoading && (
-                access?.canExportPDF ? (
+                runAccessLevel === "pro" || runAccessLevel === "credit" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSavePDF}
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  >
+                    <FileDown className="size-3.5" />
+                    Save as PDF
+                  </Button>
+                ) : access?.canExportPDF ? (
                   <Button
                     variant="outline"
                     size="sm"
