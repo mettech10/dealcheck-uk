@@ -880,6 +880,59 @@ function AnalysePage() {
     }
   }, [persistAnalysis, refreshAccess])
 
+  /**
+   * Save + consume credit + export PDF in one click. Used when the
+   * PDF button is in its "Use 1 credit to export PDF" state — i.e.
+   * the user has a floating PPA credit but it isn't yet bound to a
+   * saved analysis. Three steps, each guarded against the previous
+   * failing:
+   *   1. Ensure the analysis is saved (persistAnalysis returns the
+   *      id; if already saved this session, reuses savedAnalysisId).
+   *   2. POST /api/payments/consume-credit to bind the credit.
+   *   3. Refresh access state, then trigger window.print via the
+   *      existing handleSavePDF helper.
+   */
+  const consumeCreditAndExportPDF = useCallback(async () => {
+    let analysisId = savedAnalysisId
+    if (!analysisId) {
+      const saved = await persistAnalysis()
+      if (typeof saved !== "string") {
+        console.warn("[analyse] couldn't save analysis before consume")
+        return
+      }
+      analysisId = saved
+    }
+    try {
+      const r = await fetch("/api/payments/consume-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysisId }),
+      })
+      if (!r.ok) {
+        const err = (await r.json().catch(() => ({}))) as { error?: string }
+        console.warn("[analyse] consume-credit failed:", r.status, err)
+        return
+      }
+    } catch (e) {
+      console.warn("[analyse] consume-credit threw:", e)
+      return
+    }
+    await refreshAccess()
+    // Inline window.print logic (mirrors handleSavePDF) — can't
+    // reference handleSavePDF here because it's declared later in
+    // the component body and would TDZ on the deps array at first
+    // render. Same behaviour: toggle print-results class, fire the
+    // dialog, clean up afterprint.
+    if (typeof document === "undefined") return
+    document.body.classList.add("print-results")
+    const cleanup = () => {
+      document.body.classList.remove("print-results")
+      window.removeEventListener("afterprint", cleanup)
+    }
+    window.addEventListener("afterprint", cleanup)
+    setTimeout(() => window.print(), 100)
+  }, [savedAnalysisId, persistAnalysis, refreshAccess])
+
   useEffect(() => {
     // Only fire when AI loading just completed and we have data
     if (aiLoading || !aiText || !formData) return
@@ -1485,13 +1538,17 @@ function AnalysePage() {
                 )
               )}
 
-              {/* Save as PDF — per-analysis gate. access.canExportPDF is
-                  true for Pro/Ent and for PPA users whose credit is
-                  already bound to this analysis (either bind-at-checkout
-                  or via the Save Deal "use 1 credit" flow above). Free
-                  users with an unbound floating credit must save first
-                  to bind the credit, then PDF unlocks on the next
-                  access refresh. */}
+              {/* Save as PDF — per-analysis gate. Three states:
+                    1. access.canExportPDF=true (Pro/Ent or bound
+                       credit for this deal) → straight through.
+                    2. access.floatingCredits>0 (user has an unbound
+                       PPA credit, including admin grants) → "Use
+                       1 credit to export PDF" — saves the deal if
+                       needed, consumes the credit, then prints.
+                    3. Neither → upgrade modal.
+                  Server still enforces the PDF gate, this is the
+                  UX layer that turns a 1-click admin grant into a
+                  1-click PDF. */}
               {aiText && !aiLoading && (
                 access?.canExportPDF ? (
                   <Button
@@ -1502,6 +1559,17 @@ function AnalysePage() {
                   >
                     <FileDown className="size-3.5" />
                     Save as PDF
+                  </Button>
+                ) : access && access.floatingCredits > 0 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={consumeCreditAndExportPDF}
+                    className="gap-1.5 border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                    title={`Uses 1 of your ${access.floatingCredits} credit${access.floatingCredits === 1 ? "" : "s"}`}
+                  >
+                    <FileDown className="size-3.5" />
+                    Use 1 credit · export PDF
                   </Button>
                 ) : (
                   // NOT disabled — a disabled <button> doesn't dispatch
