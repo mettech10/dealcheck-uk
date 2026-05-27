@@ -29,7 +29,7 @@
  */
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
+import { openCheckout } from "@/lib/stripe"
 
 interface CreditState {
   authenticated: boolean
@@ -81,18 +81,25 @@ export function CreditGateBanner() {
           Buy a credit (£2.99) or go Pro to continue.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Link
-            href="/pricing"
+          {/* Direct-to-Stripe buttons. /pricing isn't a separate route
+              (pricing lives on the homepage as <section id="pricing">),
+              so the previous Link href="/pricing" 404'd. Opening
+              Stripe checkout straight away is the right UX anyway —
+              one click to pay, no extra navigation. */}
+          <button
+            type="button"
+            onClick={() => openCheckout("pay_per_analysis")}
             className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
           >
             Buy 1 Analysis — £2.99
-          </Link>
-          <Link
-            href="/pricing"
+          </button>
+          <button
+            type="button"
+            onClick={() => openCheckout("pro")}
             className="inline-flex items-center gap-1.5 rounded-md border border-border/40 px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-foreground/5"
           >
             Go Pro — £19.99/month
-          </Link>
+          </button>
         </div>
       </div>
     )
