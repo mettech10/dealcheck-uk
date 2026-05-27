@@ -23,10 +23,21 @@ import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { Sparkles, Zap } from "lucide-react"
 
-/** Window event other components can dispatch to force the pill to
- *  refetch. Fired by /analyse after a successful analysis so the
- *  user sees their balance drop without a page reload. */
+/** Window event other components can dispatch to update the pill.
+ *
+ *  Two modes:
+ *    - Plain Event (no detail) → pill refetches /api/user/credits.
+ *      Use when the caller doesn't know the new balance.
+ *    - CustomEvent with `detail: { newCreditBalance: number }` →
+ *      pill applies the value directly, no refetch. Use after
+ *      /api/analyse since the response carries the authoritative
+ *      post-deduction balance (no read-after-write race).
+ */
 export const CREDITS_REFRESH_EVENT = "metalyzi:credits-refresh"
+
+export interface CreditsRefreshDetail {
+  newCreditBalance?: number
+}
 
 interface CreditsResponse {
   authenticated: boolean
@@ -60,13 +71,28 @@ export function CreditsPill() {
     return fetchOnce()
   }, [fetchOnce])
 
-  // Refresh trigger — any component can dispatch
-  // window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT)) to force
-  // an immediate refetch. Used by /analyse after a successful run
-  // so the user sees their balance drop without reloading.
+  // Refresh trigger — two paths:
+  //   - CustomEvent with detail.newCreditBalance → apply directly,
+  //     no refetch. Kills the read-after-write race where
+  //     /api/user/credits would return the OLD balance because
+  //     the deduction commit hadn't propagated through the
+  //     connection pool yet.
+  //   - Plain Event (no detail) → refetch /api/user/credits.
+  //     Used by callers that only know "something changed".
   useEffect(() => {
     if (typeof window === "undefined") return
-    const handler = () => fetchOnce()
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<CreditsRefreshDetail>).detail
+      if (detail && typeof detail.newCreditBalance === "number") {
+        setState((prev) =>
+          prev
+            ? { ...prev, creditBalance: detail.newCreditBalance ?? prev.creditBalance }
+            : prev,
+        )
+        return
+      }
+      fetchOnce()
+    }
     window.addEventListener(CREDITS_REFRESH_EVENT, handler)
     return () => window.removeEventListener(CREDITS_REFRESH_EVENT, handler)
   }, [fetchOnce])

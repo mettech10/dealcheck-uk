@@ -108,10 +108,25 @@ function failOpen(_userId: string): UsageGateResult {
  */
 export type CreditTypeUsed = "pro" | "credit" | "free"
 
+/** What recordAnalysisUsed returns to the caller. newCreditBalance
+ *  is the AUTHORITATIVE post-deduction balance — the analyse route
+ *  echoes it back in its response so the frontend's navbar pill
+ *  can apply it directly without a /api/user/credits refetch race
+ *  (P1 fix, 2026-05-26).
+ *
+ *  Set to null for the free + pro paths because the paid pool
+ *  wasn't touched on those runs — the caller already has the value.
+ */
+export interface AnalysisUsageResult {
+  creditType: CreditTypeUsed
+  newCreditBalance: number | null
+}
+
 /**
  * Record one successful analysis. Returns which type of credit was
- * actually consumed so the analyse route can include it in the
- * response (drives PDF/Save unlock state on the frontend).
+ * actually consumed PLUS (when a paid credit was spent) the new
+ * balance after deduction, so the analyse route's 201 response is
+ * the single source of truth — no read-after-write window.
  *
  * Priority order (changed 2026-05-25):
  *   1. Pro / Enterprise → no deduction, bump totals only
@@ -127,8 +142,8 @@ export type CreditTypeUsed = "pro" | "credit" | "free"
 export async function recordAnalysisUsed(
   userId: string,
   tier: TierId,
-): Promise<CreditTypeUsed> {
-  if (!userId) return "free"
+): Promise<AnalysisUsageResult> {
+  if (!userId) return { creditType: "free", newCreditBalance: null }
 
   try {
     const admin = createAdminClient()
@@ -139,14 +154,18 @@ export async function recordAnalysisUsed(
     if (tier === "pro" || tier === "enterprise") {
       const { error } = await admin.rpc("increment_free_usage", { p_user_id: userId })
       if (error) console.warn("[usageGate] increment_free_usage (pro) failed:", error)
-      return "pro"
+      return { creditType: "pro", newCreditBalance: null }
     }
 
     // 2. Paid credit > 0 → spend it first, regardless of tier.
     //    deduct_one_credit raises 'insufficient_credits' if balance
     //    is already 0; we catch that and fall through to free.
+    //    The RPC returns the post-deduction balance as an integer,
+    //    which we plumb back to the caller.
     try {
-      const { error } = await admin.rpc("deduct_one_credit", { p_user_id: userId })
+      const { data, error } = await admin.rpc("deduct_one_credit", {
+        p_user_id: userId,
+      })
       if (error) {
         // PostgREST surfaces our P0001 RAISE here. Treat as
         // "no paid credit" and fall through.
@@ -168,7 +187,16 @@ export async function recordAnalysisUsed(
         } catch (e) {
           console.warn("[usageGate] payment_history audit row failed:", e)
         }
-        return "credit"
+        const newBalance =
+          typeof data === "number"
+            ? data
+            : typeof data === "string"
+              ? Number(data)
+              : 0
+        return {
+          creditType: "credit",
+          newCreditBalance: Number.isFinite(newBalance) ? newBalance : 0,
+        }
       }
     } catch (e) {
       console.warn("[usageGate] deduct_one_credit threw:", e)
@@ -178,9 +206,9 @@ export async function recordAnalysisUsed(
     //    free_used < free_limit via checkCanAnalyse.
     const { error } = await admin.rpc("increment_free_usage", { p_user_id: userId })
     if (error) console.warn("[usageGate] increment_free_usage failed:", error)
-    return "free"
+    return { creditType: "free", newCreditBalance: null }
   } catch (e) {
     console.warn("[usageGate] recordAnalysisUsed threw:", e)
-    return "free"
+    return { creditType: "free", newCreditBalance: null }
   }
 }

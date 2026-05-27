@@ -519,9 +519,12 @@ export async function POST(req: Request) {
       // admin-granted users whose tier hadn't been promoted yet
       // still get the correct "paid" access.
       let accessLevel: "pro" | "credit" | "free" = "free"
+      let newCreditBalance: number | null = null
       if (user?.id) {
         try {
-          accessLevel = await recordAnalysisUsed(user.id, usage.tier)
+          const result = await recordAnalysisUsed(user.id, usage.tier)
+          accessLevel = result.creditType
+          newCreditBalance = result.newCreditBalance
         } catch (e) {
           console.warn("[analyse] recordAnalysisUsed failed:", e)
         }
@@ -546,7 +549,10 @@ export async function POST(req: Request) {
       // tier always sees the upgrade modal on PDF/Save. The
       // frontend reads these flags off the response object — no
       // second round-trip to /api/payments/access needed for the
-      // happy path.
+      // happy path. newCreditBalance is the post-deduction value
+      // straight from the RPC return, so the navbar pill can
+      // apply it directly without a /api/user/credits refetch
+      // (kills the read-after-write race).
       const pdfUnlocked = accessLevel === "pro" || accessLevel === "credit"
       const saveUnlocked = pdfUnlocked
       return NextResponse.json({
@@ -554,6 +560,7 @@ export async function POST(req: Request) {
         accessLevel,
         pdfUnlocked,
         saveUnlocked,
+        newCreditBalance,
       })
     }
 

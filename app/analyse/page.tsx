@@ -560,12 +560,24 @@ function AnalysePage() {
           rawAccess === "pro" || rawAccess === "credit" ? rawAccess : "free"
         setRunAccessLevel(access)
 
-        // Tell the navbar credit pill to refetch — the user just
-        // spent a credit (or used a free analysis) and should see
-        // the new balance immediately. window event keeps this
-        // decoupled from any shared context.
+        // Tell the navbar credit pill the new balance — the
+        // response carries the AUTHORITATIVE post-deduction
+        // newCreditBalance from the deduct_one_credit RPC, so
+        // the pill can apply it directly without a refetch.
+        // Bypasses the brief moment where /api/user/credits
+        // would still see the old balance (read-after-write
+        // race on Supabase free-tier connection pooling).
         if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT))
+          const newBalance: unknown = data.newCreditBalance
+          if (typeof newBalance === "number") {
+            window.dispatchEvent(
+              new CustomEvent(CREDITS_REFRESH_EVENT, {
+                detail: { newCreditBalance: newBalance },
+              }),
+            )
+          } else {
+            window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT))
+          }
         }
 
         // Store structured backend data if returned directly
@@ -1527,7 +1539,7 @@ function AnalysePage() {
                   paths only for the historical "floating credit
                   granted after analysis" case. Last resort: upgrade
                   modal. */}
-              {aiText && !aiLoading && (
+              {!aiLoading && (results || aiText) && (
                 runAccessLevel === "pro" || runAccessLevel === "credit" ? (
                   <Button
                     variant="outline"
@@ -1590,7 +1602,7 @@ function AnalysePage() {
                   exists but doesn't fire for the happy path now
                   that the analysis run already consumed the credit
                   to unlock everything. */}
-              {aiText && !aiLoading && (
+              {!aiLoading && (results || aiText) && (
                 runAccessLevel === "pro" || runAccessLevel === "credit" ? (
                   <Button
                     variant="outline"
