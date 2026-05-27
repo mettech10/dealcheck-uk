@@ -2,6 +2,11 @@ import Stripe from "stripe"
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  sendPaymentConfirmationEmail,
+  sendSubscriptionWelcomeEmail,
+  sendOwnerPaymentNotification,
+} from "@/lib/paymentEmails"
 
 /**
  * GET /api/payments/verify-session?session_id=cs_…
@@ -131,6 +136,7 @@ export async function GET(req: Request) {
   }
 
   let issued = false
+  let issuedAmount = 0
   if (!alreadyRecorded) {
     if (tier === "pay_per_analysis") {
       // Bind-at-checkout — webhook supports the same; mirror here.
@@ -152,6 +158,7 @@ export async function GET(req: Request) {
         })
         if (error) throw error
         issued = true
+        issuedAmount = amountPaid
       } catch (e) {
         console.error("[verify-session] add_analysis_credits failed:", e)
       }
@@ -189,8 +196,51 @@ export async function GET(req: Request) {
           credit_delta: 0,
         })
         issued = true
+        issuedAmount = amountPaid
       } catch (e) {
         console.error("[verify-session] pro upsert failed:", e)
+      }
+    }
+  }
+
+  // ── Emails on the just-issued path ──────────────────────────────────
+  // Only fires when verify-session was the FIRST to record this
+  // session (issued=true). If the webhook beat us, alreadyRecorded
+  // is true and the webhook already sent its own emails — don't
+  // double-send. Best-effort: each email failure is logged + swallowed
+  // so the user still gets their success response.
+  if (issued) {
+    const userEmail = user.email ?? null
+    if (userEmail) {
+      try {
+        if (tier === "pay_per_analysis") {
+          await sendPaymentConfirmationEmail({
+            userEmail,
+            amount: issuedAmount,
+            sessionId: session.id,
+          })
+        } else if (tier === "pro") {
+          await sendSubscriptionWelcomeEmail({ userEmail })
+        }
+      } catch (e) {
+        console.warn("[verify-session] user confirmation email failed:", e)
+      }
+      try {
+        await sendOwnerPaymentNotification({
+          kind: tier === "pro" ? "pro_start" : "ppa_purchase",
+          amountGbp: issuedAmount,
+          userEmail,
+          userId: user.id,
+          stripeSessionId: session.id,
+          stripeSubscriptionId:
+            typeof session.subscription === "string"
+              ? session.subscription
+              : session.subscription?.id ?? null,
+          note:
+            "Issued by /api/payments/verify-session — webhook hadn't fired yet at the time the user landed on /payment-success.",
+        })
+      } catch (e) {
+        console.warn("[verify-session] owner notification email failed:", e)
       }
     }
   }
