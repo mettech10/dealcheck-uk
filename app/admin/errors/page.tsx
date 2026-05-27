@@ -33,7 +33,7 @@ const STATUS_OPTIONS = [
 const TYPE_OPTIONS = [
   { id: "all", label: "All types" },
   { id: "api_error", label: "API" },
-  { id: "scraper_error", label: "Scraper" },
+  { id: "scraper_error", label: "Data Fetch" },
   { id: "payment_error", label: "Payment" },
   { id: "auth_error", label: "Auth" },
   { id: "frontend_error", label: "Frontend" },
@@ -195,7 +195,8 @@ export default function AdminErrorsPage() {
                             TYPE_BADGE_STYLE[typeKey] ?? TYPE_BADGE_STYLE.unknown
                           }`}
                         >
-                          {typeKey.replace("_", " ")}
+                          {TYPE_OPTIONS.find((o) => o.id === typeKey)?.label
+                            ?? typeKey.replace("_", " ")}
                         </span>
                       </td>
                       <td className="px-3 py-3 font-mono text-[11px] text-[#9CA3AF]">

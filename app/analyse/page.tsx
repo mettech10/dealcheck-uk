@@ -733,7 +733,7 @@ function AnalysePage() {
         if (!res.ok) {
           const errData = await res.json().catch(() => null)
           throw new Error(
-            errData?.error || "Failed to scrape the listing. Please try again."
+            errData?.error || "Failed to fetch the listing. Please try again."
           )
         }
 
@@ -1508,15 +1508,15 @@ function AnalysePage() {
           </div>
         )}
 
-        {/* Loading state (URL scraping) */}
+        {/* Loading state (URL fetch) */}
         {isProcessing && inputMode === "url" && !hasResults && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Loader2 className="mb-4 size-10 animate-spin text-primary" />
             <h3 className="text-lg font-semibold text-foreground">
-              Scraping Listing Details...
+              Fetching Property Data...
             </h3>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-              Extracting property details from the listing page. This may take a
+              Pulling property details from the listing page. This may take a
               moment if the backend is warming up.
             </p>
           </div>
