@@ -113,38 +113,23 @@ export function CreditsPill() {
     )
   }
 
-  // PPA with credits — grey/neutral pill with the balance.
-  if (state.creditBalance > 0) {
-    return (
-      <Link
-        href="/account#credits"
-        className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-primary/60"
-        title={`${state.creditBalance} analysis credit${state.creditBalance === 1 ? "" : "s"} remaining`}
-      >
-        <Zap className="size-3 text-primary" />
-        {state.creditBalance} credit{state.creditBalance === 1 ? "" : "s"}
-      </Link>
-    )
-  }
-
-  // Free tier (or anonymous) — amber counter.
-  const left = Math.max(0, state.freeLimit - state.freeUsed)
-  const exhausted = left <= 0
+  // Everyone else: free + PPA folded into a single "credits" counter.
+  // Free monthly allowance is treated like credits (counted down rather
+  // than counted up against the limit), so the user sees one number
+  // they understand instead of two pools they have to mentally add.
+  // Same teal pill style across all balance values for consistency —
+  // 0 doesn't get an amber treatment because the inline blocked-state
+  // banner on /analyse already covers that messaging.
+  const freeLeft = Math.max(0, state.freeLimit - state.freeUsed)
+  const totalCredits = freeLeft + Math.max(0, state.creditBalance)
   return (
     <Link
       href={state.authenticated ? "/account#credits" : "/pricing"}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-        exhausted
-          ? "border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20"
-          : "border-amber-500/30 bg-amber-500/5 text-amber-200 hover:bg-amber-500/15"
-      }`}
-      title={
-        exhausted
-          ? "Free analyses used — upgrade to keep analysing"
-          : `${left} free ${left === 1 ? "analysis" : "analyses"} left this month`
-      }
+      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:border-primary/60"
+      title={`${totalCredits} analysis credit${totalCredits === 1 ? "" : "s"} remaining`}
     >
-      {left}/{state.freeLimit} free
+      <Zap className="size-3 text-primary" />
+      {totalCredits} credit{totalCredits === 1 ? "" : "s"}
     </Link>
   )
 }

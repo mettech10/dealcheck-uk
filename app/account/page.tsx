@@ -161,16 +161,27 @@ export default async function AccountPage() {
         tierLabel={tier.name}
       />
 
-      {/* ── Current Plan ───────────────────────────────────────────── */}
+      {/* ── Current Plan ─────────────────────────────────────────────
+          Renamed the PPA tier display from "Pay Per Analysis" → "Pay
+          as you go" — friendlier copy, and avoids confusing the user
+          when "Buy 1 Analysis" sits right above. Buy/Upgrade buttons
+          are no longer rendered here; they live on the Credits card
+          at the top of the page so we don't double-stack the same
+          two CTAs in adjacent cards. The "Manage Subscription"
+          button stays — it's a different action (Stripe portal). */}
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="size-4 text-primary" />
-                {tier.name}
+                {tierId === "pay_per_analysis" ? "Pay as you go" : tier.name}
               </CardTitle>
-              <CardDescription>{tier.description}</CardDescription>
+              <CardDescription>
+                {tierId === "pay_per_analysis"
+                  ? "Buy credits one at a time — no monthly commitment"
+                  : tier.description}
+              </CardDescription>
             </div>
             <PlanStatusBadge tierId={tierId} status={status} cancelAtPeriodEnd={cancelAtPeriodEnd} />
           </div>
@@ -207,12 +218,13 @@ export default async function AccountPage() {
             </div>
           )}
 
-          <div className="flex flex-wrap gap-3 pt-2">
-            {tierId === "pro" || hasStripeCustomer ? (
+          {/* Manage Subscription only — Buy/Upgrade CTAs live on the
+              Credits card above, no point repeating them here. */}
+          {(tierId === "pro" || hasStripeCustomer) && (
+            <div className="flex flex-wrap gap-3 pt-2">
               <ManageSubscriptionButton />
-            ) : null}
-            {tierId !== "pro" && tierId !== "enterprise" && <BuyUpgradeButtons />}
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
