@@ -22,6 +22,11 @@ interface CreditsCardProps {
   totalPurchased: number
   totalUsed: number
   tierLabel: string
+  // Free-tier allowance for this month (used vs limit). Folded into
+  // the displayed "credits remaining" number so the card agrees with
+  // the navbar CreditsPill — both treat free + paid as one pool.
+  freeUsed: number
+  freeLimit: number
 }
 
 export function CreditsCard({
@@ -31,7 +36,11 @@ export function CreditsCard({
   totalPurchased,
   totalUsed,
   tierLabel,
+  freeUsed,
+  freeLimit,
 }: CreditsCardProps) {
+  const freeRemaining = Math.max(0, freeLimit - freeUsed)
+  const totalAvailable = freeRemaining + creditBalance
   return (
     <Card
       id="credits"
@@ -73,13 +82,18 @@ export function CreditsCard({
               </p>
             )}
           </div>
-        ) : creditBalance > 0 ? (
+        ) : totalAvailable > 0 ? (
           <div className="flex flex-col gap-0.5">
             <span className="text-5xl font-bold text-primary">
-              {creditBalance}
+              {totalAvailable}
             </span>
             <span className="text-sm text-muted-foreground">
-              credit{creditBalance === 1 ? "" : "s"} remaining · never expires
+              analysis credit{totalAvailable === 1 ? "" : "s"} available
+              {freeRemaining > 0 && creditBalance > 0
+                ? ` · ${freeRemaining} free + ${creditBalance} paid`
+                : freeRemaining > 0
+                  ? ` · ${freeRemaining} free this month`
+                  : " · never expires"}
             </span>
           </div>
         ) : (
@@ -88,8 +102,8 @@ export function CreditsCard({
             <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5 text-sm text-amber-200">
               <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-500" />
               <span>
-                No credits yet. Buy a one-off analysis or go Pro for
-                unlimited.
+                You&apos;ve used all your free analyses this month. Buy a
+                one-off analysis or go Pro for unlimited.
               </span>
             </div>
           </div>

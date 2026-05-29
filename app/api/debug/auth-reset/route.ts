@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
+import { isAdminEmail } from "@/lib/admin"
 
 /**
  * GET /api/debug/auth-reset
@@ -22,6 +24,20 @@ import { cookies } from "next/headers"
 export const dynamic = "force-dynamic"
 
 export async function GET() {
+  // Admin gate — non-admins get a 404 so the endpoint isn't a
+  // drive-by sign-out tool for any visitor.
+  let userEmail: string | null = null
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase.auth.getUser()
+    userEmail = data.user?.email ?? null
+  } catch {
+    /* getUser errors are fine — we treat that as anon */
+  }
+  if (!isAdminEmail(userEmail)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 })
+  }
+
   const cookieStore = await cookies()
   const all = cookieStore.getAll()
   const sbCookies = all.filter((c) => c.name.startsWith("sb-"))

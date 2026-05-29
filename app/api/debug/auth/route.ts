@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createClient } from "@/lib/supabase/server"
+import { isAdminEmail } from "@/lib/admin"
 
 /**
  * GET /api/debug/auth — auth-state introspection (signed-in or not).
@@ -39,6 +40,13 @@ export async function GET(req: Request) {
     if (error) authError = error.message
   } catch (e) {
     authError = e instanceof Error ? e.message : "unknown"
+  }
+
+  // Admin gate — endpoint was originally open so users could debug
+  // their own login. Now restricted to ADMIN_EMAILS to avoid leaking
+  // cookie names + host info to anyone who finds the URL.
+  if (!isAdminEmail(userEmail)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 })
   }
 
   const host = req.headers.get("host") ?? ""

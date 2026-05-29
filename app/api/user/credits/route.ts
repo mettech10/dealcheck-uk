@@ -28,6 +28,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { FREE_MONTHLY_CAP, type TierId } from "@/lib/tiers"
+import { deriveCanAnalyse } from "@/lib/usageGate"
 
 export const dynamic = "force-dynamic"
 
@@ -135,7 +136,11 @@ export async function GET() {
     totalUsed,
     freeUsed,
     freeLimit,
-    canAnalyse:
-      isUnlimited || creditBalance > 0 || freeUsed < freeLimit,
+    canAnalyse: deriveCanAnalyse({
+      isUnlimited,
+      creditBalance,
+      freeUsed,
+      freeLimit,
+    }),
   })
 }

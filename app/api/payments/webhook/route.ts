@@ -502,13 +502,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Webhook signature failed" }, { status: 400 })
   }
 
-  // Highly visible top-of-handler log — fires before any of the
-  // per-event handlers that might throw, so a missing PPA email can
-  // be traced back to "webhook never received this event" vs.
-  // "received but handler crashed".
-  console.log("[Stripe Webhook] Event received:", event.type, event.id)
-  console.log("[webhook] processing", event.type, event.id)
-
+  // Top-of-handler logging used to fire here for every event — noisy
+  // in production. Error paths below still log via console.error,
+  // which is enough to trace handler crashes from Vercel logs.
   try {
     switch (event.type) {
       case "checkout.session.completed":

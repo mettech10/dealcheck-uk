@@ -24,6 +24,30 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { FREE_MONTHLY_CAP, type TierId } from "@/lib/tiers"
 
+/**
+ * Pure derivation: given the raw counters that show up in EITHER
+ * `get_user_tier` or `get_user_credit_state`, decide whether the
+ * user can run another analysis.
+ *
+ * Single source of truth for the gate logic. Consumed by:
+ *   - `checkCanAnalyse` below (server-side gate via get_user_tier)
+ *   - `/api/user/credits` (client-facing state via get_user_credit_state)
+ * so the navbar pill, the analyse banner, and the server gate all
+ * agree on what "can analyse" means.
+ */
+export function deriveCanAnalyse(params: {
+  isUnlimited: boolean
+  creditBalance: number
+  freeUsed: number
+  freeLimit: number
+}): boolean {
+  return (
+    params.isUnlimited ||
+    params.creditBalance > 0 ||
+    params.freeUsed < params.freeLimit
+  )
+}
+
 export interface UsageGateResult {
   canAnalyse: boolean
   tier: TierId

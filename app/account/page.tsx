@@ -159,6 +159,8 @@ export default async function AccountPage() {
         totalPurchased={creditState.totalPurchased}
         totalUsed={creditState.totalUsed}
         tierLabel={tier.name}
+        freeUsed={freeUsed}
+        freeLimit={FREE_MONTHLY_CAP}
       />
 
       {/* ── Current Plan ─────────────────────────────────────────────

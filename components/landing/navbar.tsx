@@ -142,19 +142,19 @@ export function Navbar({ user }: NavbarProps) {
         {/* Desktop nav */}
         <div className="hidden items-center gap-8 md:flex">
           <a
-            href="#features"
+            href="/#features"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             Features
           </a>
           <a
-            href="#how-it-works"
+            href="/#how-it-works"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             How It Works
           </a>
           <a
-            href="#pricing"
+            href="/#pricing"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             Pricing
@@ -292,21 +292,21 @@ export function Navbar({ user }: NavbarProps) {
         <div className="border-t border-border/50 bg-background px-6 py-4 md:hidden">
           <div className="flex flex-col gap-4">
             <a
-              href="#features"
+              href="/#features"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               onClick={() => setMobileOpen(false)}
             >
               Features
             </a>
             <a
-              href="#how-it-works"
+              href="/#how-it-works"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               onClick={() => setMobileOpen(false)}
             >
               How It Works
             </a>
             <a
-              href="#pricing"
+              href="/#pricing"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               onClick={() => setMobileOpen(false)}
             >

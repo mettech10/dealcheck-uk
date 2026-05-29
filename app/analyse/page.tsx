@@ -19,7 +19,7 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 // production TDZ (see b43cd13 revert). The inline gate banner is
 // re-introduced as a self-contained client island below.
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
-import { CREDITS_REFRESH_EVENT } from "@/components/landing/credits-pill"
+import { CREDITS_REFRESH_EVENT, CreditsPill } from "@/components/landing/credits-pill"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
@@ -1174,12 +1174,15 @@ function AnalysePage() {
           </Link>
           {/* Top-bar Quick Tools strip removed — the global navbar
               dropdown now covers all tool entry points. */}
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/">
-              <ArrowLeft className="size-3.5" />
-              Back
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <CreditsPill />
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/">
+                <ArrowLeft className="size-3.5" />
+                Back
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 
