@@ -81,12 +81,12 @@ export default function PortfolioPage() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-          <Link href="/?dev=metalyzi2026" className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <Image src="/logo.png" alt="Metalyzi" width={32} height={32} className="rounded-lg" />
             <span className="text-lg font-semibold">Metalyzi</span>
           </Link>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/?dev=metalyzi2026">
+            <Link href="/">
               <ArrowLeft className="mr-2 size-4" />
               Back
             </Link>
