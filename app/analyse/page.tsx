@@ -675,6 +675,10 @@ function AnalysePage() {
   const handleManualSubmit = useCallback(
     async (data: PropertyFormData) => {
       setError(null)
+      // Hard paywall: no credit-burning request ever leaves the
+      // browser when the user is out of entitlement.
+      const ok = await ensureCreditOrGate()
+      if (!ok) return
       setIsLoading(true)
 
       const calcResults = calculateAll(data)
@@ -698,7 +702,7 @@ function AnalysePage() {
         setIsLoading(false)
       }
     },
-    [callAnalysisAPI]
+    [callAnalysisAPI, ensureCreditOrGate]
   )
 
   // URL-based submission -- scrapes data then transitions to manual form with pre-filled fields
@@ -720,6 +724,11 @@ function AnalysePage() {
         )
         return
       }
+
+      // Hard paywall: out-of-credit users see the PPA / Pro modal
+      // BEFORE we hit the scraper or any analysis endpoint.
+      const ok = await ensureCreditOrGate()
+      if (!ok) return
 
       setIsLoading(true)
 
@@ -828,7 +837,7 @@ function AnalysePage() {
         setIsLoading(false)
       }
     },
-    [listingUrl]
+    [listingUrl, ensureCreditOrGate]
   )
 
   // Track last-saved analysis so we don't double-save on re-renders
@@ -849,8 +858,46 @@ function AnalysePage() {
   // (bound PPA credit, floating credit, or Pro).
   const [savedAnalysisId, setSavedAnalysisId] = useState<string | null>(null)
   const { access, refresh: refreshAccess } = useAnalysisAccess(savedAnalysisId)
-  // Pre-submit credit gate removed pending TDZ investigation —
-  // see header comment on useCreditGate import. Server still gates.
+  // Pre-submit credit gate (re-introduced 2026-05-29 as an inline
+  // one-shot fetch, NOT a hook — the previous hook-based version
+  // triggered a production TDZ). Returns true when the user has zero
+  // entitlement, in which case the caller short-circuits the submit
+  // and opens the UpgradeModal so the user can't reach the analyse
+  // API at all. Server still gates as defence-in-depth.
+  const ensureCreditOrGate = useCallback(async (): Promise<boolean> => {
+    try {
+      const r = await fetch("/api/user/credits", { cache: "no-store" })
+      if (!r.ok) return true // fail-open on network error — server still gates
+      const g = (await r.json()) as {
+        authenticated: boolean
+        canAnalyse: boolean
+        freeUsed: number
+        freeLimit: number
+        creditBalance: number
+        isUnlimited: boolean
+      }
+      if (!g.authenticated) {
+        setUpgradeReason("not_logged_in")
+        setShowUpgrade(true)
+        return false
+      }
+      if (!g.canAnalyse) {
+        // Out of free + paid + not unlimited. Pick the right copy
+        // for the modal: free_limit_reached if they've used their
+        // monthly free quota; no_credits if they're a PPA user
+        // whose paid balance is 0.
+        setUpgradeReason(
+          g.freeUsed >= g.freeLimit ? "free_limit_reached" : "no_credits",
+        )
+        setUpgradeFreeUsed(g.freeUsed ?? 0)
+        setShowUpgrade(true)
+        return false
+      }
+      return true
+    } catch {
+      return true // fail-open — server gate is the safety net
+    }
+  }, [])
 
   const persistAnalysis = useCallback(async () => {
     if (!aiText || !formData) return false
@@ -1012,6 +1059,9 @@ function AnalysePage() {
       return
     }
     setError(null)
+    // Hard paywall — PDF analysis also consumes a credit, so gate it.
+    const ok = await ensureCreditOrGate()
+    if (!ok) return
     setPdfProcessing(true)
 
     try {
@@ -1061,7 +1111,7 @@ function AnalysePage() {
     } finally {
       setPdfProcessing(false)
     }
-  }, [pdfFile])
+  }, [pdfFile, ensureCreditOrGate])
 
   const hasResults = (results && formData) || aiText
   const isProcessing = isLoading || aiLoading || pdfProcessing

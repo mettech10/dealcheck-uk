@@ -132,7 +132,15 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       p_amount_gbp: 2.99,
       p_analysis_id: boundAnalysisId,
     })
-    if (error) console.error("[webhook] add_analysis_credits RPC failed:", error)
+    if (error) {
+      // Critical: re-throw so the outer handler returns 5xx and Stripe
+      // RETRIES this event. Without this we'd ack 200 OK while the
+      // user's money is in Stripe and the credit was never granted —
+      // exactly the bug that bit us 2026-05-29 (missing analysis_id
+      // column made the RPC fail silently for every PPA purchase).
+      console.error("[webhook] add_analysis_credits RPC failed:", error)
+      throw new Error(`add_analysis_credits failed: ${error.message ?? "unknown"}`)
+    }
     // Stash the Stripe customer id for future billing-portal links + reuse.
     if (stripeCustomerId) {
       await admin
