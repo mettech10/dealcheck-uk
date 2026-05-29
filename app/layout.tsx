@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   description: 'Analyse any UK property deal in seconds. Get instant SDLT calculations, mortgage costs, rental yield, cash flow projections, and AI-powered investment insights.',
   keywords: ['property investment', 'UK property', 'SDLT calculator', 'rental yield', 'buy to let', 'property analysis'],
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
+    icon: '/logo.png',
+    shortcut: '/logo.png',
     apple: '/apple-icon.png',
   },
 }
