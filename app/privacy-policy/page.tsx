@@ -10,7 +10,7 @@ export default function PrivacyPolicyPage() {
       </h1>
 
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-        Last updated: 4 April 2026
+        Last updated: 29 May 2026
       </p>
 
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
@@ -54,7 +54,9 @@ export default function PrivacyPolicyPage() {
       <ul className="mb-4 list-disc pl-6">
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
           <strong>Account data:</strong> Your name, email address, and password
-          when you create an account with us.
+          when you create an account with us. If you choose to sign in with
+          Google instead, we receive a limited profile (see section 6 below)
+          rather than a password.
         </li>
         <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
           <strong>Property analysis data:</strong> Property details, addresses,
@@ -204,6 +206,13 @@ export default function PrivacyPolicyPage() {
           with Brevo to send you service notifications and, where you have
           consented, marketing communications.
         </li>
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>Google (Sign in with Google):</strong> If you choose to
+          authenticate with Google, Google acts as an identity provider and
+          shares a limited profile with us (see section 6). We do not share
+          any Metalyzi data back to Google beyond what is required to complete
+          the OAuth sign-in flow.
+        </li>
       </ul>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         We may also disclose your data if required to do so by law or in
@@ -211,9 +220,133 @@ export default function PrivacyPolicyPage() {
         or government agency.
       </p>
 
-      {/* 6. Data Retention */}
+      {/* 6. Google User Data */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        6. Data Retention
+        6. Google User Data (Sign in with Google)
+      </h2>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        Metalyzi offers &ldquo;Sign in with Google&rdquo; as an optional way to
+        create or access your account. This section sets out what Google user
+        data we receive, how we use it, where we store it, and what we do
+        <em> not</em> do with it. Our use of information received from Google
+        APIs adheres to the{" "}
+        <a
+          href="https://developers.google.com/terms/api-services-user-data-policy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline hover:text-primary/80"
+        >
+          Google API Services User Data Policy
+        </a>
+        , including the Limited Use requirements.
+      </p>
+
+      <h3 className="mb-3 mt-6 text-base font-semibold text-foreground">
+        6.1 Data we access from your Google account
+      </h3>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        When you sign in with Google, we request only the basic profile scopes
+        required to identify you and create your Metalyzi account. Specifically:
+      </p>
+      <ul className="mb-4 list-disc pl-6">
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>openid</strong> — a unique, stable Google account identifier
+          (the &ldquo;sub&rdquo; claim) used to recognise returning users.
+        </li>
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>email</strong> — your primary Google email address and its
+          verified status, used as your Metalyzi account email.
+        </li>
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>profile</strong> — your display name and (where provided)
+          your Google profile picture URL, used to personalise the Metalyzi
+          interface.
+        </li>
+      </ul>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        We do <strong>not</strong> request, access, or process any other
+        Google user data. We do not read your Gmail, Calendar, Drive,
+        Contacts, YouTube, Photos, or any other Google service data, and we
+        do not request scopes that would give us that access.
+      </p>
+
+      <h3 className="mb-3 mt-6 text-base font-semibold text-foreground">
+        6.2 How we use this data
+      </h3>
+      <ul className="mb-4 list-disc pl-6">
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>Authentication:</strong> the Google account identifier and
+          email are used to create your Metalyzi account on first sign-in and
+          to sign you back in on subsequent visits.
+        </li>
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>Account communications:</strong> the email address is used
+          to send you service-related notifications (e.g. receipts, security
+          alerts) and, only with your separate consent, marketing emails.
+        </li>
+        <li className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          <strong>Personalisation:</strong> your name and profile picture are
+          displayed to you in the navigation bar and account pages so you can
+          confirm which account you are signed into.
+        </li>
+      </ul>
+
+      <h3 className="mb-3 mt-6 text-base font-semibold text-foreground">
+        6.3 How we store this data
+      </h3>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        Google profile data is stored in our authentication database operated
+        by Supabase (see section 5), in the same record as your Metalyzi
+        account. It is encrypted at rest by the database provider and
+        transmitted over TLS. We do not store your Google password — that
+        always stays with Google.
+      </p>
+
+      <h3 className="mb-3 mt-6 text-base font-semibold text-foreground">
+        6.4 How we share this data
+      </h3>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        We do not sell, rent, or share Google user data with any third party
+        for advertising, profiling, or other unrelated purposes. We do not
+        use Google user data to train, develop, or improve generalised or
+        non-personalised AI/ML models. The only processors who handle Google
+        profile data are the same operational subprocessors listed in
+        section 5 (Supabase for storage, Vercel for hosting, Brevo for
+        email delivery) and they may only process it on our instructions to
+        run the service for you.
+      </p>
+
+      <h3 className="mb-3 mt-6 text-base font-semibold text-foreground">
+        6.5 Revoking access and deleting your data
+      </h3>
+      <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+        You can revoke Metalyzi&apos;s access to your Google account at any
+        time from your{" "}
+        <a
+          href="https://myaccount.google.com/permissions"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline hover:text-primary/80"
+        >
+          Google Account permissions page
+        </a>
+        . Revoking access will prevent future sign-ins via Google but does
+        not on its own delete your Metalyzi account. To delete your
+        Metalyzi account and the Google profile data associated with it,
+        email{" "}
+        <a
+          href="mailto:contact@metalyzi.co.uk"
+          className="text-primary underline hover:text-primary/80"
+        >
+          contact@metalyzi.co.uk
+        </a>{" "}
+        — we will erase the data within 30 days as set out in section 7
+        (formerly section 6).
+      </p>
+
+      {/* 7. Data Retention */}
+      <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
+        7. Data Retention
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         We retain your personal data only for as long as is necessary to fulfil
@@ -247,9 +380,9 @@ export default function PrivacyPolicyPage() {
         </li>
       </ul>
 
-      {/* 7. Your Rights Under UK GDPR */}
+      {/* 8. Your Rights Under UK GDPR */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        7. Your Rights Under UK GDPR
+        8. Your Rights Under UK GDPR
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         Under the UK GDPR, you have the following rights in relation to your
@@ -291,9 +424,9 @@ export default function PrivacyPolicyPage() {
         </li>
       </ul>
 
-      {/* 8. How to Exercise Your Rights */}
+      {/* 9. How to Exercise Your Rights */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        8. How to Exercise Your Rights
+        9. How to Exercise Your Rights
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         To exercise any of your rights, please contact our Data Protection
@@ -316,13 +449,13 @@ export default function PrivacyPolicyPage() {
         reasonable fee or refuse to act on the request.
       </p>
 
-      {/* 9. International Transfers */}
+      {/* 10. International Transfers */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        9. International Data Transfers
+        10. International Data Transfers
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         Some of the third-party service providers we use (including Stripe,
-        Supabase, Anthropic, Vercel, and Brevo) may process your data outside
+        Supabase, Anthropic, Vercel, Brevo, and Google) may process your data outside
         the United Kingdom. Where personal data is transferred to a country that
         has not been deemed to provide an adequate level of data protection by
         the UK Secretary of State, we ensure that appropriate safeguards are in
@@ -344,7 +477,7 @@ export default function PrivacyPolicyPage() {
 
       {/* 10. Children's Privacy */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        10. Children&apos;s Privacy
+        11. Children&apos;s Privacy
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         Our services are not intended for individuals under the age of 18. We do
@@ -364,7 +497,7 @@ export default function PrivacyPolicyPage() {
 
       {/* 11. Changes to This Policy */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        11. Changes to This Privacy Policy
+        12. Changes to This Privacy Policy
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         We may update this privacy policy from time to time to reflect changes
@@ -378,7 +511,7 @@ export default function PrivacyPolicyPage() {
 
       {/* 12. How to Complain */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        12. How to Make a Complaint
+        13. How to Make a Complaint
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         If you are unhappy with how we have handled your personal data, we
@@ -420,7 +553,7 @@ export default function PrivacyPolicyPage() {
 
       {/* 13. Contact Details */}
       <h2 className="mb-4 mt-10 text-xl font-semibold text-foreground">
-        13. Contact Us
+        14. Contact Us
       </h2>
       <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
         If you have any questions about this privacy policy or our data
