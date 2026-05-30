@@ -20,6 +20,7 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 // re-introduced as a self-contained client island below.
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
 import { CREDITS_REFRESH_EVENT, CreditsPill } from "@/components/landing/credits-pill"
+import { sendAnalysisContextToCrisp, openSupportChat } from "@/lib/crisp-context"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
@@ -1036,6 +1037,29 @@ function AnalysePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ts: Date.now() }),
     }).catch(() => {})
+
+    // Push the completed analysis into the Crisp session so an
+    // agent opening the chat sees what the user was looking at.
+    // Wrapped helper swallows all errors — must not affect the
+    // analysis flow if Crisp isn't loaded.
+    {
+      const scoreMatch =
+        aiText.match(/SCORE:\s*(\d+)/i) || aiText.match(/⭐ SCORE:\s*(\d+)/i)
+      const dealScore = scoreMatch ? parseInt(scoreMatch[1], 10) : null
+      const article4Status =
+        (backendData as { article4?: { status?: string | null } } | null)
+          ?.article4?.status ?? null
+      sendAnalysisContextToCrisp({
+        strategy: formData.investmentType ?? null,
+        address: formData.address ?? null,
+        postcode: formData.postcode ?? null,
+        purchasePrice: formData.purchasePrice ?? null,
+        dealScore,
+        grossYield: results?.grossYield ?? null,
+        monthlyCashflow: results?.monthlyCashFlow ?? null,
+        article4Status,
+      })
+    }
 
     // Auto-save only when the user's tier permits saved deals. Free
     // users must click the Save Deal button explicitly (which opens
