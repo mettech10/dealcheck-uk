@@ -103,6 +103,27 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     return
   }
   const admin = createAdminClient()
+
+  // Idempotency: Stripe retries failed webhooks for up to 3 days. If
+  // we've already processed this session id (manual retroactive grant,
+  // or a prior successful run), skip silently — don't double-credit
+  // the user. The docstring above always CLAIMED we deduped here but
+  // the actual check was missing until 2026-05-30.
+  {
+    const { data: existing } = await admin
+      .from("payment_history")
+      .select("id")
+      .eq("stripe_session_id", session.id)
+      .limit(1)
+      .maybeSingle()
+    if (existing?.id) {
+      console.warn("[webhook] checkout.session.completed already processed", {
+        sessionId: session.id,
+        existingRowId: existing.id,
+      })
+      return
+    }
+  }
   const email = (session.customer_details?.email
     ?? session.customer_email
     ?? (await getUserEmailFromAuth(userId)))
