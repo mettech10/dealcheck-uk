@@ -37,10 +37,16 @@ let configured = false
 export default function CrispChat() {
   useEffect(() => {
     const websiteId = process.env.NEXT_PUBLIC_CRISP_WEBSITE_ID
+    // Diagnostic log — fires on every mount so we can confirm the
+    // component is being hydrated and see exactly what value Next
+    // baked into the client bundle. Logs the first 8 chars of the
+    // UUID to verify it matches what's in the Crisp dashboard
+    // without dumping the full id in console screenshots.
+    console.log(
+      "[CrispChat] hydrated. websiteId:",
+      websiteId ? `${websiteId.slice(0, 8)}… (length ${websiteId.length})` : "MISSING",
+    )
     if (!websiteId) {
-      // One-time warn, intentionally quiet — we don't want to noise
-      // the console on every route change during local dev when the
-      // env var isn't set.
       if (!configured) {
         console.warn(
           "[CrispChat] NEXT_PUBLIC_CRISP_WEBSITE_ID not set — Crisp disabled.",
