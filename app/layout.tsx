@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Footer } from '@/components/landing/footer'
 import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
+import CrispChat from '@/components/CrispChat'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({
         <Footer />
         <CookieConsent />
         <ConditionalAnalytics />
+        <CrispChat />
       </body>
     </html>
   )
