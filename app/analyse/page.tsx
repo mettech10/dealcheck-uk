@@ -672,6 +672,42 @@ function AnalysePage() {
   )
 
   // Manual form submission -- runs local calculations then sends to backend
+  // Pre-submit credit gate (one-shot fetch, NOT a hook — wrapping
+  // it in useCreditGate triggered a production TDZ; see b43cd13
+  // revert). MUST be declared above the submit handlers so their
+  // useCallback dep array can capture it without hitting the TDZ.
+  const ensureCreditOrGate = useCallback(async (): Promise<boolean> => {
+    try {
+      const r = await fetch("/api/user/credits", { cache: "no-store" })
+      if (!r.ok) return true // fail-open on network error — server still gates
+      const g = (await r.json()) as {
+        authenticated: boolean
+        canAnalyse: boolean
+        freeUsed: number
+        freeLimit: number
+        creditBalance: number
+        isUnlimited: boolean
+      }
+      if (!g.authenticated) {
+        setUpgradeReason("not_logged_in")
+        setShowUpgrade(true)
+        return false
+      }
+      if (!g.canAnalyse) {
+        // Out of free + paid + not unlimited → single "analyse_locked"
+        // reason that renders the modal the user expects (Continue
+        // analysing this deal → PPA + Pro CTAs).
+        setUpgradeReason("analyse_locked")
+        setUpgradeFreeUsed(g.freeUsed ?? 0)
+        setShowUpgrade(true)
+        return false
+      }
+      return true
+    } catch {
+      return true // fail-open — server gate is the safety net
+    }
+  }, [])
+
   const handleManualSubmit = useCallback(
     async (data: PropertyFormData) => {
       setError(null)
@@ -858,46 +894,12 @@ function AnalysePage() {
   // (bound PPA credit, floating credit, or Pro).
   const [savedAnalysisId, setSavedAnalysisId] = useState<string | null>(null)
   const { access, refresh: refreshAccess } = useAnalysisAccess(savedAnalysisId)
-  // Pre-submit credit gate (re-introduced 2026-05-29 as an inline
-  // one-shot fetch, NOT a hook — the previous hook-based version
-  // triggered a production TDZ). Returns true when the user has zero
-  // entitlement, in which case the caller short-circuits the submit
-  // and opens the UpgradeModal so the user can't reach the analyse
-  // API at all. Server still gates as defence-in-depth.
-  const ensureCreditOrGate = useCallback(async (): Promise<boolean> => {
-    try {
-      const r = await fetch("/api/user/credits", { cache: "no-store" })
-      if (!r.ok) return true // fail-open on network error — server still gates
-      const g = (await r.json()) as {
-        authenticated: boolean
-        canAnalyse: boolean
-        freeUsed: number
-        freeLimit: number
-        creditBalance: number
-        isUnlimited: boolean
-      }
-      if (!g.authenticated) {
-        setUpgradeReason("not_logged_in")
-        setShowUpgrade(true)
-        return false
-      }
-      if (!g.canAnalyse) {
-        // Out of free + paid + not unlimited. Pick the right copy
-        // for the modal: free_limit_reached if they've used their
-        // monthly free quota; no_credits if they're a PPA user
-        // whose paid balance is 0.
-        setUpgradeReason(
-          g.freeUsed >= g.freeLimit ? "free_limit_reached" : "no_credits",
-        )
-        setUpgradeFreeUsed(g.freeUsed ?? 0)
-        setShowUpgrade(true)
-        return false
-      }
-      return true
-    } catch {
-      return true // fail-open — server gate is the safety net
-    }
-  }, [])
+  // ensureCreditOrGate is defined ABOVE the submission handlers
+  // (handleManualSubmit / handleUrlSubmit / handlePdfUpload) because
+  // those useCallbacks list it in their dep array. Defining it after
+  // them would put the const in the TDZ when their useCallback line
+  // runs, throwing ReferenceError on mount (same class of bug that
+  // killed the old useCreditGate). See block above.
 
   const persistAnalysis = useCallback(async () => {
     if (!aiText || !formData) return false

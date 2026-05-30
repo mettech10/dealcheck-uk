@@ -27,6 +27,7 @@ export type UpgradeReason =
   | "not_logged_in"
   | "save_deal_locked"
   | "pdf_locked"
+  | "analyse_locked"
 
 interface UpgradeModalProps {
   open: boolean
@@ -87,14 +88,19 @@ export function UpgradeModal({
   const isFreeExhausted = reason === "free_limit_reached"
   const isSaveLocked = reason === "save_deal_locked"
   const isPdfLocked = reason === "pdf_locked"
-  const title = isFreeExhausted
+  const isAnalyseLocked = reason === "analyse_locked"
+  const title = isAnalyseLocked
+    ? "Continue analysing this deal"
+    : isFreeExhausted
     ? "Free analyses used"
     : isSaveLocked
     ? "Save this deal"
     : isPdfLocked
     ? "Export PDF report"
     : "No credits remaining"
-  const message = isFreeExhausted
+  const message = isAnalyseLocked
+    ? "You've used your free analyses for this month. Choose Pay Per Analysis to run this one deal, or go Pro for unlimited analyses every month."
+    : isFreeExhausted
     ? `You've used all ${FREE_MONTHLY_CAP} of your free analyses this month (${freeUsed}/${FREE_MONTHLY_CAP}). Upgrade to continue analysing deals.`
     : isSaveLocked
     ? "Saving deals to your history is available on Pay Per Analysis (£2.99) or Pro (£19.99/month). The analysis itself stays free — only the saved-deal storage is paid."
