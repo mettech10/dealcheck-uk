@@ -24,11 +24,22 @@ export async function GET() {
 
   const admin = createAdminClient()
 
+  // Filter to MONEY-MOVEMENT events only — admin_grant and
+  // analysis_used rows live in payment_history too but are always
+  // £0, which pollutes the Payments page with zero-value rows that
+  // look like failed Stripe captures. Include:
+  //   - event_type='purchase_stripe' (PPA + Pro Stripe checkouts)
+  //   - event_type='refund'
+  //   - legacy rows (event_type IS NULL) where the amount is > 0
+  //     so pre-migration purchases still surface
   const [paymentsRes, usersRes] = await Promise.all([
     admin
       .from("payment_history")
       .select(
-        "id, user_id, amount_gbp, tier, status, stripe_session_id, created_at",
+        "id, user_id, amount_gbp, tier, status, stripe_session_id, created_at, event_type",
+      )
+      .or(
+        "event_type.in.(purchase_stripe,refund),and(event_type.is.null,amount_gbp.gt.0)",
       )
       .order("created_at", { ascending: false })
       .limit(1000),
