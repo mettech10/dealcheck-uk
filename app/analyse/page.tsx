@@ -1786,7 +1786,23 @@ function AnalysePage() {
 
             {error && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {error}
+                <div>{error}</div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openSupportChat(
+                      `Analysis failed for:\n` +
+                        `• Strategy: ${formData?.investmentType ?? "—"}\n` +
+                        `• Address: ${formData?.address ?? listingUrl ?? "—"}\n` +
+                        `• Postcode: ${formData?.postcode ?? "—"}\n` +
+                        `• Error: ${error}\n\n` +
+                        `Please can you help me sort this out?`,
+                    )
+                  }
+                  className="mt-2 inline-flex items-center gap-1 rounded-md border border-destructive/40 px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+                >
+                  Get help →
+                </button>
               </div>
             )}
           </div>

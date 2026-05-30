@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { openSupportChat } from "@/lib/crisp-context"
 import {
   checkArticle4,
   type Article4CheckResult,
@@ -2691,6 +2692,29 @@ export function AnalysisResults({
           </CardContent>
         </Card>
       )}
+
+      {/* Report-an-issue — opens Crisp pre-filled with the deal
+          context so the user doesn't have to re-type which analysis
+          they're asking about. */}
+      <div className="mt-6 flex justify-center">
+        <button
+          type="button"
+          onClick={() =>
+            openSupportChat(
+              `I have an issue with my analysis:\n\n` +
+                `• Strategy: ${data.investmentType ?? "—"}\n` +
+                `• Address: ${data.address ?? "—"}\n` +
+                `• Postcode: ${data.postcode ?? "—"}\n` +
+                `• Purchase Price: £${(data.purchasePrice ?? 0).toLocaleString()}\n\n` +
+                `Issue: [describe your issue]`,
+            )
+          }
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-transparent px-3.5 py-2 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
+        >
+          <span aria-hidden>🐛</span>
+          Report an issue with this analysis
+        </button>
+      </div>
 
       {/* Disclaimer */}
       <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground/70">
