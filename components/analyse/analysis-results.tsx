@@ -2696,7 +2696,7 @@ export function AnalysisResults({
       {/* Report-an-issue — opens Crisp pre-filled with the deal
           context so the user doesn't have to re-type which analysis
           they're asking about. */}
-      <div className="mt-6 flex justify-center">
+      <div className="mt-6 flex flex-col items-center gap-2">
         <button
           type="button"
           onClick={() =>
@@ -2714,6 +2714,14 @@ export function AnalysisResults({
           <span aria-hidden>🐛</span>
           Report an issue with this analysis
         </button>
+        <a
+          href="/feedback"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[12px] text-muted-foreground/80 transition-colors hover:text-foreground"
+        >
+          📝 Share detailed feedback →
+        </a>
       </div>
 
       {/* Disclaimer */}

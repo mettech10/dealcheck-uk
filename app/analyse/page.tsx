@@ -21,6 +21,7 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
 import { CREDITS_REFRESH_EVENT, CreditsPill } from "@/components/landing/credits-pill"
 import { sendAnalysisContextToCrisp, openSupportChat } from "@/lib/crisp-context"
+import { openFeedbackForm } from "@/lib/tally"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
@@ -1077,6 +1078,19 @@ function AnalysePage() {
       })
   }, [aiLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tally feedback popup — fires 90s after the analysis completes,
+  // giving the user time to actually read the results first. Skips
+  // automatically on narrow mobile + if already shown this session
+  // (logic lives in lib/tally.ts). Cleared cleanly when aiLoading
+  // restarts (user runs another analysis before the timer fires).
+  useEffect(() => {
+    if (aiLoading || !aiText) return
+    const id = window.setTimeout(() => {
+      openFeedbackForm()
+    }, 90_000)
+    return () => window.clearTimeout(id)
+  }, [aiLoading, aiText])
+
   // PDF upload handler
   const handlePdfUpload = useCallback(async () => {
     if (!pdfFile) return
@@ -1808,6 +1822,25 @@ function AnalysePage() {
           </div>
         )}
       </main>
+
+      {/* Floating "Give feedback" button — only after results show.
+          Positioned bottom-LEFT so it never collides with the Crisp
+          bubble bottom-right. Bypasses the session-shown flag (the
+          90s auto-popup respects it; this manual entry must always
+          open). Hidden on narrow mobile to avoid colliding with
+          system bars; mobile users have the same link in the beta
+          banner up top. */}
+      {!aiLoading && aiText && (
+        <button
+          type="button"
+          onClick={() => openFeedbackForm({ respectSessionFlag: false })}
+          className="fixed bottom-6 left-6 z-[999] hidden items-center gap-1.5 rounded-full border border-primary/60 bg-emerald-950 px-4 py-2.5 text-[13px] font-medium text-primary shadow-lg shadow-black/40 transition-colors hover:border-primary hover:bg-emerald-900 sm:inline-flex"
+          aria-label="Open feedback form"
+        >
+          <span aria-hidden>💬</span>
+          Give feedback
+        </button>
+      )}
 
       {/* Upgrade paywall — opens when the analyse API returns 402
           (usage_limit_reached) or 401 (not_logged_in). The modal owns

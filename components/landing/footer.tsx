@@ -28,6 +28,7 @@ export function Footer() {
               <li><a href="#how-it-works" className={linkClass}>How It Works</a></li>
               <li><a href="#pricing" className={linkClass}>Pricing</a></li>
               <li><Link href="/analyse" className={linkClass}>Analyse a Deal</Link></li>
+              <li><Link href="/feedback" className={linkClass}>Beta Feedback</Link></li>
             </ul>
           </div>
 
