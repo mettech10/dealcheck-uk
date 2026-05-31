@@ -3,6 +3,7 @@ import { Footer } from '@/components/landing/footer'
 import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
 import CrispChat from '@/components/CrispChat'
+import BetaBanner from '@/components/BetaBanner'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className="font-sans antialiased bg-background text-foreground flex min-h-screen flex-col">
+        <BetaBanner />
         <div className="flex-1">
           {children}
         </div>
