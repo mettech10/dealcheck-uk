@@ -16,8 +16,8 @@
  */
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { openSupportChat } from "@/lib/crisp-context"
 
 const SHOW_ON_PREFIXES = [
   "/analyse",
@@ -71,14 +71,15 @@ export default function BetaBanner() {
       <span className="flex items-center gap-2">
         <span aria-hidden>🚀</span>
         <span>
-          Metalyzi Beta —{" "}
-          <Link
-            href="/feedback"
+          Metalyzi Beta — Help us improve by{" "}
+          <button
+            type="button"
+            onClick={() => openSupportChat()}
             className="font-medium text-primary underline-offset-2 hover:underline"
           >
-            Share your feedback
-          </Link>{" "}
-          and help us improve →
+            reporting any issues via the chat widget
+          </button>{" "}
+          →
         </span>
       </span>
       <button

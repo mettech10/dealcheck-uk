@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Script from 'next/script'
 import { Footer } from '@/components/landing/footer'
 import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
@@ -34,13 +33,6 @@ export default function RootLayout({
         <CookieConsent />
         <ConditionalAnalytics />
         <CrispChat />
-        {/* Tally feedback embed — loaded lazyOnload so it never
-            blocks the interactive paint. lib/tally.ts surfaces
-            window.Tally.openPopup() once this script has booted. */}
-        <Script
-          src="https://tally.so/widgets/embed.js"
-          strategy="lazyOnload"
-        />
       </body>
     </html>
   )
