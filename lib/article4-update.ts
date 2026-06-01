@@ -56,27 +56,83 @@ interface Article4Row {
 // ── Network helper ────────────────────────────────────────────────────────
 
 const FETCH_TIMEOUT_MS = 12_000
+const RETRY_DELAY_MS = 2_000
 
-async function fetchText(url: string): Promise<{ ok: boolean; body: string; status: number }> {
+// Real browser UA. Many councils (Salford, Tameside etc.) sit behind
+// Cloudflare / Akamai WAF rules that reject anything whose UA contains
+// the word "Bot", "Monitor", "Scraper", or anything that doesn't look
+// like a major browser. We keep the polite "MetalyziA4Monitor" id in
+// a custom From / X-Bot-Identification header so councils that DO
+// inspect those (rare) can still attribute the request to us.
+const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+const COMMON_HEADERS: Record<string, string> = {
+  "User-Agent": BROWSER_UA,
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-GB,en;q=0.9",
+  // Identifies us to councils that politely check this header without
+  // changing the UA — best of both worlds.
+  From: "contact@metalyzi.co.uk",
+  "X-Bot-Identification":
+    "MetalyziA4Monitor/1.0 (+https://metalyzi.co.uk; contact@metalyzi.co.uk)",
+}
+
+async function fetchOnce(
+  url: string,
+): Promise<{ ok: boolean; body: string; status: number }> {
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS)
   try {
     const res = await fetch(url, {
       signal: ctl.signal,
       redirect: "follow",
-      headers: {
-        // Some councils block default fetch UAs; identify ourselves politely.
-        "User-Agent":
-          "MetalyziA4Monitor/1.0 (+https://metalyzi.co.uk; contact@metalyzi.co.uk)",
-        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-      },
+      headers: COMMON_HEADERS,
     })
     const body = await res.text().catch(() => "")
     return { ok: res.ok, body, status: res.status }
-  } catch (err) {
-    throw err
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * Fetch with a single retry on transient failure.
+ *
+ * "Transient" covers: network-level errors (fetch threw), 5xx, 429
+ * (rate-limited), and 403 (often a Cloudflare bot-challenge that
+ * resolves on second attempt as the JS cookie is set). A second
+ * failure is bubbled up so the caller logs it cleanly.
+ *
+ * Bounded to ONE retry — if a council is truly down we shouldn't
+ * wedge the cron run.
+ */
+async function fetchText(
+  url: string,
+): Promise<{ ok: boolean; body: string; status: number }> {
+  try {
+    const first = await fetchOnce(url)
+    if (first.ok) return first
+    if (first.status !== 403 && first.status !== 429 && first.status < 500) {
+      // 404 / 410 etc — no point retrying. Return the original
+      // response so the caller can log the status code.
+      return first
+    }
+    // Transient — wait, then retry once.
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+    return await fetchOnce(url)
+  } catch (err) {
+    // Network-level failure on first attempt. Retry once.
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+    try {
+      return await fetchOnce(url)
+    } catch {
+      // Both attempts failed — rethrow the original error so the
+      // catch site sees a meaningful network message.
+      throw err
+    }
   }
 }
 
@@ -331,8 +387,16 @@ export async function runArticle4Update(
         result.areasUpdated += 1
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      result.errors.push(`${row.council_name}: fetch failed: ${msg}`)
+      // `fetch failed` is Node's generic AggregateError wrapper around
+      // TLS / DNS / connect failures — unwrap to expose the underlying
+      // cause (ECONNREFUSED, CERT_HAS_EXPIRED, ENOTFOUND etc.) so the
+      // summary email shows something actionable instead of "fetch
+      // failed: fetch failed".
+      const root =
+        (err as { cause?: { message?: string; code?: string } })?.cause
+      const causeMsg =
+        root?.code ?? root?.message ?? (err instanceof Error ? err.message : String(err))
+      result.errors.push(`${row.council_name}: fetch failed (${causeMsg})`)
     }
   }
 
