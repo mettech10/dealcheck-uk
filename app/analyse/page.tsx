@@ -1596,7 +1596,7 @@ function AnalysePage() {
             </h3>
             <p className="mt-2 max-w-sm text-sm text-muted-foreground">
               Pulling property details from the listing page. This may take a
-              moment if the backend is warming up.
+              moment on the first run.
             </p>
           </div>
         )}
