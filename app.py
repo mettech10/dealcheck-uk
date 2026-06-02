@@ -474,9 +474,16 @@ def scrape_onthemarket_with_apify(url: str) -> dict:
     Returns a rich dict with all available property fields.
     """
     print(f"[Apify/OnTheMarket] Scraping {url}")
+    # NOTE: the fatihtahta/onthemarket-scraper input schema declares
+    # startUrls with editor="stringList" — i.e. an array of plain
+    # strings, NOT objects like Rightmove's actor expects. Sending
+    # [{url: ...}] makes the actor silently return zero items and
+    # the parallel race falls through to Firecrawl + basic scraper,
+    # both of which OnTheMarket's bot wall blocks → "Could not
+    # extract data from this URL". Confirmed live 2026-06-02.
     items = _apify_run_actor(
         APIFY_ONTHEMARKET_ACTOR_ID,
-        {'startUrls': [{'url': url}], 'limit': 1},
+        {'startUrls': [url], 'maxItems': 1},
         timeout_secs=55,
     )
     if not items:
