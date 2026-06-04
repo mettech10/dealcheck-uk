@@ -20,6 +20,7 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 // re-introduced as a self-contained client island below.
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
 import { CREDITS_REFRESH_EVENT, CreditsPill } from "@/components/landing/credits-pill"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { sendAnalysisContextToCrisp, openSupportChat } from "@/lib/crisp-context"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
@@ -1307,6 +1308,7 @@ function AnalysePage() {
           {/* Top-bar Quick Tools strip removed — the global navbar
               dropdown now covers all tool entry points. */}
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             <CreditsPill />
             <Button asChild variant="ghost" size="sm">
               <Link href="/">

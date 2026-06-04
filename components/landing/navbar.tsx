@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { signOut } from "@/app/auth/actions"
 import { CreditsPill } from "@/components/landing/credits-pill"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 interface NavbarProps {
   user?: { email?: string; name?: string } | null
@@ -216,6 +217,8 @@ export function Navbar({ user }: NavbarProps) {
 
         {/* Desktop auth area */}
         <div className="hidden items-center gap-3 md:flex">
+          {/* Theme toggle — sits to the left of the account / login control */}
+          <ThemeToggle />
           {user ? (
             <>
               <Button asChild size="default">
@@ -291,6 +294,11 @@ export function Navbar({ user }: NavbarProps) {
       {mobileOpen && (
         <div className="border-t border-border/50 bg-background px-6 py-4 md:hidden">
           <div className="flex flex-col gap-4">
+            {/* Theme toggle at the top of the mobile menu */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Appearance</span>
+              <ThemeToggle />
+            </div>
             <a
               href="/#features"
               className="text-sm text-muted-foreground transition-colors hover:text-foreground"
