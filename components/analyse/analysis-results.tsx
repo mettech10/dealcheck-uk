@@ -25,6 +25,7 @@ import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
 import { DevelopmentResults } from "./development-results"
 import { AlternativeStrategiesPanel } from "./alternative-strategies-panel"
+import { StrategySwitcher } from "./strategy-switcher"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { SAAreaIntelligence } from "./sa-area-intelligence"
@@ -80,8 +81,12 @@ interface AnalysisResultsProps {
   aiText: string
   aiLoading: boolean
   backendData?: BackendResults | null
-  /** Feature B — re-analyse this property under a different strategy. */
-  onSwitchStrategy?: (strategy: InvestmentType) => void
+  /** Feature B — re-analyse this property under a different strategy with a
+      fully-merged form (base data + modal inputs). */
+  onSwitchStrategy?: (newData: PropertyFormData) => void
+  /** Previous strategy for the "← Back to X" breadcrumb, if any. */
+  previousStrategy?: InvestmentType | null
+  onBack?: () => void
 }
 
 const CHART_COLORS = [
@@ -1456,8 +1461,13 @@ export function AnalysisResults({
   aiLoading,
   backendData,
   onSwitchStrategy,
+  previousStrategy,
+  onBack,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
+  // Strategy targeted by the Alternative-panel "Switch →" buttons; opens the
+  // switcher's mini-form modal (Feature B).
+  const [switchTarget, setSwitchTarget] = useState<InvestmentType | null>(null)
 
   const parsedAI = parseAIAnalysis(aiText)
 
@@ -1529,6 +1539,22 @@ export function AnalysisResults({
        renders to PDF exactly as it appears on screen. Each card already
        has its own border + page-break-inside: avoid via the print rules. */
     <div className="flex flex-col gap-6 print-results-root">
+
+      {/* ── Strategy Switch Toggle (Feature B) ──────────────────────── */}
+      {/* Sits above the deal score dial so users can re-analyse the same
+          property under a different strategy. `switchTarget` lets the
+          Alternative-panel "Switch →" buttons open this same modal. */}
+      {onSwitchStrategy && (
+        <StrategySwitcher
+          data={data}
+          backendData={backendData}
+          onSwitch={onSwitchStrategy}
+          backStrategy={previousStrategy}
+          onBack={onBack}
+          externalTarget={switchTarget}
+          onExternalTargetHandled={() => setSwitchTarget(null)}
+        />
+      )}
 
       {/* ── Verdict Banner (legacy text strip from AI) ──────────────── */}
       <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
@@ -1779,7 +1805,7 @@ export function AnalysisResults({
         data={data}
         results={results}
         backendData={backendData}
-        onSwitch={onSwitchStrategy}
+        onSwitch={onSwitchStrategy ? (s) => setSwitchTarget(s) : undefined}
       />
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}

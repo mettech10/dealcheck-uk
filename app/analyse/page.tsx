@@ -29,7 +29,7 @@ import {
 } from "@/lib/useLoadingTracker"
 import type { ScrapedListing } from "@/components/analyse/property-listing-card"
 import { calculateAll, calculateDealScore } from "@/lib/calculations"
-import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
+import type { PropertyFormData, CalculationResults, BackendResults, InvestmentType } from "@/lib/types"
 import {
   BarChart3,
   ArrowLeft,
@@ -742,6 +742,51 @@ function AnalysePage() {
     [callAnalysisAPI, ensureCreditOrGate]
   )
 
+  // ── Feature B: Strategy switching ───────────────────────────────────
+  // Stack of prior analyses so the user can switch strategy and step back
+  // ("← Back to BTL analysis") to compare without re-entering anything.
+  const [strategyHistory, setStrategyHistory] = useState<PropertyFormData[]>([])
+
+  const previousStrategy: InvestmentType | null =
+    strategyHistory.length > 0
+      ? strategyHistory[strategyHistory.length - 1].investmentType
+      : null
+
+  // Re-analyse the same property under a different strategy. `newData` is a
+  // fully-merged form (carried-over base data + the modal's missing inputs)
+  // built by StrategySwitcher. We push the current analysis onto the history
+  // stack, reflect the strategy in the URL, then reuse the normal submit
+  // path so the new run goes through the same calculation + AI pipeline.
+  const handleStrategySwitch = useCallback(
+    (newData: PropertyFormData) => {
+      setStrategyHistory((prev) => (formData ? [...prev, formData] : prev))
+      const params = new URLSearchParams(
+        typeof window !== "undefined" ? window.location.search : "",
+      )
+      params.set("strategy", newData.investmentType)
+      router.replace(`/analyse?${params.toString()}`, { scroll: false })
+      void handleManualSubmit(newData)
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
+    },
+    [formData, handleManualSubmit, router],
+  )
+
+  // Step back to the immediately-previous strategy analysis.
+  const handleBackStrategy = useCallback(() => {
+    setStrategyHistory((prev) => {
+      if (!prev.length) return prev
+      const previous = prev[prev.length - 1]
+      const params = new URLSearchParams(
+        typeof window !== "undefined" ? window.location.search : "",
+      )
+      params.set("strategy", previous.investmentType)
+      router.replace(`/analyse?${params.toString()}`, { scroll: false })
+      void handleManualSubmit(previous)
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
+      return prev.slice(0, -1)
+    })
+  }, [handleManualSubmit, router])
+
   // URL-based submission -- scrapes data then transitions to manual form with pre-filled fields
   const handleUrlSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1176,6 +1221,7 @@ function AnalysePage() {
     setRentalDetected(false)
     setRentalMonthlyRent(null)
     setRunAccessLevel(null)
+    setStrategyHistory([])
     savedKeyRef.current = null
     // Stop the loading-overlay tracker so the overlay doesn't briefly
     // flash on a new analysis kick-off (start() arms it again).
@@ -1763,6 +1809,9 @@ function AnalysePage() {
                 aiText={aiText}
                 aiLoading={aiLoading}
                 backendData={backendData}
+                onSwitchStrategy={handleStrategySwitch}
+                previousStrategy={previousStrategy}
+                onBack={handleBackStrategy}
               />
             ) : (
               /* URL mode -- AI text only (no structured data from backend) */
