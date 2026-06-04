@@ -1527,6 +1527,9 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   </div>
                 )}
               />
+              <p className="text-[11px] text-muted-foreground/80">
+                ✨ BRRRR now supports BTL, HMO, and SA exits — thanks for the feedback!
+              </p>
             </div>
           )}
 

@@ -181,6 +181,98 @@ describe("BRRRR — ARV refinance produces refinance amount", () => {
   })
 })
 
+describe("BRRRR exit strategies — Phase 4 income branches by exit", () => {
+  // Shared Phase 1-3 inputs (purchase / refurb / refinance) — IDENTICAL
+  // across all three exits. Only the Phase-4 rental fields change.
+  const basePhase123 = {
+    investmentType: "brr" as const,
+    purchasePrice: 100000,
+    refurbishmentBudget: 30000,
+    arv: 180000,
+    refinanceLTV: 75,
+  }
+
+  // ── Exit 1: Single-let BTL (default) ──────────────────────────────
+  const btl = calculateAll(
+    makeBTL({
+      ...basePhase123,
+      brrrExitStrategy: "btl",
+      monthlyRent: 900,
+      voidWeeks: 2,
+      managementFeePercent: 10,
+      insurance: 300,
+      maintenancePercent: 10,
+      bills: 0,
+    }),
+  )
+
+  // ── Exit 2: HMO (rooms × rent) ────────────────────────────────────
+  const hmo = calculateAll(
+    makeBTL({
+      ...basePhase123,
+      brrrExitStrategy: "hmo",
+      monthlyRent: 2500, // 5 rooms × £500 (form auto-derives this)
+      roomCount: 5,
+      avgRoomRate: 500,
+      voidWeeks: 2,
+      managementFeePercent: 15,
+      insurance: 800,
+      bills: 400,
+      hmoLicenceCost: 1000,
+      maintenancePercent: 10,
+    }),
+  )
+
+  // ── Exit 3: Serviced Accommodation (nightly × occupancy) ──────────
+  const sa = calculateAll(
+    makeBTL({
+      ...basePhase123,
+      brrrExitStrategy: "sa",
+      saNightlyRate: 120,
+      saOccupancyRate: 65,
+      saPlatformFeePercent: 15,
+      saCleaningCostPerStay: 80,
+      saAvgStaysPerMonth: 8,
+      saUtilitiesMonthly: 200,
+      saInsuranceAnnual: 800,
+      saManagementFeePercent: 20,
+      saMaintenancePercent: 5,
+    }),
+  )
+
+  test("BTL exit → void-adjusted single-let rent (£865.42/mo)", () => {
+    // 900×12=10800 contract; ×50/52 void → 10385/yr → 865.42/mo
+    expect(btl.monthlyIncome).toBeCloseTo(865.42, 1)
+  })
+
+  test("HMO exit → void-adjusted room income (£2,403.83/mo)", () => {
+    // 2500×12=30000 contract; ×50/52 void → 28846/yr → 2403.83/mo
+    expect(hmo.monthlyIncome).toBeCloseTo(2403.83, 1)
+    expect(hmo.monthlyIncome).toBeGreaterThan(btl.monthlyIncome)
+  })
+
+  test("SA exit → occupancy-baked nightly revenue (£2,340/mo, NOT void-adjusted)", () => {
+    // 120 × 65% × 30 = 2340; occupancy already baked in (no void haircut)
+    expect(sa.monthlyIncome).toBeCloseTo(2340, 1)
+  })
+
+  test("SA exit → running costs use the SA opex stack (~£1,842.67/mo)", () => {
+    // platform 351 + cleaning 640 + utilities 200 + insurance 66.67
+    //   + mgmt 468 + maint 117 = 1842.67
+    expect(sa.monthlyRunningCosts).toBeCloseTo(1842.67, 1)
+  })
+
+  test("Phases 1-3 are IDENTICAL across all three exits", () => {
+    // The whole premise: purchase/refurb/refinance don't change with exit.
+    expect(hmo.refinancedMortgageAmount).toBe(btl.refinancedMortgageAmount)
+    expect(sa.refinancedMortgageAmount).toBe(btl.refinancedMortgageAmount)
+    expect(hmo.brrrrTotalCashInvested).toBe(btl.brrrrTotalCashInvested)
+    expect(sa.brrrrTotalCashInvested).toBe(btl.brrrrTotalCashInvested)
+    expect(hmo.brrrrCapitalRecycledPct).toBe(btl.brrrrCapitalRecycledPct)
+    expect(sa.brrrrCapitalRecycledPct).toBe(btl.brrrrCapitalRecycledPct)
+  })
+})
+
 describe("Result shape — all numerics finite", () => {
   test("BTL result has no NaN or Infinity in headline metrics", () => {
     const r = calculateAll(makeBTL())
