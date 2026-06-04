@@ -1220,8 +1220,16 @@ export interface BRRRRDealScore {
 export function calculateBRRRRDealScore(
   results: CalculationResults,
   arv?: number,
-  data?: { monthlyRent?: number; purchasePrice?: number }
+  data?: {
+    monthlyRent?: number
+    purchasePrice?: number
+    // BRRRR exit strategy — changes the yield axis benchmark + adds an SA
+    // occupancy-realism penalty. Defaults to single-let BTL.
+    exit?: "btl" | "hmo" | "sa"
+    occupancyRate?: number
+  }
 ): BRRRRDealScore {
+  const exit = data?.exit ?? "btl"
   // BRRRR scoring rubric — stepped bands by industry convention.
   // Steps match the canonical BRRRR investor framework: capital recycled
   // >= 80-90% is the gold standard, refurb uplift >= 2× is exceptional,
@@ -1260,20 +1268,43 @@ export function calculateBRRRRDealScore(
   else if (uplift >= 1.0) upliftScore = 8
   else                    upliftScore = 0
 
-  // ── Axis 4: Gross yield on ARV (15 pts) ─────────────────────────────
-  // = annual contract rent / ARV × 100. Uses ARV (not purchase) because
-  // refinance debt scales with ARV — yield on ARV is what really stress-
-  // tests cashflow vs the new mortgage.
-  //   >= 8% → 15  |  >= 6% → 10  |  >= 4% → 5  |  < 4% → 0
-  const monthlyRent = data?.monthlyRent ?? 0
-  const annualGrossRent = monthlyRent * 12
+  // ── Axis 4: Rental return on ARV (15 pts) — exit-aware ──────────────
+  // The income benchmark depends on how the property is rented AFTER
+  // refinancing:
+  //   BTL → gross yield on ARV (single-let rent). 8/6/4% bands.
+  //   HMO → gross yield on ARV (room income is far higher), so we hold
+  //         it to a higher bar: 12/9/6% bands.
+  //   SA  → yield is not the right lens (revenue is gross of heavy opex);
+  //         we score on post-refi MONTHLY PROFIT instead: 500/300/100/0.
+  // Uses ARV (not purchase) because refinance debt scales with ARV.
+  // `results.monthlyIncome` already reflects the chosen exit's gross
+  // income (single rent / room income / SA revenue) from calculateAll.
+  const grossMonthlyIncome = results.monthlyIncome ?? data?.monthlyRent ?? 0
+  const annualGrossRent = grossMonthlyIncome * 12
   const yieldOnARV =
     arv && arv > 0 ? (annualGrossRent / arv) * 100 : 0
   let yieldScore: number
-  if (yieldOnARV >= 8)      yieldScore = 15
-  else if (yieldOnARV >= 6) yieldScore = 10
-  else if (yieldOnARV >= 4) yieldScore = 5
-  else                      yieldScore = 0
+  let yieldNote: string
+  if (exit === "sa") {
+    // Score Axis 4 on post-refi monthly net profit for SA.
+    if (mcf >= 500)      yieldScore = 15
+    else if (mcf >= 300) yieldScore = 10
+    else if (mcf >= 100) yieldScore = 5
+    else                 yieldScore = 0
+    yieldNote = `£${Math.round(mcf)}/mo SA net profit (post-refi)`
+  } else if (exit === "hmo") {
+    if (yieldOnARV >= 12)     yieldScore = 15
+    else if (yieldOnARV >= 9) yieldScore = 10
+    else if (yieldOnARV >= 6) yieldScore = 5
+    else                      yieldScore = 0
+    yieldNote = `${yieldOnARV.toFixed(2)}% HMO gross yield on ARV`
+  } else {
+    if (yieldOnARV >= 8)      yieldScore = 15
+    else if (yieldOnARV >= 6) yieldScore = 10
+    else if (yieldOnARV >= 4) yieldScore = 5
+    else                      yieldScore = 0
+    yieldNote = `${yieldOnARV.toFixed(2)}% gross yield on ARV`
+  }
 
   // ── Axis 5: ROCE — Return on Capital Employed (10 pts) ──────────────
   // ROCE = forced equity uplift / money still in deal × 100.
@@ -1297,8 +1328,16 @@ export function calculateBRRRRDealScore(
   else if (roceValue >= 50)  roceScore = 4
   else                       roceScore = 0
 
+  // SA occupancy-realism penalty: an SA exit underwritten on an
+  // optimistic occupancy assumption (> 80%) is fragile — apply a -10
+  // haircut so over-rosy SA deals can't inflate their way to "Strong".
+  const occupancy = data?.occupancyRate ?? 0
+  const saOccupancyPenalty =
+    exit === "sa" && occupancy > 80 ? 10 : 0
+
   const total =
-    capitalRecyclingScore + cashflowScore + upliftScore + yieldScore + roceScore
+    capitalRecyclingScore + cashflowScore + upliftScore + yieldScore + roceScore -
+    saOccupancyPenalty
 
   const label: BRRRRDealScore["label"] =
     total >= 90 ? "Excellent" :
@@ -1324,8 +1363,8 @@ export function calculateBRRRRDealScore(
         note: `${uplift.toFixed(2)}× uplift on refurb`,
       },
       yieldOnARV: {
-        score: yieldScore, max: 15, value: yieldOnARV,
-        note: `${yieldOnARV.toFixed(2)}% gross yield on ARV`,
+        score: yieldScore, max: 15, value: exit === "sa" ? mcf : yieldOnARV,
+        note: yieldNote,
       },
       roce: {
         score: roceScore, max: 10,

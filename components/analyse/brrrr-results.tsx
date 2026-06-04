@@ -54,6 +54,8 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
   const score = calculateBRRRRDealScore(results, arv, {
     monthlyRent: data.monthlyRent,
     purchasePrice: data.purchasePrice,
+    exit: data.brrrExitStrategy ?? "btl",
+    occupancyRate: data.saOccupancyRate,
   })
 
   // Phase costs (safe defaults if missing)
@@ -88,6 +90,48 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
   const equity = results.equityGained ?? 0
   const equityAtRefi = results.brrrrEquityAtRefinance ?? Math.max(0, (data.arv ?? 0) - refinancedMortgage)
 
+  // ── BRRRR exit strategy (Phase-4 rental model) ──────────────────────
+  const exit = data.brrrExitStrategy ?? "btl"
+  const exitShort = exit === "hmo" ? "HMO" : exit === "sa" ? "SA" : "BTL"
+  const exitLabel =
+    exit === "hmo"
+      ? "HMO (Multi-room let)"
+      : exit === "sa"
+      ? "Serviced Accommodation"
+      : "Single-Let (BTL)"
+  const exitBadgeClass =
+    exit === "hmo"
+      ? "bg-purple-500/15 text-purple-700 border-purple-500/30 dark:text-purple-300"
+      : exit === "sa"
+      ? "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300"
+      : "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300"
+
+  // Phase-4 monthly figures (post-refinance rental position)
+  const p4Income = results.monthlyIncome
+  const p4Mortgage = results.monthlyMortgagePayment
+  const p4Running = results.monthlyRunningCosts
+  const p4Cashflow = results.monthlyCashFlow
+  const p4IncomeLabel =
+    exit === "hmo"
+      ? "Room income (rooms × rate)"
+      : exit === "sa"
+      ? "SA revenue (nightly × occupancy)"
+      : "Monthly rent (single let)"
+
+  // SA cost lines (sum to p4Running) — only used for the SA exit table
+  const saRev = p4Income
+  const saCostLines =
+    exit === "sa"
+      ? [
+          { label: `Platform fee (${data.saPlatformFeePercent ?? 15}%)`, value: saRev * ((data.saPlatformFeePercent ?? 15) / 100) },
+          { label: `Cleaning (${data.saAvgStaysPerMonth ?? 8} stays)`, value: (data.saCleaningCostPerStay ?? 80) * (data.saAvgStaysPerMonth ?? 8) },
+          { label: "Utilities", value: data.saUtilitiesMonthly ?? 200 },
+          { label: "Insurance (SA)", value: (data.saInsuranceAnnual ?? 800) / 12 },
+          { label: `SA management (${data.saManagementFeePercent ?? 20}%)`, value: saRev * ((data.saManagementFeePercent ?? 20) / 100) },
+          { label: `Maintenance (${data.saMaintenancePercent ?? 5}%)`, value: saRev * ((data.saMaintenancePercent ?? 5) / 100) },
+        ]
+      : []
+
   const verdictColor =
     score.total >= 70
       ? "bg-green-500/15 text-green-700 border-green-500/30 dark:text-green-400"
@@ -115,7 +159,12 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
       {/* ── Download report button (hidden in print) ──────────────── */}
       <div className="flex items-center justify-between gap-3 no-print">
         <div>
-          <h2 className="text-lg font-semibold">BRRRR Deal Report</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">BRRRR Deal Report</h2>
+            <Badge variant="outline" className={exitBadgeClass}>
+              Exit: {exitLabel}
+            </Badge>
+          </div>
           <p className="text-xs text-muted-foreground">
             Print or save the below as PDF for lenders, brokers, or your JV partner.
           </p>
@@ -135,7 +184,7 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
       <div className="hidden print:block print-header">
         <h1 className="text-2xl font-bold">BRRRR Deal Analysis Report</h1>
         <p className="text-sm text-muted-foreground">
-          {data.address || "Property"} — {data.postcode} · {new Date().toLocaleDateString("en-GB")}
+          {data.address || "Property"} — {data.postcode} · Exit: {exitLabel} · {new Date().toLocaleDateString("en-GB")}
         </p>
       </div>
 
@@ -346,12 +395,68 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
         </Card>
       </div>
 
+      {/* ── 4b. Phase 4 — Rental Income & Costs (exit-specific) ───────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="size-5 text-primary" />
+            Phase 4 — Rental Position ({exitShort})
+          </CardTitle>
+          <CardDescription>
+            {exit === "sa"
+              ? "Post-refinance the property runs as serviced accommodation — nightly revenue net of platform, cleaning, utilities and management."
+              : exit === "hmo"
+              ? "Post-refinance the property is let as an HMO — room income net of management, maintenance, insurance, bills and the amortised HMO licence."
+              : "Post-refinance the property is a single-let BTL — monthly rent net of management, maintenance, insurance and other running costs."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <tbody>
+                <Row label={p4IncomeLabel} value={p4Income} bold />
+                {exit === "sa" ? (
+                  saCostLines.map((l) => (
+                    <Row key={l.label} label={l.label} value={-Math.round(l.value)} muted />
+                  ))
+                ) : (
+                  <Row
+                    label={
+                      exit === "hmo"
+                        ? "Operating costs (mgmt, maint, insurance, bills, licence)"
+                        : "Operating costs (mgmt, maint, insurance, bills)"
+                    }
+                    value={-Math.round(p4Running)}
+                    muted
+                  />
+                )}
+                {exit === "sa" && (
+                  <Row label="Total operating costs" value={-Math.round(p4Running)} />
+                )}
+                <Row
+                  label="Refinanced mortgage payment"
+                  value={-Math.round(p4Mortgage)}
+                  muted
+                />
+                <Row label="Net monthly cashflow" value={p4Cashflow} bold highlight />
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            All figures monthly. Net cashflow = rental income − operating costs −
+            refinanced mortgage.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* ── 5. BRR vs Standard BTL ──────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle>BRR vs Standard BTL</CardTitle>
+          <CardTitle>BRRRR (→ {exitShort}) vs Standard BTL</CardTitle>
           <CardDescription>
-            What this deal looks like when you refinance the uplift vs buying at market value
+            {exit === "btl"
+              ? "What this deal looks like when you refinance the uplift vs buying at market value"
+              : `Your BRRRR deal exits to ${exitLabel}. Compared with simply buying a standard single-let BTL at market value.`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -433,7 +538,7 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
             <div className="flex-1">
               <div className="flex flex-wrap items-center gap-3 mb-2">
                 <h3 className="text-xl font-semibold">
-                  {score.label} BRRRR Deal
+                  {score.label} BRRRR Deal → {exitShort}
                 </h3>
                 <Badge variant="outline" className={verdictColor}>
                   {score.total}/100
@@ -575,21 +680,24 @@ function Row({
   bold = false,
   sub,
   muted = false,
+  highlight = false,
 }: {
   label: string
   value: number
   bold?: boolean
   sub?: string
   muted?: boolean
+  highlight?: boolean
 }) {
   const muteClass = muted ? "text-muted-foreground" : ""
+  const rowClass = highlight ? "border-t bg-primary/5" : "border-t"
   return (
-    <tr className="border-t">
+    <tr className={rowClass}>
       <td className={`px-3 py-2 ${muteClass}`}>
         <div className={bold ? "font-medium" : ""}>{label}</div>
         {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
       </td>
-      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${muteClass}`}>
+      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${highlight && value >= 0 ? "text-green-600 dark:text-green-400" : ""} ${muteClass}`}>
         {formatCurrency(value)}
       </td>
     </tr>
