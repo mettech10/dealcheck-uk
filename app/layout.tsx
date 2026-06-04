@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { ThemeProvider } from '@/components/theme-provider'
 import { Footer } from '@/components/landing/footer'
 import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
@@ -23,16 +24,31 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="dark">
+    // suppressHydrationWarning: next-themes sets the theme class on <html>
+    // before hydration, which would otherwise trip React's mismatch warning.
+    <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased bg-background text-foreground flex min-h-screen flex-col">
-        <BetaBanner />
-        <div className="flex-1">
-          {children}
-        </div>
-        <Footer />
-        <CookieConsent />
-        <ConditionalAnalytics />
-        <CrispChat />
+        {/* Dark remains the default for all users; the choice persists to
+            localStorage ("metalyzi-theme"). next-themes injects a blocking
+            pre-paint script, so there's never a flash of the wrong theme.
+            enableSystem is off — we honour the saved choice or default dark,
+            not the OS setting. */}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          storageKey="metalyzi-theme"
+          disableTransitionOnChange
+        >
+          <BetaBanner />
+          <div className="flex-1">
+            {children}
+          </div>
+          <Footer />
+          <CookieConsent />
+          <ConditionalAnalytics />
+          <CrispChat />
+        </ThemeProvider>
       </body>
     </html>
   )
