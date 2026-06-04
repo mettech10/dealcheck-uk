@@ -386,6 +386,10 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
 
   const purchaseType = watch("purchaseType")
   const investmentType = watch("investmentType")
+  // BRRRR exit strategy — drives which Phase-4 rental fields show.
+  const brrrExitStrategy = (watch("brrrExitStrategy") || "btl") as "btl" | "hmo" | "sa"
+  const isBrrHmo = investmentType === "brr" && brrrExitStrategy === "hmo"
+  const isBrrSa = investmentType === "brr" && brrrExitStrategy === "sa"
   const sqftValue = watch("sqft")
   const conditionValue = watch("condition")
   const propertyTypeValue = watch("propertyType")
@@ -447,31 +451,25 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
 
   // Auto-derive saMonthlySARevenue from nightly rate × occupancy
   useEffect(() => {
-    if (investmentType === "r2sa" && saEstimatedMonthly > 0) {
+    if ((investmentType === "r2sa" || isBrrSa) && saEstimatedMonthly > 0) {
       setValue("saMonthlySARevenue", saEstimatedMonthly, { shouldDirty: false })
     }
-  }, [investmentType, saEstimatedMonthly, setValue])
+  }, [investmentType, isBrrSa, saEstimatedMonthly, setValue])
 
   // Auto-calculate saAvgStaysPerMonth from occupancy rate ÷ avg stay length
   useEffect(() => {
-    if (investmentType === "r2sa" && saAvgStayLengthNights > 0 && saOccupancyRate > 0) {
+    if ((investmentType === "r2sa" || isBrrSa) && saAvgStayLengthNights > 0 && saOccupancyRate > 0) {
       const nightsBooked = (saOccupancyRate / 100) * 30
       const stays = Math.round((nightsBooked / saAvgStayLengthNights) * 10) / 10
       setValue("saAvgStaysPerMonth", stays, { shouldDirty: false })
     }
-  }, [investmentType, saOccupancyRate, saAvgStayLengthNights, setValue])
+  }, [investmentType, isBrrSa, saOccupancyRate, saAvgStayLengthNights, setValue])
 
   const isR2SA     = investmentType === "r2sa"
   const isHMO      = investmentType === "hmo"
   const isBRR      = investmentType === "brr"
   const isFLIP     = investmentType === "flip"
   const isDevelopment = investmentType === "development"
-
-  // BRRRR exit strategy — drives which Phase-4 rental fields show.
-  const brrrExitStrategy = (watch("brrrExitStrategy") || "btl") as "btl" | "hmo" | "sa"
-  const isBrrBtl = isBRR && brrrExitStrategy === "btl"
-  const isBrrHmo = isBRR && brrrExitStrategy === "hmo"
-  const isBrrSa  = isBRR && brrrExitStrategy === "sa"
   const isBridging = purchaseType === "bridging-loan"
   const isCash     = purchaseType === "cash"
 
@@ -522,10 +520,10 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   // HMO: auto-derive monthlyRent from roomCount × avgRoomRate
   const hmoTotalRent = (roomCountValue || 0) * (avgRoomRateValue || 0)
   useEffect(() => {
-    if (isHMO && hmoTotalRent >= 0) {
+    if ((isHMO || isBrrHmo) && hmoTotalRent >= 0) {
       setValue("monthlyRent", hmoTotalRent)
     }
-  }, [isHMO, hmoTotalRent, setValue])
+  }, [isHMO, isBrrHmo, hmoTotalRent, setValue])
 
   return (
     <form
@@ -1914,8 +1912,8 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
         </div>
       )}
 
-      {/* ── HMO Room Details ──────────────────────────────────────────── */}
-      {isHMO && (
+      {/* ── HMO Room Details (also shown for BRRRR → HMO exit) ─────────── */}
+      {(isHMO || isBrrHmo) && (
         <div className="flex flex-col gap-4">
           <h3 className="text-base font-semibold text-foreground">HMO Room Details</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1991,8 +1989,8 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
         </div>
       )}
 
-      {/* ── Rental Income (hidden for HMO — room×rate; hidden for Flip — sell strategy; hidden for R2SA — handled in SA section; hidden for Development — exit strategy) */}
-      {!isHMO && !isFLIP && !isR2SA && !isDevelopment && (
+      {/* ── Rental Income (hidden for HMO — room×rate; hidden for Flip — sell strategy; hidden for R2SA — handled in SA section; hidden for Development — exit strategy; hidden for BRRRR HMO/SA exits — handled in their own sections) */}
+      {!isHMO && !isFLIP && !isR2SA && !isDevelopment && !isBrrHmo && !isBrrSa && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-foreground">
@@ -2042,10 +2040,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
         </div>
       )}
 
-      {/* ── R2SA — Serviced Accommodation Details ───────────────────── */}
-      {isR2SA && (
+      {/* ── R2SA — Serviced Accommodation Details (also BRRRR → SA exit) ─ */}
+      {(isR2SA || isBrrSa) && (
         <div className="flex flex-col gap-6">
-          {/* Ownership toggle */}
+          {/* Ownership toggle — hidden for BRRRR SA exit (the BRRRR
+              refinance already establishes ownership + financing). */}
+          {!isBrrSa && (
           <div className="flex flex-col gap-4">
             <h3 className="text-base font-semibold text-foreground">Property Ownership</h3>
             <Controller
@@ -2071,6 +2071,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
               )}
             />
           </div>
+          )}
 
           {/* SA Income */}
           <div className="flex flex-col gap-4">
@@ -2164,8 +2165,9 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
             </div>
           </div>
 
-          {/* SA Financing — only if owned */}
-          {saOwnershipType === "own" && (
+          {/* SA Financing — only if owned (never for BRRRR SA exit:
+              financing comes from the BRRRR refinance phases above). */}
+          {saOwnershipType === "own" && !isBrrSa && (
             <div className="flex flex-col gap-4">
               <h3 className="text-base font-semibold text-foreground">Financing</h3>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -2206,13 +2208,13 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
         </div>
       )}
 
-      {/* ── Running Costs (hidden for R2SA; hidden for Development — not a hold strategy) */}
-      {!isR2SA && !isDevelopment && (
+      {/* ── Running Costs (hidden for R2SA + BRRRR SA exit — own costs; hidden for Development — not a hold strategy) */}
+      {!isR2SA && !isDevelopment && !isBrrSa && (
         <div className="flex flex-col gap-4">
           <h3 className="text-base font-semibold text-foreground">Running Costs</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Management fee — only shown here for non-HMO (HMO has it in its own section) */}
-            {!isHMO && (
+            {!isHMO && !isBrrHmo && (
               <FormField label="Management Fee" hint="% of rent">
                 <div className="relative">
                   <Input
