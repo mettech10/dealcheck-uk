@@ -2078,10 +2078,18 @@ def analyze_deal(data):
     refurb_costs = float(data.get('refurbCosts', 0)) if deal_type in ['BRR', 'FLIP'] else 0
     arv = float(data.get('arv', 0)) if deal_type in ['BRR', 'FLIP'] else 0
 
-    # HMO specific — room count × avg rate overrides monthly_rent
-    room_count = int(data.get('roomCount', 0)) if deal_type == 'HMO' else 0
-    avg_room_rate = float(data.get('avgRoomRate', 0)) if deal_type == 'HMO' else 0
-    if deal_type == 'HMO' and room_count > 0 and avg_room_rate > 0:
+    # BRRRR exit strategy — purchase/refurb/refinance phases are identical
+    # across exits; only the Phase-4 rental income branches. 'btl' (default),
+    # 'hmo' (rooms × rate), or 'sa' (nightly × occupancy).
+    brrr_exit = (str(data.get('brrrExitStrategy') or 'btl').lower()
+                 if deal_type == 'BRR' else 'btl')
+
+    # HMO specific — room count × avg rate overrides monthly_rent. Also applies
+    # to a BRRRR deal whose exit strategy is HMO.
+    _hmo_income = deal_type == 'HMO' or (deal_type == 'BRR' and brrr_exit == 'hmo')
+    room_count = int(data.get('roomCount', 0)) if _hmo_income else 0
+    avg_room_rate = float(data.get('avgRoomRate', 0)) if _hmo_income else 0
+    if _hmo_income and room_count > 0 and avg_room_rate > 0:
         monthly_rent = room_count * avg_room_rate
 
     # R2SA specific — investor rents property and sublets as serviced accommodation
@@ -2114,8 +2122,36 @@ def analyze_deal(data):
         cash_on_cash = r2sa_roi
         net_yield = 0
 
-    # Income and expenses (skipped for R2SA which calculates directly above)
-    if deal_type != 'R2SA':
+    # BRRRR → SA exit: post-refinance the property runs as serviced
+    # accommodation. Revenue = nightly rate × occupancy × 30; op costs mirror
+    # the frontend SA model (platform + cleaning + utilities + insurance +
+    # SA management + SA maintenance). Income is skipped from the generic
+    # block below and handled here directly.
+    _brr_sa = deal_type == 'BRR' and brrr_exit == 'sa'
+    if _brr_sa:
+        sa_revenue = float(data.get('saMonthlySARevenue', 0) or 0)
+        if sa_revenue <= 0:
+            sa_revenue = (float(data.get('saNightlyRate', 0) or 0)
+                          * (float(data.get('saOccupancyRate', 0) or 0) / 100) * 30)
+        sa_platform   = sa_revenue * (float(data.get('saPlatformFeePercent', 15) or 15) / 100)
+        sa_cleaning   = (float(data.get('saCleaningCostPerStay', 80) or 80)
+                         * float(data.get('saAvgStaysPerMonth', 8) or 8))
+        sa_utilities  = float(data.get('saUtilitiesMonthly', 200) or 200)
+        sa_insurance  = float(data.get('saInsuranceAnnual', 800) or 800) / 12
+        sa_management = sa_revenue * (float(data.get('saManagementFeePercent', 20) or 20) / 100)
+        sa_maint      = sa_revenue * (float(data.get('saMaintenancePercent', 5) or 5) / 100)
+        monthly_op_costs = sa_platform + sa_cleaning + sa_utilities + sa_insurance + sa_management + sa_maint
+        annual_rent = sa_revenue * 12
+        total_annual_expenses = (monthly_op_costs * 12) + annual_mortgage
+        net_annual_income = annual_rent - total_annual_expenses
+        monthly_cashflow = net_annual_income / 12
+        gross_yield = (annual_rent / purchase_price) * 100 if purchase_price > 0 else 0
+        cash_invested = deposit_amount + stamp_duty + legal_fees + valuation_fee + arrangement_fee
+        cash_on_cash = (net_annual_income / cash_invested) * 100 if cash_invested > 0 else 0
+        net_yield = (net_annual_income / purchase_price) * 100 if purchase_price > 0 else 0
+
+    # Income and expenses (skipped for R2SA + BRRRR-SA which calculate directly)
+    if deal_type != 'R2SA' and not _brr_sa:
         annual_rent = monthly_rent * 12
         management_costs = annual_rent * 0.10
         void_costs = (monthly_rent / 4.33) * 2  # 2 weeks void
@@ -2147,7 +2183,10 @@ def analyze_deal(data):
             'equity_created': round(equity_created, 0),
             'refinance_amount': round(refinance_amount, 0),
             'money_left_in': round(money_left_in, 0),
-            'brr_roi': round(brr_roi, 2)
+            'brr_roi': round(brr_roi, 2),
+            'exit_strategy': brrr_exit,  # 'btl' | 'hmo' | 'sa'
+            'monthly_cashflow': round(monthly_cashflow, 0),
+            'gross_yield': round(gross_yield, 2),
         }
     
     # Flip specific metrics

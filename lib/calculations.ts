@@ -814,14 +814,48 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   // represents AVERAGE void weeks per room (since whole-property voids are
   // rare in shared houses), and hmoRoomVoidWeeks lets the user override
   // voidWeeks specifically for HMOs without disturbing the BTL field.
-  const isHMO = data.investmentType === "hmo"
+  // BRRRR exit strategy — purchase/refurb/refinance phases are identical
+  // across exits; only the Phase-4 rental income + running costs branch.
+  //   'btl' → single-let (default)        — uses monthlyRent
+  //   'hmo' → multi-room HMO              — treated exactly like a standalone HMO
+  //   'sa'  → serviced accommodation      — uses nightly rate × occupancy
+  const isBrr = data.investmentType === "brr"
+  const brrrExit: "btl" | "hmo" | "sa" = isBrr
+    ? (data.brrrExitStrategy ?? "btl")
+    : "btl"
+  const isBrrHmo = isBrr && brrrExit === "hmo"
+  const isBrrSa = isBrr && brrrExit === "sa"
+
+  // A BRRRR → HMO exit behaves identically to a standalone HMO for income
+  // and running costs (the form auto-derives monthlyRent = rooms × rate).
+  const isHMO = data.investmentType === "hmo" || isBrrHmo
+
+  // Serviced-accommodation revenue (only meaningful for the SA exit). Derive
+  // from nightly rate × occupancy × 30 if the legacy saMonthlySARevenue
+  // field wasn't auto-filled, mirroring the standalone R2SA branch.
+  const saDerivedRevenue =
+    (data.saNightlyRate ?? 0) * ((data.saOccupancyRate ?? 0) / 100) * 30
+  const saRevenue =
+    data.saMonthlySARevenue && data.saMonthlySARevenue > 0
+      ? data.saMonthlySARevenue
+      : saDerivedRevenue
+
   const effectiveVoidWeeks = isHMO && data.hmoRoomVoidWeeks !== undefined
     ? data.hmoRoomVoidWeeks
     : data.voidWeeks
   const effectiveWeeks = 52 - effectiveVoidWeeks
-  const contractAnnualRent = data.monthlyRent * 12
-  const annualRent = Math.round(contractAnnualRent * (effectiveWeeks / 52))
-  const monthlyIncome = Math.round((annualRent / 12) * 100) / 100
+
+  // Income — SA exit uses occupancy-baked nightly revenue; everything else
+  // (BTL + HMO) uses the void-adjusted monthly rent.
+  const contractAnnualRent = isBrrSa
+    ? Math.round(saRevenue * 12)
+    : data.monthlyRent * 12
+  const annualRent = isBrrSa
+    ? Math.round(saRevenue * 12) // occupancy already factored into saRevenue
+    : Math.round(contractAnnualRent * (effectiveWeeks / 52))
+  const monthlyIncome = isBrrSa
+    ? Math.round(saRevenue * 100) / 100
+    : Math.round((annualRent / 12) * 100) / 100
 
   // Running costs
   const monthlyManagement = data.monthlyRent * (data.managementFeePercent / 100)
@@ -853,16 +887,29 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     : 0
   const monthlyHmoLicence = hmoLicenceAnnualAmortisation / 12
 
-  const monthlyRunningCosts =
-    Math.round(
-      (monthlyManagement +
-        monthlyInsurance +
-        monthlyMaintenance +
-        monthlyGroundRent +
-        monthlyBills +
-        monthlyHmoLicence) *
-        100
-    ) / 100
+  // SA-exit running costs — platform + cleaning + utilities + insurance +
+  // SA management + SA maintenance (mirrors the standalone R2SA branch).
+  const saMonthlyOpCosts = Math.round(
+    (saRevenue * ((data.saPlatformFeePercent ?? 15) / 100) +          // platform commission
+      (data.saCleaningCostPerStay ?? 80) * (data.saAvgStaysPerMonth ?? 8) + // cleaning per turnover
+      (data.saUtilitiesMonthly ?? 200) +                              // utilities
+      (data.saInsuranceAnnual ?? 800) / 12 +                          // SA insurance
+      saRevenue * ((data.saManagementFeePercent ?? 20) / 100) +       // SA management
+      saRevenue * ((data.saMaintenancePercent ?? 5) / 100)) *         // SA maintenance
+      100
+  ) / 100
+
+  const monthlyRunningCosts = isBrrSa
+    ? saMonthlyOpCosts
+    : Math.round(
+        (monthlyManagement +
+          monthlyInsurance +
+          monthlyMaintenance +
+          monthlyGroundRent +
+          monthlyBills +
+          monthlyHmoLicence) *
+          100
+      ) / 100
 
   const annualRunningCosts = Math.round(monthlyRunningCosts * 12 * 100) / 100
 
