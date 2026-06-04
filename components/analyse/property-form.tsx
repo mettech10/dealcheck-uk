@@ -52,6 +52,7 @@ const schema = z.object({
   // BRR / Flip
   arv: z.coerce.number().min(0).optional(),
   arvBasis: z.enum(["comparables", "surveyor", "agent", "manual"]).optional(),
+  brrrExitStrategy: z.enum(["btl", "hmo", "sa"]).optional(),
   // BRRRR refurb extras
   refurbContingencyPercent: z.coerce.number().min(0).max(50).optional(),
   refurbHoldingMonths: z.coerce.number().min(0).max(24).optional(),
@@ -263,6 +264,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     capitalGrowthRate: 4,
     arv: 0,
     arvBasis: "comparables",
+    brrrExitStrategy: "btl",
     refurbContingencyPercent: 10,
     refurbHoldingMonths: 6,
     refurbHoldingCostPerMonth: 250,
@@ -464,6 +466,12 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
   const isBRR      = investmentType === "brr"
   const isFLIP     = investmentType === "flip"
   const isDevelopment = investmentType === "development"
+
+  // BRRRR exit strategy — drives which Phase-4 rental fields show.
+  const brrrExitStrategy = (watch("brrrExitStrategy") || "btl") as "btl" | "hmo" | "sa"
+  const isBrrBtl = isBRR && brrrExitStrategy === "btl"
+  const isBrrHmo = isBRR && brrrExitStrategy === "hmo"
+  const isBrrSa  = isBRR && brrrExitStrategy === "sa"
   const isBridging = purchaseType === "bridging-loan"
   const isCash     = purchaseType === "cash"
 
@@ -1479,6 +1487,48 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                   </div>
                 </FormField>
               </div>
+            </div>
+          )}
+
+          {/* ── BRRRR exit strategy selector ─────────────────────── */}
+          {isBRR && (
+            <div className="mt-2 flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/20 p-4">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">
+                  After refinancing, how will you rent this property?
+                </h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Your exit strategy determines the rental income calculation. The
+                  purchase, refurb, and refinance phases are the same regardless of exit.
+                </p>
+              </div>
+              <Controller
+                name="brrrExitStrategy"
+                control={control}
+                render={({ field }) => (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {([
+                      { value: "btl", label: "Single Let (BTL)", sub: "One tenancy" },
+                      { value: "hmo", label: "HMO", sub: "Multi-room let" },
+                      { value: "sa", label: "Serviced Accom.", sub: "Nightly / short-stay" },
+                    ] as const).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => field.onChange(opt.value)}
+                        className={`flex flex-col items-start rounded-lg border px-4 py-2.5 text-left transition-all ${
+                          (field.value || "btl") === opt.value
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground"
+                        }`}
+                      >
+                        <span className="text-sm font-medium">{opt.label}</span>
+                        <span className="text-xs opacity-70">{opt.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              />
             </div>
           )}
 

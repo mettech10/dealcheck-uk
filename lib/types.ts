@@ -103,6 +103,14 @@ export interface PropertyFormData {
   arv?: number // After Repair Value
   arvBasis?: "comparables" | "surveyor" | "agent" | "manual"
 
+  // BRRRR exit strategy — how the property is rented AFTER refinancing.
+  // Purchase / refurb / refinance phases are identical across exits; only
+  // the Phase-4 rental income calculation and post-refi cashflow change.
+  //   'btl' → single-let BTL (default), uses monthlyRent
+  //   'hmo' → multi-room HMO, uses roomCount × avgRoomRate (+ Article 4)
+  //   'sa'  → serviced accommodation, uses nightly rate × occupancy
+  brrrExitStrategy?: "btl" | "hmo" | "sa"
+
   // BRRRR Refurb detail
   refurbContingencyPercent?: number  // typically 10-15% buffer on refurb
   refurbHoldingMonths?: number       // months property is empty during refurb
