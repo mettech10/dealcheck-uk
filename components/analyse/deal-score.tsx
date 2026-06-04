@@ -38,13 +38,14 @@ export function DealScore({ score, label }: DealScoreProps) {
         style={{ transform: "rotate(-90deg)" }}
         className="absolute inset-0"
       >
-        {/* Background track */}
+        {/* Background track — themed so it stays visible in light mode
+            (the score colour stays hardcoded; it's a semantic status hue). */}
         <circle
           cx={cx}
           cy={cy}
           r={radius}
           fill="none"
-          stroke="oklch(0.2 0.015 260)"
+          stroke="var(--border)"
           strokeWidth={strokeWidth}
         />
         {/* Progress arc */}

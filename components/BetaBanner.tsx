@@ -66,7 +66,7 @@ export default function BetaBanner() {
   return (
     <div
       role="status"
-      className="flex h-9 items-center justify-center gap-3 border-b border-primary/30 bg-emerald-950 px-4 text-[13px] text-muted-foreground"
+      className="flex h-9 items-center justify-center gap-3 border-b border-primary/30 bg-emerald-50 px-4 text-[13px] text-muted-foreground dark:bg-emerald-950"
     >
       <span className="flex items-center gap-2">
         <span aria-hidden>🚀</span>

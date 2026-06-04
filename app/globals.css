@@ -473,3 +473,32 @@
 .animate-tools-account-pop {
   animation: account-pop-in 0.15s ease both;
 }
+
+/* ── Light-mode polish (Feature 1, Section 4) ────────────────────────── */
+
+/* Leaflet (Article 4 map) popups — OpenStreetMap tiles are already light,
+   but the popup chrome defaults to white. Drive it from the theme tokens
+   so the popup matches whichever theme is active (white in light mode,
+   dark card in dark mode) and stays readable either way. */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--card);
+  color: var(--foreground);
+}
+.leaflet-popup-content-wrapper {
+  border: 1px solid var(--border);
+}
+.leaflet-popup-content a {
+  color: var(--primary);
+}
+
+/* Inline code / monospace chips — subtle themed background so they read on
+   both light (light-grey) and dark (dark-grey) surfaces. Scoped to bare
+   <code> (not syntax-highlighted blocks) to avoid disturbing other styles. */
+code:not([class*="language-"]):not(pre code) {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}

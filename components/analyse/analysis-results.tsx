@@ -89,12 +89,14 @@ interface AnalysisResultsProps {
   onBack?: () => void
 }
 
+// Series colours pull from the themed --chart-* tokens so they stay
+// readable in both light and dark mode (the tokens carry per-theme values).
 const CHART_COLORS = [
-  "oklch(0.75 0.15 190)",
-  "oklch(0.7 0.15 160)",
-  "oklch(0.75 0.12 85)",
-  "oklch(0.65 0.15 250)",
-  "oklch(0.65 0.12 310)",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
 ]
 
 // Reusable signed-£ row used by the SA financial breakdown. Negative values
@@ -1879,27 +1881,27 @@ export function AnalysisResults({
                   <BarChart data={cashFlowData} barGap={8}>
                     <CartesianGrid
                       strokeDasharray="3 3"
-                      stroke="oklch(0.25 0.02 260)"
+                      stroke="var(--border)"
                     />
                     <XAxis
                       dataKey="name"
-                      tick={{ fill: "oklch(0.6 0.01 260)", fontSize: 12 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                     />
                     <YAxis
-                      tick={{ fill: "oklch(0.6 0.01 260)", fontSize: 12 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                       tickFormatter={(v) => `£${v}`}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "oklch(0.16 0.015 260)",
-                        border: "1px solid oklch(0.25 0.02 260)",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
-                        color: "oklch(0.95 0.005 260)",
+                        color: "var(--foreground)",
                       }}
                       formatter={(value: number) => [`£${value}`, undefined]}
                     />
                     <Legend
-                      wrapperStyle={{ color: "oklch(0.6 0.01 260)", fontSize: 12 }}
+                      wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 12 }}
                     />
                     <Bar
                       dataKey="Income"
@@ -1956,10 +1958,10 @@ export function AnalysisResults({
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "oklch(0.16 0.015 260)",
-                        border: "1px solid oklch(0.25 0.02 260)",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
-                        color: "oklch(0.95 0.005 260)",
+                        color: "var(--foreground)",
                       }}
                       formatter={(value: number) => [
                         `£${value.toLocaleString()}`,
@@ -1988,22 +1990,22 @@ export function AnalysisResults({
                   <LineChart data={projectionData}>
                     <CartesianGrid
                       strokeDasharray="3 3"
-                      stroke="oklch(0.25 0.02 260)"
+                      stroke="var(--border)"
                     />
                     <XAxis
                       dataKey="name"
-                      tick={{ fill: "oklch(0.6 0.01 260)", fontSize: 12 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                     />
                     <YAxis
-                      tick={{ fill: "oklch(0.6 0.01 260)", fontSize: 12 }}
+                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                       tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "oklch(0.16 0.015 260)",
-                        border: "1px solid oklch(0.25 0.02 260)",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
-                        color: "oklch(0.95 0.005 260)",
+                        color: "var(--foreground)",
                       }}
                       formatter={(value: number) => [
                         `£${value.toLocaleString()}`,
@@ -2011,7 +2013,7 @@ export function AnalysisResults({
                       ]}
                     />
                     <Legend
-                      wrapperStyle={{ color: "oklch(0.6 0.01 260)", fontSize: 12 }}
+                      wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 12 }}
                     />
                     <Line
                       type="monotone"
