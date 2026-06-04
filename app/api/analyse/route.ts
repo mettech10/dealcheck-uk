@@ -445,6 +445,12 @@ export async function POST(req: Request) {
               ? {
                   arv: propertyData?.arv,
                   arvBasis: propertyData?.arvBasis,
+                  // Exit strategy — how the property is rented after
+                  // refinancing ('btl' | 'hmo' | 'sa'). Phases 1-3 are
+                  // identical across exits; only Phase-4 income differs.
+                  exitStrategy: propertyData?.brrrExitStrategy ?? "btl",
+                  postRefiCashflow: calculationResults.monthlyCashFlow,
+                  postRefiIncome: calculationResults.monthlyIncome,
                   // Phase costs
                   acquisitionCost: calculationResults.brrrrAcquisitionCost,
                   refurbBudget: calculationResults.brrrrRefurbBudget,

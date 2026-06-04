@@ -4490,13 +4490,52 @@ def get_ai_property_analysis(property_data, calculated_metrics, market_data=None
     if deal_type == 'BRR':
         brr = calculated_metrics.get('brr_metrics', {})
         if brr:
+            _exit = str(brr.get('exit_strategy', 'btl')).lower()
+            _exit_label = {
+                'hmo': 'HMO (multi-room let)',
+                'sa':  'Serviced Accommodation (short-let)',
+            }.get(_exit, 'Single-Let BTL')
+            # Exit-specific underwriting guidance for Claude. The purchase,
+            # refurb and refinance phases are IDENTICAL across exits — only the
+            # post-refinance rental income (Phase 4) and the risks differ.
+            if _exit == 'hmo':
+                _exit_guidance = (
+                    "This BRRRR exits as an HMO. Phase-4 income is room income "
+                    "(rooms × rent/room), which is much higher than a single let "
+                    "but carries extra risk: an Article 4 direction can block the "
+                    "C3→C4 change of use, HMO licensing/standards add cost, and "
+                    "void risk is per-room. Stress-test whether the HMO use is "
+                    "actually permitted and whether the higher income survives "
+                    "HMO-grade management (15%), bills, and licensing."
+                )
+            elif _exit == 'sa':
+                _exit_guidance = (
+                    "This BRRRR exits as Serviced Accommodation. Phase-4 income is "
+                    "nightly rate × occupancy × 30, gross of heavy operating costs "
+                    "(platform fees, cleaning, utilities, SA insurance, ~20% "
+                    "management). Judge on MONTHLY NET PROFIT, not yield. Check the "
+                    "occupancy assumption is realistic for the area (>80% is "
+                    "optimistic) and flag short-let restrictions / Article 4 / "
+                    "90-night caps (London) or Control Zones (Edinburgh)."
+                )
+            else:
+                _exit_guidance = (
+                    "This BRRRR exits as a single-let BTL. Phase-4 income is the "
+                    "monthly rent; judge cashflow on yield-on-ARV vs the new "
+                    "refinanced mortgage."
+                )
             strategy_context = f"""
 BRR STRATEGY METRICS:
+- Exit Strategy (post-refinance rental): {_exit_label}
 - Refurb Cost: £{brr.get('refurb_cost', 0):,}
 - After Repair Value (ARV): £{brr.get('arv', 0):,}
 - Money Left In: £{brr.get('money_left_in', 0):,}
 - BRR ROI: {brr.get('brr_roi', 0):.1f}%
-- Equity Released: £{brr.get('equity_released', 0):,}"""
+- Equity Released: £{brr.get('equity_released', 0):,}
+- Post-Refi Monthly Cashflow: £{brr.get('monthly_cashflow', 0):,.0f}
+- Gross Yield (on ARV): {brr.get('gross_yield', 0):.1f}%
+
+EXIT-STRATEGY CONTEXT: {_exit_guidance}"""
     elif deal_type == 'FLIP':
         flip = calculated_metrics.get('flip_metrics', {})
         if flip:
