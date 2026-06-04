@@ -209,7 +209,7 @@ export function StrategySwitcher({
   ]
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 print:hidden">
+    <div id="strategy-switcher" className="flex scroll-mt-20 flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 print:hidden">
       <span className="text-xs font-medium text-muted-foreground">Analysing as:</span>
 
       {/* Pill toggle — horizontal scroll on mobile, wraps on desktop */}

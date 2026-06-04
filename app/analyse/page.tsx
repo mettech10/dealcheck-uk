@@ -116,6 +116,16 @@ function detectRentalListing(
   return "uncertain"
 }
 
+// Compact strategy badge metadata for the results toolbar (Feature B).
+const STRATEGY_BADGE: Record<InvestmentType, { icon: string; label: string }> = {
+  btl: { icon: "🏠", label: "BTL" },
+  hmo: { icon: "🏘", label: "HMO" },
+  brr: { icon: "🔄", label: "BRRRR" },
+  flip: { icon: "🔨", label: "Flip" },
+  r2sa: { icon: "🌟", label: "SA" },
+  development: { icon: "🏗", label: "Development" },
+}
+
 // Helper to format analysis results from backend
 // overridePostcode: use the user's actual form postcode instead of any AI-hallucinated one
 function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string): string {
@@ -1794,6 +1804,25 @@ function AnalysePage() {
                     {formData.address}
                   </span>
                 </span>
+              )}
+
+              {/* Strategy badge — current strategy at a glance; click jumps
+                  to the full strategy switcher (Feature B). */}
+              {formData?.investmentType && (results || aiText) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    document
+                      .getElementById("strategy-switcher")
+                      ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+                  title="Switch strategy"
+                >
+                  {STRATEGY_BADGE[formData.investmentType]?.icon}{" "}
+                  {STRATEGY_BADGE[formData.investmentType]?.label}
+                  <span aria-hidden>▾</span>
+                </button>
               )}
             </div>
 

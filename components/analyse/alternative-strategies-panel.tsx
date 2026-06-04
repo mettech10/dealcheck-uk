@@ -13,7 +13,7 @@
  */
 import type { InvestmentType } from "@/lib/types"
 import type { StrategyEstimate } from "@/lib/strategyEstimates"
-import { estimateStrategies } from "@/lib/strategyEstimates"
+import { estimateStrategies, bestAlternative } from "@/lib/strategyEstimates"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
 
 interface AlternativeStrategiesPanelProps {
@@ -109,6 +109,15 @@ export function AlternativeStrategiesPanel({
 }: AlternativeStrategiesPanelProps) {
   const estimates = estimateStrategies(data, results, backendData ?? undefined)
   const current = data.investmentType
+  const best = bestAlternative(estimates, current)
+
+  // Surface the best alternative as a hint only when it's a meaningful
+  // improvement over the current strategy's comparable metric.
+  const currentEst = estimates.find((e) => e.strategy === current)
+  const showHint =
+    best &&
+    typeof best.primaryMetric === "number" &&
+    (currentEst?.primaryMetric == null || best.primaryMetric > (currentEst.primaryMetric ?? 0))
 
   return (
     <section className="flex flex-col gap-3 print:hidden">
@@ -132,6 +141,26 @@ export function AlternativeStrategiesPanel({
           />
         ))}
       </div>
+
+      {/* Best-alternative hint (Section 4, Step 2) */}
+      {showHint && best && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
+          <p className="text-xs text-foreground">
+            💡 The <span className="font-semibold">{best.label}</span> strategy shows an estimated{" "}
+            <span className="font-semibold">{best.primaryMetric!.toFixed(1)}%</span>{" "}
+            {best.primaryMetricLabel ?? "yield"} on this property
+          </p>
+          {onSwitch && (
+            <button
+              type="button"
+              onClick={() => onSwitch(best.strategy)}
+              className="inline-flex items-center rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/15"
+            >
+              Switch to {best.label} →
+            </button>
+          )}
+        </div>
+      )}
 
       <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400/90">
         ⚠ These are rough estimates to guide strategy selection — not full analyses. Figures use
