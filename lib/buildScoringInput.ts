@@ -265,6 +265,7 @@ export function buildScoringInput(
     userRentPerRoom: data.avgRoomRate,
 
     // BRRRR
+    brrrExitStrategy: strategy === "brr" ? (data.brrrExitStrategy ?? "btl") : undefined,
     capitalRecoveredPct: results.brrrrCapitalRecycledPct,
     cashLeftIn: results.moneyLeftInDeal,
     arvUpliftMultiple,

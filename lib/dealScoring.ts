@@ -76,6 +76,7 @@ export interface ScoringInput {
   userRentPerRoom?: number        // £/mo per room
 
   // ── BRRRR-specific ──
+  brrrExitStrategy?: "btl" | "hmo" | "sa" // post-refinance rental exit (default btl)
   capitalRecoveredPct?: number    // %
   cashLeftIn?: number             // £
   arvUpliftMultiple?: number      // (ARV - purchase) / refurbTotal
@@ -240,8 +241,12 @@ function applyHardCaps(
 ): number {
   let t = total
 
-  // Article 4 + HMO → cap 70
-  if (input.strategy === "hmo" && input.article4Status === "active") {
+  // Article 4 + HMO → cap 70. Applies to a standalone HMO, OR a BRRRR deal
+  // whose exit strategy is HMO (the conversion needs planning either way).
+  const hmoExposure =
+    input.strategy === "hmo" ||
+    (input.strategy === "brr" && input.brrrExitStrategy === "hmo")
+  if (hmoExposure && input.article4Status === "active") {
     t = clampMax(t, 70, "Article 4 active in this area", warnings)
     criticalFlags.push({
       type: "article4_hmo",
@@ -785,15 +790,46 @@ export function scoreBrrrr(input: ScoringInput): ScoreResult {
   }
 
   // ── Category 3 — Post-Refi Position (25) ──
+  // The exit strategy changes what "good" looks like post-refinance:
+  //   BTL → yield on ARV benchmarked at 4-8%
+  //   HMO → multi-room income, yield benchmarked higher (6-12%)
+  //   SA  → income is driven by monthly profit, not yield; the Yield-on-ARV
+  //         factor is replaced by a monthly-profit factor.
+  const exit = input.brrrExitStrategy ?? "btl"
+  const isSaExit = exit === "sa"
+  const isHmoExit = exit === "hmo"
+
   const postCf = input.postRefiCashflow ?? input.monthlyCashflow
   const postCfPts = tierScore(postCf, [
     [400, 12], [200, 9], [100, 5], [0, 2],
   ])
 
   const yArv = input.yieldOnArv ?? 0
-  const yArvPts = tierScore(yArv, [
-    [8, 8], [6, 6], [4, 3],
-  ])
+  // Per-exit yield-on-ARV benchmarks. SA exits don't use yield — that factor
+  // is folded into a stricter monthly-profit assessment below.
+  let yArvPts: number
+  let yArvName: string
+  let yArvValue: string
+  if (isSaExit) {
+    // SA: reward strong monthly profit instead of a yield figure.
+    yArvPts = tierScore(postCf, [
+      [800, 8], [500, 6], [250, 3], [0, 1],
+    ])
+    yArvName = "SA Monthly Profit"
+    yArvValue = fmtGbp(postCf)
+  } else if (isHmoExit) {
+    yArvPts = tierScore(yArv, [
+      [12, 8], [9, 6], [6, 3],
+    ])
+    yArvName = "Yield on ARV (HMO)"
+    yArvValue = fmtPct(yArv)
+  } else {
+    yArvPts = tierScore(yArv, [
+      [8, 8], [6, 6], [4, 3],
+    ])
+    yArvName = "Yield on ARV"
+    yArvValue = fmtPct(yArv)
+  }
 
   const roce = input.roce ?? 0
   let rocePts = 0
@@ -807,7 +843,7 @@ export function scoreBrrrr(input: ScoringInput): ScoreResult {
     maxScore: 25,
     factors: [
       f(postCfPts, 12, "Post-Refi Cashflow", fmtGbp(postCf)),
-      f(yArvPts, 8, "Yield on ARV", fmtPct(yArv)),
+      f(yArvPts, 8, yArvName, yArvValue),
       f(rocePts, 5, "ROCE", `${fmtPct(roce, 0)}`),
     ],
   }
@@ -825,12 +861,13 @@ export function scoreBrrrr(input: ScoringInput): ScoreResult {
   else if (refiLtv <= 72) refiPts = 4
   else if (refiLtv <= 75) refiPts = 2
 
-  // Article 4 only relevant if BRRRR exits to HMO use — proxy by
-  // numberOfRooms ≥ 3 (HMO-style refurb).
-  const intendedHmo = (input.numberOfRooms ?? input.bedrooms) >= 4
+  // Article 4 only matters when the BRRRR exit is HMO (planning risk on the
+  // conversion). Use the explicit exit strategy; fall back to a room-count
+  // proxy for older clients that didn't send brrrExitStrategy.
+  const hmoExit = isHmoExit || (exit === "btl" && (input.numberOfRooms ?? input.bedrooms) >= 4 && input.brrrExitStrategy === undefined)
   let a4Pts = 5
-  let a4Value = "BRRRR exit not HMO"
-  if (intendedHmo) {
+  let a4Value = isSaExit ? "SA exit — Article 4 N/A" : "BRRRR exit not HMO"
+  if (hmoExit) {
     if (input.article4Status === "active") {
       a4Pts = 0
       a4Value = "Article 4 active + HMO exit"
@@ -855,9 +892,29 @@ export function scoreBrrrr(input: ScoringInput): ScoreResult {
   }
 
   const categories = [cat1, cat2, cat3, cat4]
-  const rawTotal = sumCategories(categories)
+  let rawTotal = sumCategories(categories)
+
+  // SA-exit occupancy realism — UK serviced accommodation rarely sustains
+  // occupancy much above ~70-75%. An optimistic assumption inflates the whole
+  // model, so dock 10 points (and flag it) when the user assumes > 80%.
+  if (isSaExit && typeof input.userOccupancyRate === "number" && input.userOccupancyRate > 80) {
+    rawTotal = Math.max(0, rawTotal - 10)
+    warnings.push(
+      `SA occupancy of ${input.userOccupancyRate.toFixed(0)}% is optimistic for UK serviced accommodation (sustainable average ~65-75%). Score reduced by 10 — re-check at a realistic occupancy.`,
+    )
+    criticalFlags.push({
+      type: "sa_occupancy_risk",
+      message: "⚠ Optimistic SA Occupancy Assumption",
+      impact: `Your assumed occupancy (${input.userOccupancyRate.toFixed(0)}%) is above the sustainable UK SA range (~65-75%). The post-refinance SA income — and therefore this score — may not hold at realistic occupancy.`,
+    })
+  }
+
   const total = applyHardCaps(rawTotal, input, warnings, criticalFlags)
-  const { label, colour } = bandFromTotal(total)
+  const { label: baseLabel, colour } = bandFromTotal(total)
+
+  // Verdict label carries the exit so the UI can show "Strong BRRRR → HMO".
+  const exitLabel = isSaExit ? "SA" : isHmoExit ? "HMO" : "BTL"
+  const label = total >= 70 ? `Strong BRRRR → ${exitLabel}` : `${baseLabel} (BRRRR → ${exitLabel})`
 
   return { total, label, colour, categories, warnings, criticalFlags }
 }
