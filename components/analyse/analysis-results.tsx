@@ -24,6 +24,7 @@ import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
 import { DevelopmentResults } from "./development-results"
+import { AlternativeStrategiesPanel } from "./alternative-strategies-panel"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { SAAreaIntelligence } from "./sa-area-intelligence"
@@ -44,7 +45,7 @@ import {
   LineChart,
   Line,
 } from "recharts"
-import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark } from "@/lib/types"
+import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark, InvestmentType } from "@/lib/types"
 import { formatCurrency, formatPercent, calculateDealScore, calculateAll, estimateRefurbCost } from "@/lib/calculations"
 import { scoreDeal, type ScoreResult } from "@/lib/dealScoring"
 import { buildScoringInput } from "@/lib/buildScoringInput"
@@ -79,6 +80,8 @@ interface AnalysisResultsProps {
   aiText: string
   aiLoading: boolean
   backendData?: BackendResults | null
+  /** Feature B — re-analyse this property under a different strategy. */
+  onSwitchStrategy?: (strategy: InvestmentType) => void
 }
 
 const CHART_COLORS = [
@@ -1452,6 +1455,7 @@ export function AnalysisResults({
   aiText,
   aiLoading,
   backendData,
+  onSwitchStrategy,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
 
@@ -1766,6 +1770,17 @@ export function AnalysisResults({
           )}
         </div>
       )}
+
+      {/* ── Alternative Strategies Panel (Feature A) ───────────────── */}
+      {/* Placed after the headline metrics and before House Valuation:
+          rough client-side estimates for the other strategies so users
+          can compare exits at a glance and jump to a full re-analysis. */}
+      <AlternativeStrategiesPanel
+        data={data}
+        results={results}
+        backendData={backendData}
+        onSwitch={onSwitchStrategy}
+      />
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (
