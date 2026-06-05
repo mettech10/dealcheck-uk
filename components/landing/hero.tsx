@@ -25,7 +25,7 @@ export function Hero() {
         >
           <Badge
             variant="outline"
-            className="mb-6 gap-1.5 border-primary/30 bg-primary/5 px-3 py-1 text-primary"
+            className="mb-6 gap-1.5 border-[#c8d8f0] bg-[#e8f0fe] px-3 py-1 text-[#0a1f4e] dark:border-[var(--brand-teal)]/30 dark:bg-[var(--brand-teal)]/10 dark:text-[var(--brand-teal)]"
           >
             <motion.div
               animate={{ rotate: [0, 15, -15, 0] }}
