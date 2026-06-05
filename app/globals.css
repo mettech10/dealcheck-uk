@@ -50,6 +50,11 @@
   --glow: rgba(13, 148, 136, 0.12);
   --success: #059669;
   --warning: #d97706;
+  /* Brand teal — data accents / highlights only (NOT primary buttons in
+     light mode, which are navy). Slightly deeper for contrast on light. */
+  --brand-teal: #0d9488;
+  /* Deep navy — primary action colour in light mode. */
+  --brand-navy: #0a1f4e;
 }
 
 .dark {
@@ -94,6 +99,10 @@
   --glow: oklch(0.75 0.15 190 / 0.15);
   --success: oklch(0.7 0.17 155);
   --warning: oklch(0.78 0.15 85);
+  /* Brand teal stays bright in dark mode; navy CTA isn't used in dark
+     (dark primary is teal), but keep the token defined for completeness. */
+  --brand-teal: #2dd4bf;
+  --brand-navy: #0a1f4e;
 }
 
 @theme inline {
@@ -501,4 +510,40 @@ code:not([class*="language-"]):not(pre code) {
   padding: 0.1em 0.35em;
   border-radius: 4px;
   font-size: 0.9em;
+}
+
+/* ── Landing hero (light = TrueCaller-style, dark = original) ─────────── */
+
+/* Light mode: clean off-white gradient. */
+.hero-section {
+  background: linear-gradient(160deg, #f0f4f8 0%, #e8eef8 40%, #f0f6f4 100%);
+}
+/* Dark mode: keep the original near-black canvas (the grid + radial glow
+   overlays are rendered in the component and only shown in dark). */
+.dark .hero-section {
+  background: transparent;
+}
+
+/* Subtle teal radial glow behind the mosaic (both themes). */
+.hero-mosaic-glow {
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 100%,
+    rgba(13, 148, 136, 0.06) 0%,
+    transparent 70%
+  );
+}
+.dark .hero-mosaic-glow {
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 100%,
+    rgba(45, 212, 191, 0.06) 0%,
+    transparent 70%
+  );
+}
+
+/* Grid overlay — only meaningful on the dark canvas. */
+.hero-grid {
+  background-image:
+    linear-gradient(to right, oklch(0.25 0.02 260 / 0.3) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.25 0.02 260 / 0.3) 1px, transparent 1px);
+  background-size: 60px 60px;
 }
