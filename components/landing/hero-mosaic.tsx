@@ -259,7 +259,7 @@ function DemoCashflowChart() {
 
 export function HeroMosaic() {
   return (
-    <div className="relative mt-12 w-full">
+    <div className="relative mt-8 w-full md:mt-12">
       {/* Teal radial glow behind the mosaic */}
       <div className="hero-mosaic-glow pointer-events-none absolute inset-0 -z-10" />
       <div className="hero-mosaic mx-auto max-w-5xl">
