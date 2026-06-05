@@ -22,7 +22,7 @@ export function ThemeToggle() {
     return (
       <span
         aria-hidden
-        className="inline-flex h-[34px] w-[74px] rounded-md border border-border/50 bg-card"
+        className="inline-flex h-8 w-[64px] rounded-full border border-border/60 bg-card"
       />
     )
   }
@@ -34,19 +34,25 @@ export function ThemeToggle() {
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-card px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      className="inline-flex items-center gap-0.5 rounded-full border border-border/60 bg-card p-0.5 transition-colors hover:border-primary/50"
     >
-      {isDark ? (
-        <>
-          <Sun className="size-3.5" />
-          Light
-        </>
-      ) : (
-        <>
-          <Moon className="size-3.5" />
-          Dark
-        </>
-      )}
+      {/* Sun segment — active in light mode */}
+      <span
+        className={`flex size-7 items-center justify-center rounded-full transition-colors ${
+          !isDark ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+        }`}
+      >
+        <Sun className="size-3.5" />
+      </span>
+      {/* Moon segment — active in dark mode */}
+      <span
+        className={`flex size-7 items-center justify-center rounded-full transition-colors ${
+          isDark ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+        }`}
+      >
+        <Moon className="size-3.5" />
+      </span>
     </button>
   )
 }
