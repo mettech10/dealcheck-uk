@@ -547,3 +547,37 @@ code:not([class*="language-"]):not(pre code) {
     linear-gradient(to bottom, oklch(0.25 0.02 260 / 0.3) 1px, transparent 1px);
   background-size: 60px 60px;
 }
+
+/* ── Hero mosaic cards ───────────────────────────────────────────────── */
+
+/* Card chrome — white + navy-tinted shadow in light, dark card + teal-tinted
+   glow in dark. */
+.mosaic-card {
+  background: #ffffff;
+  border: 1px solid #d1dce8;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(10, 31, 78, 0.1);
+}
+.dark .mosaic-card {
+  background: oklch(0.16 0.015 260);
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Gentle floating motion (offset between cards for depth). */
+@keyframes mosaicFloatA {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes mosaicFloatB {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.mosaic-float-a { animation: mosaicFloatA 5s ease-in-out infinite; }
+.mosaic-float-b { animation: mosaicFloatB 5s ease-in-out infinite 1s; }
+@media (max-width: 767px) {
+  .mosaic-float-a, .mosaic-float-b { animation: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mosaic-float-a, .mosaic-float-b { animation: none; }
+}

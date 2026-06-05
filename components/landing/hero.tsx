@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Check, Sparkles } from "lucide-react"
 import { motion } from "framer-motion"
 import { HeroText, PulseElement } from "@/components/animations"
+import { HeroMosaic } from "@/components/landing/hero-mosaic"
 
 export function Hero() {
   return (
@@ -104,7 +105,15 @@ export function Hero() {
           ))}
         </motion.div>
 
-        {/* Floating dashboard mosaic mounts here in Section 2. */}
+        {/* Floating dashboard mosaic */}
+        <motion.div
+          initial={{ opacity: 0, y: 60 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, delay: 2.1, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full"
+        >
+          <HeroMosaic />
+        </motion.div>
       </div>
     </section>
   )
