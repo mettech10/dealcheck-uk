@@ -128,12 +128,20 @@ export function Navbar({ user }: NavbarProps) {
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
+          {/* Navy logo in light mode, original teal logo in dark mode */}
+          <Image
+            src="/logo-navy.png"
+            alt="Metalyzi Logo"
+            width={32}
+            height={32}
+            className="rounded-lg object-contain dark:hidden"
+          />
           <Image
             src="/logo.png"
             alt="Metalyzi Logo"
             width={32}
             height={32}
-            className="rounded-lg object-contain"
+            className="hidden rounded-lg object-contain dark:block"
           />
           <span className="text-lg font-semibold tracking-tight text-foreground">
             Metalyzi

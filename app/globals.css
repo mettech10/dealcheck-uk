@@ -10,7 +10,7 @@
    Status tokens (--success / --warning / --destructive) keep their semantic
    meaning in both themes, just tuned for contrast on a light background. */
 :root {
-  --background: #ffffff;          /* plain white page background */
+  --background: #faf7f0;          /* cream white page background */
   --foreground: #0f172a;
   --card: #ffffff;               /* cards are pure white for contrast */
   --card-foreground: #0f172a;
