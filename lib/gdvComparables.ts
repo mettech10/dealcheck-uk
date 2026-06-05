@@ -179,7 +179,14 @@ export async function buildGdvComparables(params: {
       )
     : allComps
 
-  const compsWithSize = refurbishedComps.filter((c) => c.floorSizeM2 && c.price > 0)
+  // Sized comps for the £/m² benchmark. Prefer the refurbished subset, but if
+  // that filter leaves nothing sized (e.g. comps are tightly clustered so none
+  // clear the median×1.1 bar), fall back to ALL sized comps so we never lose
+  // the £/m² figure entirely.
+  let compsWithSize = refurbishedComps.filter((c) => c.floorSizeM2 && c.price > 0)
+  if (compsWithSize.length === 0) {
+    compsWithSize = allComps.filter((c) => c.floorSizeM2 && c.price > 0)
+  }
   const ppm2Values = compsWithSize.map((c) => c.price / (c.floorSizeM2 as number))
   const avgPricePerM2 = ppm2Values.length
     ? Math.round(ppm2Values.reduce((s, v) => s + v, 0) / ppm2Values.length)
