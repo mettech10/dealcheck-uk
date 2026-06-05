@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { Navbar } from "@/components/landing/navbar"
 import { Hero } from "@/components/landing/hero"
+import { StatsBar } from "@/components/landing/stats-bar"
 import { Features } from "@/components/landing/features"
 import { HowItWorks } from "@/components/landing/how-it-works"
 import { SdltWidget } from "@/components/landing/sdlt-widget"
@@ -26,6 +27,7 @@ export default async function HomePage() {
       <Navbar user={navUser} />
       <main className="flex-1">
         <Hero />
+        <StatsBar />
         <Features />
         <HowItWorks />
         <SdltWidget />
