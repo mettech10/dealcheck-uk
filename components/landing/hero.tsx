@@ -39,14 +39,14 @@ export function Hero() {
 
         {/* Headline */}
         <h1 className="max-w-4xl text-balance text-4xl font-bold tracking-tight text-foreground md:text-6xl lg:text-7xl">
-          <HeroText text="Analyse Any UK Property Deal" delay={0.25} />
+          <HeroText text="Know Your Numbers" delay={0.25} />
           <motion.div
             initial={{ opacity: 0, x: -40 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.9, ease: [0.22, 1, 0.36, 1] }}
             className="mt-2 text-[var(--brand-teal)]"
           >
-            In Seconds
+            Before You Invest
           </motion.div>
         </h1>
 
