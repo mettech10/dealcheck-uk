@@ -581,3 +581,57 @@ code:not([class*="language-"]):not(pre code) {
 @media (prefers-reduced-motion: reduce) {
   .mosaic-float-a, .mosaic-float-b { animation: none; }
 }
+
+/* ── Hero mosaic container (Section 3) ───────────────────────────────── */
+.hero-mosaic {
+  position: relative;
+  padding: 32px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.6) 0%,
+    rgba(240, 244, 248, 0.4) 100%
+  );
+  border: 1px solid rgba(209, 220, 232, 0.6);
+  border-radius: 24px;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 32px 80px rgba(10, 31, 78, 0.1),
+    0 8px 24px rgba(10, 31, 78, 0.06);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.dark .hero-mosaic {
+  background: linear-gradient(
+    135deg,
+    rgba(17, 24, 39, 0.8) 0%,
+    rgba(13, 31, 13, 0.6) 100%
+  );
+  border: 1px solid rgba(45, 212, 191, 0.15);
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.4),
+    0 0 60px rgba(45, 212, 191, 0.05);
+}
+
+/* Projection chart spans the full width; outer cards get a slight tilt. */
+.hero-mosaic .card-projection-wrap { grid-column: 1 / -1; }
+.hero-mosaic .card-score-wrap { transform: rotate(-1deg); }
+.hero-mosaic .card-cashflow-wrap { transform: rotate(0.5deg); }
+
+/* Tablet keeps the 2-col grid (handled by the base rule). Mobile: single
+   column, only score / projection / cashflow, no tilt, lighter chrome. */
+@media (max-width: 767px) {
+  .hero-mosaic {
+    grid-template-columns: 1fr;
+    padding: 16px;
+    backdrop-filter: none;
+    box-shadow: 0 8px 24px rgba(10, 31, 78, 0.08);
+  }
+  .dark .hero-mosaic {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  .hero-mosaic .card-metrics-wrap,
+  .hero-mosaic .card-donut-wrap { display: none; }
+  .hero-mosaic .card-score-wrap,
+  .hero-mosaic .card-cashflow-wrap { transform: none; }
+}

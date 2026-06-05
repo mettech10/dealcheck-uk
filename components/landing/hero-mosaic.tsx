@@ -262,14 +262,14 @@ export function HeroMosaic() {
     <div className="relative mt-12 w-full">
       {/* Teal radial glow behind the mosaic */}
       <div className="hero-mosaic-glow pointer-events-none absolute inset-0 -z-10" />
-      <div className="hero-mosaic mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="hero-mosaic mx-auto max-w-5xl">
         <div className="card-score-wrap">
           <DemoScoreDial />
         </div>
-        <div className="card-metrics-wrap hidden md:block">
+        <div className="card-metrics-wrap">
           <DemoMetricCards />
         </div>
-        <div className="card-projection-wrap md:col-span-2">
+        <div className="card-projection-wrap">
           <DemoProjectionChart />
         </div>
         <div className="card-donut-wrap">
