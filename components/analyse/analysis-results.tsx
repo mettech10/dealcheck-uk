@@ -1812,17 +1812,17 @@ export function AnalysisResults({
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (
-        <BRRRRResults data={data} results={results} />
+        <BRRRRResults data={data} results={results} backendData={backendData} />
       )}
 
       {/* ── Flip-specific 8-display panel ──────────────────────────── */}
       {data.investmentType === "flip" && (
-        <FlipResults data={data} results={results} />
+        <FlipResults data={data} results={results} backendData={backendData} />
       )}
 
       {/* ── Development-specific feasibility panel ─────────────────── */}
       {data.investmentType === "development" && (
-        <DevelopmentResults data={data} results={results} />
+        <DevelopmentResults data={data} results={results} backendData={backendData} />
       )}
 
       {/* ── Location & Council ──────────────────────────────────────── */}

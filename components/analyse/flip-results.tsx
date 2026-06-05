@@ -31,12 +31,13 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import type { PropertyFormData, CalculationResults } from "@/lib/types"
+import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
 import {
   formatCurrency,
   calculateAll,
   calculateFlipDealScore,
 } from "@/lib/calculations"
+import { GdvComparables } from "./gdv-comparables"
 import {
   Hammer,
   Wallet,
@@ -58,9 +59,10 @@ import {
 interface FlipResultsProps {
   data: PropertyFormData
   results: CalculationResults
+  backendData?: BackendResults | null
 }
 
-export function FlipResults({ data, results }: FlipResultsProps) {
+export function FlipResults({ data, results, backendData }: FlipResultsProps) {
   const arv = data.arv ?? 0
 
   // ── Sensitivity slider state (centres on user inputs) ───────────
@@ -936,6 +938,20 @@ export function FlipResults({ data, results }: FlipResultsProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* ── ARV Estimator — Refurbished Comparables ──────────────────── */}
+        <div className="mt-4">
+          <GdvComparables
+            heading="ARV Estimator — Refurbished Comparables"
+            subheading="Recent sales supporting your After-Repair Value"
+            postcode={data.postcode}
+            propertyType={data.propertyType}
+            bedrooms={data.bedrooms}
+            floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
+            isNewBuild
+            backendData={backendData}
+          />
+        </div>
 
         <Card className="mt-4">
           <CardContent className="py-4 text-[10px] leading-relaxed text-muted-foreground">

@@ -22,7 +22,8 @@ import {
   CardDescription,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import type { PropertyFormData, CalculationResults } from "@/lib/types"
+import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
+import { GdvComparables } from "./gdv-comparables"
 import {
   formatCurrency,
   formatPercent,
@@ -47,9 +48,10 @@ import { Button } from "@/components/ui/button"
 interface BRRRRResultsProps {
   data: PropertyFormData
   results: CalculationResults
+  backendData?: BackendResults | null
 }
 
-export function BRRRRResults({ data, results }: BRRRRResultsProps) {
+export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) {
   const arv = data.arv ?? 0
   const score = calculateBRRRRDealScore(results, arv, {
     monthlyRent: data.monthlyRent,
@@ -589,6 +591,18 @@ export function BRRRRResults({ data, results }: BRRRRResultsProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── ARV Comparable Sales (Land Registry + Rightmove) ──────────── */}
+      <GdvComparables
+        heading="ARV Comparable Sales"
+        subheading="Recent sales supporting your After-Repair Value"
+        postcode={data.postcode}
+        propertyType={data.propertyType}
+        bedrooms={data.bedrooms}
+        floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
+        isNewBuild
+        backendData={backendData}
+      />
     </div>
   )
 }

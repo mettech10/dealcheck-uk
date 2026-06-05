@@ -31,8 +31,9 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
-import type { PropertyFormData, CalculationResults } from "@/lib/types"
+import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
 import type { DevelopmentResult } from "@/lib/developmentCalculations"
+import { GdvComparables } from "./gdv-comparables"
 import { formatCurrency, calculateAll } from "@/lib/calculations"
 import {
   AlertTriangle,
@@ -57,6 +58,7 @@ import {
 interface DevelopmentResultsProps {
   data: PropertyFormData
   results: CalculationResults
+  backendData?: BackendResults | null
 }
 
 /** Tailwind colour per cost-stack line (kept explicit for print). */
@@ -103,6 +105,7 @@ function verdictFromScore(score: number): {
 export function DevelopmentResults({
   data,
   results,
+  backendData,
 }: DevelopmentResultsProps) {
   const dev: DevelopmentResult | undefined = results.development
   // If engine didn't run (shouldn't happen — calculateAll always populates
@@ -471,6 +474,18 @@ export function DevelopmentResults({
           </div>
         </CardContent>
       </Card>
+
+      {/* ── 3b · GDV Comparable Sales (Land Registry + Rightmove) ── */}
+      <GdvComparables
+        heading="Comparable Sales"
+        subheading="Recent sales supporting your GDV estimate"
+        postcode={data.postcode}
+        propertyType={data.propertyType}
+        bedrooms={data.bedrooms}
+        floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
+        isNewBuild
+        backendData={backendData}
+      />
 
       {/* ── 4 · Cost Stack ──────────────────────────────────── */}
       <Card>
