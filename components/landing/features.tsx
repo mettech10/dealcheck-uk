@@ -1,3 +1,5 @@
+"use client"
+
 import {
   Calculator,
   Home,
@@ -6,6 +8,8 @@ import {
   PieChart,
   Sparkles,
 } from "lucide-react"
+import { motion } from "framer-motion"
+import { ScrollReveal, StaggerContainer, StaggerItem, HoverCard } from "@/components/animations"
 
 const features = [
   {
@@ -48,9 +52,9 @@ const features = [
 
 export function Features() {
   return (
-    <section id="features" className="py-24 md:py-32">
+    <section id="features" className="py-24 md:py-32 relative overflow-hidden">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto max-w-2xl text-center">
+        <ScrollReveal className="mx-auto max-w-2xl text-center">
           <h2 className="text-balance text-3xl font-bold tracking-tight text-foreground md:text-4xl">
             Everything You Need to Evaluate a Deal
           </h2>
@@ -58,26 +62,35 @@ export function Features() {
             From SDLT to AI-powered insights, get a comprehensive analysis of any
             UK property investment in seconds.
           </p>
-        </div>
+        </ScrollReveal>
 
-        <div className="mt-16 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <StaggerContainer className="mt-16 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="group relative rounded-xl border border-border/50 bg-card p-6 transition-all hover:border-primary/30 hover:bg-card/80"
-            >
-              <div className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                <feature.icon className="size-5 text-primary" />
-              </div>
-              <h3 className="text-base font-semibold text-foreground">
-                {feature.title}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {feature.description}
-              </p>
-            </div>
+            <StaggerItem key={feature.title}>
+              <HoverCard>
+                <motion.div
+                  className="group relative rounded-xl border border-border/50 bg-card p-6 transition-all hover:border-primary/30 hover:bg-card/80"
+                  whileHover={{ y: -8 }}
+                >
+                  <motion.div 
+                    className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10"
+                    whileHover={{ rotate: [0, -10, 10, 0], scale: 1.1 }}
+                    transition={{ duration: 0.5 }}
+                  >
+                    <feature.icon className="size-5 text-primary" />
+                  </motion.div>
+
+                  <h3 className="text-base font-semibold text-foreground group-hover:text-foreground transition-colors">
+                    {feature.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground group-hover:text-muted-foreground transition-colors">
+                    {feature.description}
+                  </p>
+                </motion.div>
+              </HoverCard>
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       </div>
     </section>
   )

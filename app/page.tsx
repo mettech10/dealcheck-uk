@@ -3,10 +3,10 @@ import { Navbar } from "@/components/landing/navbar"
 import { Hero } from "@/components/landing/hero"
 import { Features } from "@/components/landing/features"
 import { HowItWorks } from "@/components/landing/how-it-works"
+import { SdltWidget } from "@/components/landing/sdlt-widget"
 import { Pricing } from "@/components/landing/pricing"
 import { Testimonials } from "@/components/landing/testimonials"
 import { CTA } from "@/components/landing/cta"
-import { Footer } from "@/components/landing/footer"
 
 export default async function HomePage() {
   let navUser: { email?: string; name?: string } | null = null
@@ -28,17 +28,17 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex flex-col">
       <Navbar user={navUser} />
       <main className="flex-1">
         <Hero />
         <Features />
         <HowItWorks />
+        <SdltWidget />
         <Pricing />
         <Testimonials />
         <CTA />
       </main>
-      <Footer />
     </div>
   )
 }

@@ -3,48 +3,58 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* DealCheck UK - Modern Dark Theme with Teal Accents */
+/* Metalyzi — Light theme (default :root). The dark theme lives in .dark
+   below and is applied by next-themes (defaultTheme="dark") via a class on
+   <html>, so new users still land in dark mode. Switching to light simply
+   removes the .dark class and these :root values take over.
+   Status tokens (--success / --warning / --destructive) keep their semantic
+   meaning in both themes, just tuned for contrast on a light background. */
 :root {
-  --background: oklch(0.12 0.015 260);
-  --foreground: oklch(0.95 0.005 260);
-  --card: oklch(0.16 0.015 260);
-  --card-foreground: oklch(0.95 0.005 260);
-  --popover: oklch(0.16 0.015 260);
-  --popover-foreground: oklch(0.95 0.005 260);
-  --primary: oklch(0.75 0.15 190);
-  --primary-foreground: oklch(0.12 0.015 260);
-  --secondary: oklch(0.2 0.015 260);
-  --secondary-foreground: oklch(0.9 0.005 260);
-  --muted: oklch(0.2 0.015 260);
-  --muted-foreground: oklch(0.6 0.01 260);
-  --accent: oklch(0.22 0.02 260);
-  --accent-foreground: oklch(0.95 0.005 260);
-  --destructive: oklch(0.55 0.2 25);
-  --destructive-foreground: oklch(0.95 0.005 260);
-  --border: oklch(0.25 0.02 260);
-  --input: oklch(0.2 0.02 260);
-  --ring: oklch(0.75 0.15 190);
-  --chart-1: oklch(0.75 0.15 190);
-  --chart-2: oklch(0.7 0.15 160);
-  --chart-3: oklch(0.75 0.12 85);
-  --chart-4: oklch(0.65 0.15 250);
-  --chart-5: oklch(0.65 0.12 310);
+  --background: #faf7f0;          /* cream white page background */
+  --foreground: #0f172a;
+  --card: #ffffff;               /* cards are pure white for contrast */
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0a1f4e;            /* deep navy — primary action colour */
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f7;
+  --secondary-foreground: #0f172a;
+  --muted: #eef2f7;
+  --muted-foreground: #475569;
+  --accent: #e2e8f0;
+  --accent-foreground: #0f172a;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #d1dce8;
+  --input: #cbd5e1;
+  --ring: #0a1f4e;
+  --chart-1: oklch(0.6 0.13 190);
+  --chart-2: oklch(0.58 0.13 160);
+  --chart-3: oklch(0.62 0.12 85);
+  --chart-4: oklch(0.55 0.15 250);
+  --chart-5: oklch(0.55 0.13 310);
   --radius: 0.625rem;
-  --sidebar: oklch(0.14 0.015 260);
-  --sidebar-foreground: oklch(0.95 0.005 260);
-  --sidebar-primary: oklch(0.75 0.15 190);
-  --sidebar-primary-foreground: oklch(0.12 0.015 260);
-  --sidebar-accent: oklch(0.2 0.015 260);
-  --sidebar-accent-foreground: oklch(0.95 0.005 260);
-  --sidebar-border: oklch(0.25 0.02 260);
-  --sidebar-ring: oklch(0.75 0.15 190);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #0d9488;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #0d9488;
 
   /* Custom tokens */
-  --surface: oklch(0.18 0.015 260);
-  --surface-foreground: oklch(0.92 0.005 260);
-  --glow: oklch(0.75 0.15 190 / 0.15);
-  --success: oklch(0.7 0.17 155);
-  --warning: oklch(0.78 0.15 85);
+  --surface: #ffffff;
+  --surface-foreground: #0f172a;
+  --glow: rgba(13, 148, 136, 0.12);
+  --success: #059669;
+  --warning: #d97706;
+  /* Brand teal — data accents / highlights only (NOT primary buttons in
+     light mode, which are navy). Slightly deeper for contrast on light. */
+  --brand-teal: #0d9488;
+  /* Deep navy — primary action colour in light mode. */
+  --brand-navy: #0a1f4e;
 }
 
 .dark {
@@ -80,6 +90,19 @@
   --sidebar-accent-foreground: oklch(0.95 0.005 260);
   --sidebar-border: oklch(0.25 0.02 260);
   --sidebar-ring: oklch(0.75 0.15 190);
+
+  /* Custom tokens — must be re-declared here so dark mode doesn't inherit
+     the light values from :root (equal specificity, :root would win for
+     any token .dark omits). */
+  --surface: oklch(0.18 0.015 260);
+  --surface-foreground: oklch(0.92 0.005 260);
+  --glow: oklch(0.75 0.15 190 / 0.15);
+  --success: oklch(0.7 0.17 155);
+  --warning: oklch(0.78 0.15 85);
+  /* Brand teal stays bright in dark mode; navy CTA isn't used in dark
+     (dark primary is teal), but keep the token defined for completeness. */
+  --brand-teal: #2dd4bf;
+  --brand-navy: #0a1f4e;
 }
 
 @theme inline {
@@ -135,3 +158,357 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Print styles for BRRRR report ─────────────────────────────────────
+   When the user hits "Download BRRRR Report" we toggle .print-brrrr on
+   <body> and call window.print(). The CSS below isolates the BRRRR
+   panel: everything is hidden, then the panel and its descendants are
+   re-shown and absolutely positioned at the top of the page.
+*/
+@media print {
+  @page {
+    size: A4;
+    margin: 15mm 12mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Default utility: hide anywhere */
+  .no-print {
+    display: none !important;
+  }
+
+  /* BRRRR-report mode: hide everything except the BRRRR panel subtree */
+  body.print-brrrr * {
+    visibility: hidden;
+  }
+  body.print-brrrr .print-brrrr-root,
+  body.print-brrrr .print-brrrr-root * {
+    visibility: visible;
+  }
+  body.print-brrrr .print-brrrr-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  /* Hide the no-print button/header inside the panel even in print mode */
+  body.print-brrrr .print-brrrr-root .no-print,
+  body.print-brrrr .print-brrrr-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Light theme overrides so colours print well on white paper */
+  body.print-brrrr .print-brrrr-root,
+  body.print-brrrr .print-brrrr-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.print-brrrr .print-brrrr-root [class*="card"],
+  body.print-brrrr .print-brrrr-root .rounded-md,
+  body.print-brrrr .print-brrrr-root .rounded-lg {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-brrrr .print-brrrr-root .text-muted-foreground,
+  body.print-brrrr .print-brrrr-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-brrrr .print-brrrr-root h1,
+  body.print-brrrr .print-brrrr-root h2,
+  body.print-brrrr .print-brrrr-root h3 {
+    page-break-after: avoid;
+  }
+  body.print-brrrr .print-brrrr-root table {
+    page-break-inside: auto;
+  }
+  body.print-brrrr .print-brrrr-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  /* Flip-report mode — same pattern as BRRRR, isolates .print-flip-root */
+  body.print-flip * {
+    visibility: hidden;
+  }
+  body.print-flip .print-flip-root,
+  body.print-flip .print-flip-root * {
+    visibility: visible;
+  }
+  body.print-flip .print-flip-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  body.print-flip .print-flip-root .no-print,
+  body.print-flip .print-flip-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body.print-flip .print-flip-root,
+  body.print-flip .print-flip-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.print-flip .print-flip-root [class*="card"],
+  body.print-flip .print-flip-root .rounded-md,
+  body.print-flip .print-flip-root .rounded-lg {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-flip .print-flip-root .text-muted-foreground,
+  body.print-flip .print-flip-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-flip .print-flip-root h1,
+  body.print-flip .print-flip-root h2,
+  body.print-flip .print-flip-root h3 {
+    page-break-after: avoid;
+  }
+  body.print-flip .print-flip-root table {
+    page-break-inside: auto;
+  }
+  body.print-flip .print-flip-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  /* Development feasibility report — same isolation pattern as Flip/BRRRR.
+     Toggled by adding .print-development to body before window.print(). */
+  body.print-development * {
+    visibility: hidden;
+  }
+  body.print-development .print-development-root,
+  body.print-development .print-development-root * {
+    visibility: visible;
+  }
+  body.print-development .print-development-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  body.print-development .print-development-root .no-print,
+  body.print-development .print-development-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body.print-development .print-development-root,
+  body.print-development .print-development-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.print-development .print-development-root [class*="card"],
+  body.print-development .print-development-root .rounded-md,
+  body.print-development .print-development-root .rounded-lg,
+  body.print-development .print-development-root .rounded-xl {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-development .print-development-root .text-muted-foreground,
+  body.print-development .print-development-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-development .print-development-root h1,
+  body.print-development .print-development-root h2,
+  body.print-development .print-development-root h3 {
+    page-break-after: avoid;
+  }
+  body.print-development .print-development-root table {
+    page-break-inside: auto;
+  }
+  body.print-development .print-development-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  /* Preserve the cost-stack bar colours in print — coloured bars are
+     central to the report's cost-allocation story. */
+  body.print-development .print-development-root .stack-segment {
+    background-color: var(--stack-color, #cbd5e1) !important;
+    color: #ffffff !important;
+  }
+  /* Force-show the cover/footer that are hidden during normal display. */
+  body.print-development .print-development-root .print-only {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  /* ── Full results-page print mode ────────────────────────────────────
+     Wired by the "Save as PDF" button at the top of /analyse. Same
+     isolation pattern as the strategy-specific reports — hide everything
+     outside the .print-results-root subtree, drop the dark theme, page-
+     break between cards. Prints whatever the user is currently seeing
+     on the results view (verdict banner + headline metrics + strategy
+     panel + market comparables + area analysis + AI insights + 5-year
+     projection + sensitivity, in their current state). */
+  body.print-results * {
+    visibility: hidden;
+  }
+  body.print-results .print-results-root,
+  body.print-results .print-results-root * {
+    visibility: visible;
+  }
+  body.print-results .print-results-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+  }
+  body.print-results .print-results-root .no-print,
+  body.print-results .print-results-root .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  /* Light theme overrides so colours print well on white paper */
+  body.print-results .print-results-root,
+  body.print-results .print-results-root * {
+    color: #0f172a !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  /* Every card-shaped block gets a light border + breaks-inside avoid
+     so we never get a card sliced across two pages. */
+  body.print-results .print-results-root [class*="card"],
+  body.print-results .print-results-root .rounded-md,
+  body.print-results .print-results-root .rounded-lg,
+  body.print-results .print-results-root .rounded-xl {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  body.print-results .print-results-root .text-muted-foreground,
+  body.print-results .print-results-root [class*="text-muted"] {
+    color: #475569 !important;
+  }
+  body.print-results .print-results-root h1,
+  body.print-results .print-results-root h2,
+  body.print-results .print-results-root h3,
+  body.print-results .print-results-root h4 {
+    page-break-after: avoid;
+  }
+  body.print-results .print-results-root table {
+    page-break-inside: auto;
+  }
+  body.print-results .print-results-root tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  /* Preserve the verdict / score-coloured states even in print — these
+     are the most important visual signals on the page. Whitelist by
+     tailwind-style class fragments so we keep red/amber/green and
+     success/warning/destructive backgrounds in their muted print form. */
+  body.print-results .print-results-root [class*="text-red"],
+  body.print-results .print-results-root [class*="text-destructive"] {
+    color: #b91c1c !important;
+  }
+  body.print-results .print-results-root [class*="text-emerald"],
+  body.print-results .print-results-root [class*="text-success"],
+  body.print-results .print-results-root [class*="text-green"] {
+    color: #15803d !important;
+  }
+  body.print-results .print-results-root [class*="text-amber"],
+  body.print-results .print-results-root [class*="text-warning"],
+  body.print-results .print-results-root [class*="text-yellow"] {
+    color: #b45309 !important;
+  }
+  body.print-results .print-results-root [class*="text-primary"] {
+    color: #0d9488 !important;
+  }
+  /* Tabs are only partially visible in print — only show the actively-
+     selected tab content (Tabs hidden tabs have hidden / data-state=
+     "inactive"). The user can switch tabs and re-print if they want a
+     different chart. */
+  body.print-results .print-results-root [role="tablist"] {
+    display: none !important;
+  }
+}
+
+/* Hide print-only elements outside print mode. */
+.print-only {
+  display: none;
+}
+
+/* ── Navbar Tools dropdown entry animation ───────────────────────────
+   Used by components/landing/navbar.tsx — referenced via the
+   `animate-tools-dropdown` utility on the dropdown panel. Keeps the
+   -translate-x-1/2 horizontal centering during the fade-in by setting
+   `transform` outright rather than chaining.
+*/
+@keyframes tools-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+.animate-tools-dropdown {
+  animation: tools-dropdown-in 0.15s ease both;
+}
+
+/* Account popover entry — anchored right (no horizontal translate),
+   so simpler keyframes than the tools dropdown's centered version. */
+@keyframes account-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-tools-account-pop {
+  animation: account-pop-in 0.15s ease both;
+}
+
+/* ── Light-mode polish (Feature 1, Section 4) ────────────────────────── */
+
+/* Leaflet (Article 4 map) popups — OpenStreetMap tiles are already light,
+   but the popup chrome defaults to white. Drive it from the theme tokens
+   so the popup matches whichever theme is active (white in light mode,
+   dark card in dark mode) and stays readable either way. */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--card);
+  color: var(--foreground);
+}
+.leaflet-popup-content-wrapper {
+  border: 1px solid var(--border);
+}
+.leaflet-popup-content a {
+  color: var(--primary);
+}
+
+/* Inline code / monospace chips — subtle themed background so they read on
+   both light (light-grey) and dark (dark-grey) surfaces. Scoped to bare
+   <code> (not syntax-highlighted blocks) to avoid disturbing other styles. */
+code:not([class*="language-"]):not(pre code) {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+

@@ -2,12 +2,28 @@
 
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/brevo-email"
+
+/**
+ * Whitelist a returnTo path to relative URLs only — never let a caller
+ * push us to an external host (open-redirect protection). Anything that
+ * doesn't start with a single "/" (and isn't "//something") falls back
+ * to the default landing page.
+ */
+function safeReturnTo(raw: string | null | undefined, fallback = "/analyse"): string {
+  if (!raw) return fallback
+  if (!raw.startsWith("/")) return fallback
+  if (raw.startsWith("//")) return fallback // protocol-relative external
+  return raw
+}
 
 export async function signInWithEmail(formData: FormData) {
   const supabase = await createClient()
 
   const email = formData.get("email") as string
   const password = formData.get("password") as string
+  const returnTo = safeReturnTo(formData.get("returnTo") as string | null)
 
   const { error } = await supabase.auth.signInWithPassword({
     email,
@@ -18,12 +34,10 @@ export async function signInWithEmail(formData: FormData) {
     return { error: error.message }
   }
 
-  redirect("/analyse")
+  redirect(returnTo)
 }
 
 export async function signUpWithEmail(formData: FormData) {
-  const supabase = await createClient()
-
   const { headers } = await import("next/headers")
   const headersList = await headers()
   const host = headersList.get("host") || ""
@@ -34,16 +48,21 @@ export async function signUpWithEmail(formData: FormData) {
   const password = formData.get("password") as string
   const name = formData.get("name") as string
 
-  const { error } = await supabase.auth.signUp({
+  const callbackBase =
+    process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+    `${origin}/auth/callback`
+  const redirectTo = `${callbackBase}?source=email_verify`
+
+  // Use the admin client with generateLink so Supabase never sends its own
+  // confirmation email — we send a fully branded Brevo email instead.
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient.auth.admin.generateLink({
+    type: "signup",
     email,
     password,
     options: {
-      emailRedirectTo:
-        process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
-        `${origin}/auth/callback`,
-      data: {
-        full_name: name,
-      },
+      redirectTo,
+      data: { full_name: name },
     },
   })
 
@@ -51,10 +70,23 @@ export async function signUpWithEmail(formData: FormData) {
     return { error: error.message }
   }
 
+  // Build a direct callback URL using the hashed_token from generateLink.
+  // This avoids going through Supabase's own verify endpoint (which would
+  // redirect with a PKCE `code` that has no matching code_verifier cookie,
+  // causing exchangeCodeForSession to fail silently and the user to land on
+  // the wrong page).  Instead, the button takes the user straight to our
+  // /auth/callback which calls verifyOtp({ token_hash, type }).
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL?.replace(/\/auth\/callback.*$/, "") ||
+    origin
+  const verificationUrl = `${siteUrl}/auth/callback?token_hash=${data.properties.hashed_token}&type=signup`
+  await sendVerificationEmail(email, verificationUrl)
+
   return { success: "Check your email to confirm your account." }
 }
 
-export async function signInWithGoogle() {
+export async function signInWithGoogle(returnTo?: string) {
   const supabase = await createClient()
 
   const { headers } = await import("next/headers")
@@ -63,10 +95,18 @@ export async function signInWithGoogle() {
   const protocol = headersList.get("x-forwarded-proto") || "https"
   const origin = `${protocol}://${host}`
 
+  const safe = safeReturnTo(returnTo)
+  // /auth/callback already reads `next` (defaults to /analyse). Only
+  // tack it on if the user actually came from somewhere non-default,
+  // otherwise leave the URL clean.
+  const callbackUrl = safe && safe !== "/analyse"
+    ? `${origin}/auth/callback?next=${encodeURIComponent(safe)}`
+    : `${origin}/auth/callback`
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${origin}/auth/callback`,
+      redirectTo: callbackUrl,
       queryParams: {
         access_type: "offline",
         prompt: "consent",
@@ -87,4 +127,50 @@ export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()
   redirect("/")
+}
+
+export async function resetPasswordForEmail(formData: FormData) {
+  const { headers } = await import("next/headers")
+  const headersList = await headers()
+  const host = headersList.get("host") || ""
+  const protocol = headersList.get("x-forwarded-proto") || "https"
+  const origin = `${protocol}://${host}`
+
+  const email = formData.get("email") as string
+  const redirectTo =
+    process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+    `${origin}/auth/callback`
+
+  const adminClient = createAdminClient()
+  const { data, error } = await adminClient.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: { redirectTo },
+  })
+
+  if (error) {
+    // Return generic message so we don't expose whether an account exists
+    console.error("[resetPasswordForEmail] generateLink error:", error.message)
+    return { success: true }
+  }
+
+  const resetUrl = data.properties.action_link
+  await sendPasswordResetEmail(email, resetUrl).catch((err) => {
+    console.error("[resetPasswordForEmail] Brevo send error:", err)
+  })
+
+  return { success: true }
+}
+
+export async function updatePassword(formData: FormData) {
+  const password = formData.get("password") as string
+  const supabase = await createClient()
+
+  const { error } = await supabase.auth.updateUser({ password })
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  return { success: true }
 }
