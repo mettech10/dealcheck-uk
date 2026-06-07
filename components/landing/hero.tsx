@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Sparkles } from "lucide-react"
+import { ArrowRight, Sparkles, Home } from "lucide-react"
 import { motion } from "framer-motion"
 import { HeroText, PulseElement } from "@/components/animations"
 import { useEffect, useState } from "react"
@@ -117,6 +117,16 @@ export function Hero() {
           </motion.div>
         </motion.div>
 
+        {/* Product mockup showcase */}
+        <motion.div
+          initial={{ opacity: 0, y: 60, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 1, delay: 2.2, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-16 w-full max-w-5xl"
+        >
+          <DashboardMockup />
+        </motion.div>
+
         {/* Animated Stats Bar */}
         <motion.div
           initial={{ opacity: 0, y: 60 }}
@@ -169,5 +179,132 @@ export function Hero() {
         </motion.div>
       </div>
     </section>
+  )
+}
+
+/* ── Central dashboard mockup ─────────────────────────────────────────
+   A faux Metalyzi deal-analysis screen. Built entirely from theme tokens
+   so it reads correctly in both light and dark mode. */
+function DashboardMockup() {
+  const metrics = [
+    { label: "Purchase Price", value: "£285,000" },
+    { label: "Net Yield", value: "6.4%", tone: "text-primary" },
+    { label: "Cash Flow / mo", value: "+£412", tone: "text-[var(--success)]" },
+    { label: "ROI (Year 1)", value: "11.2%", tone: "text-primary" },
+  ]
+  // 5-year equity projection bars
+  const projection = [38, 50, 61, 74, 88]
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl">
+      {/* Window chrome */}
+      <div className="flex items-center gap-2 border-b border-border/60 bg-muted/40 px-4 py-3">
+        <span className="size-3 rounded-full bg-destructive/60" />
+        <span className="size-3 rounded-full bg-[var(--warning)]/70" />
+        <span className="size-3 rounded-full bg-[var(--success)]/70" />
+        <div className="ml-3 flex items-center gap-2 rounded-md bg-background/60 px-3 py-1">
+          <Home className="size-3 text-muted-foreground" />
+          <span className="text-[11px] text-muted-foreground">
+            metalyzi.com/analyse
+          </span>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="grid gap-5 p-5 text-left md:grid-cols-5 md:p-7">
+        {/* Left: property summary + verdict */}
+        <div className="md:col-span-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Deal Analysis
+          </p>
+          <h3 className="mt-1 text-lg font-bold text-foreground">
+            14 Oakfield Road
+          </h3>
+          <p className="text-sm text-muted-foreground">Manchester M20 · BTL</p>
+
+          {/* Score ring */}
+          <div className="mt-5 flex items-center gap-4 rounded-xl border border-border/60 bg-background/50 p-4">
+            <div className="relative flex size-16 items-center justify-center">
+              <svg viewBox="0 0 36 36" className="size-16 -rotate-90">
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.5"
+                  fill="none"
+                  className="stroke-muted"
+                  strokeWidth="3"
+                />
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.5"
+                  fill="none"
+                  className="stroke-[var(--success)]"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray="97.4"
+                  strokeDashoffset="17.5"
+                />
+              </svg>
+              <span className="absolute text-lg font-bold text-foreground">
+                82
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[var(--success)]">
+                Strong Buy
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Healthy yield, positive cash flow.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: metrics grid + projection chart */}
+        <div className="md:col-span-3">
+          <div className="grid grid-cols-2 gap-3">
+            {metrics.map((m) => (
+              <div
+                key={m.label}
+                className="rounded-xl border border-border/60 bg-background/50 p-3"
+              >
+                <p className="text-[11px] text-muted-foreground">{m.label}</p>
+                <p
+                  className={`mt-1 text-lg font-bold ${m.tone ?? "text-foreground"}`}
+                >
+                  {m.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* 5-year equity projection */}
+          <div className="mt-3 rounded-xl border border-border/60 bg-background/50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                5-Year Equity Projection
+              </p>
+              <span className="text-[11px] font-semibold text-primary">
+                +£64,200
+              </span>
+            </div>
+            <div className="mt-3 flex h-20 items-end gap-2">
+              {projection.map((h, i) => (
+                <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                  <div
+                    className="w-full rounded-t-sm bg-gradient-to-t from-primary to-[var(--brand-teal)]"
+                    style={{ height: `${h}%`, opacity: 0.55 + i * 0.09 }}
+                  />
+                  <span className="text-[9px] text-muted-foreground">
+                    Y{i + 1}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
