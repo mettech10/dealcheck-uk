@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Footer } from '@/components/landing/footer'
 import { CookieConsent } from '@/components/cookie-consent'
@@ -27,6 +28,15 @@ export default function RootLayout({
     // suppressHydrationWarning: next-themes sets the theme class on <html>
     // before hydration, which would otherwise trip React's mismatch warning.
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Website Analytics tracking beacon (Convex). Loaded async after the
+            page is interactive — equivalent to the provider's async <head>
+            script tag. */}
+        <Script
+          src="https://aromatic-caribou-889.convex.site/api/a/am_Movu6eGVA2n09tOX"
+          strategy="afterInteractive"
+        />
+      </head>
       <body className="font-sans antialiased bg-background text-foreground flex min-h-screen flex-col">
         {/* Dark remains the default for all users; the choice persists to
             localStorage ("metalyzi-theme"). next-themes injects a blocking
