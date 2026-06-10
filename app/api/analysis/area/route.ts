@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/apiAuth"
 
 const BACKEND_API_URL =
   process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
@@ -16,6 +17,10 @@ export const runtime = "nodejs"
  * context, key risks, investor verdict) and caches it for 24h.
  */
 export async function POST(req: Request) {
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
   try {
     const body = await req.json()
     const { postcode, strategy, dealData, benchmark, articleFour, marketContext } = body

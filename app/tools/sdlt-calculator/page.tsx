@@ -316,11 +316,11 @@ export default function SdltCalculatorPage() {
         />
         <BandsTable
           title="First-Time Buyer Relief"
-          subtitle="No FTB relief above £625k threshold"
+          subtitle="No FTB relief above £500k threshold"
           rows={[
-            ["£0 – £425,000", "0%"],
-            ["£425,001 – £625,000", "5%"],
-            ["Over £625,000", "Standard rates apply"],
+            ["£0 – £300,000", "0%"],
+            ["£300,001 – £500,000", "5%"],
+            ["Over £500,000", "Standard rates apply"],
           ]}
         />
         <BandsTable

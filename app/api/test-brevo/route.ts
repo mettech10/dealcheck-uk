@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { isAdminEmail } from "@/lib/admin"
 
 export async function GET() {
+  // Admin gate — this diagnostic reaches into the live Brevo account and
+  // previously leaked a key prefix + contact counts to anonymous callers.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!isAdminEmail(user?.email)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 })
+  }
+
   const brevoApiKey = process.env.BREVO_API_KEY
 
   if (!brevoApiKey) {
@@ -23,7 +33,7 @@ export async function GET() {
       return NextResponse.json({
         status: "SUCCESS",
         message: "Brevo API connection working",
-        keyPrefix: brevoApiKey.substring(0, 15) + "...",
+
         totalContacts: data.count,
         hint: "Your API key is valid. If contacts aren't syncing, check the waitlist API logs.",
       })
@@ -34,7 +44,7 @@ export async function GET() {
         message: "Brevo API returned error",
         httpStatus: testResponse.status,
         errorDetails: errorText,
-        keyPrefix: brevoApiKey.substring(0, 15) + "...",
+
         hint: testResponse.status === 401
           ? "Your API key is invalid. Check your Brevo dashboard under Settings → API Keys"
           : "Check the error details above",

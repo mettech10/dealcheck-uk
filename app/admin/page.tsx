@@ -77,7 +77,9 @@ async function loadOverview(): Promise<OverviewData> {
     email: u.email ?? "",
     created_at: u.created_at ?? new Date().toISOString(),
   }))
-  const totalUsers = usersRes.data?.total ?? allUsers.length
+  // listUsers' error-shape union ({users: []}) lacks the pagination fields.
+  const usersData = usersRes.data as { total?: number } | null
+  const totalUsers = usersData?.total ?? allUsers.length
 
   const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
   const signupsThisWeek = allUsers.filter(

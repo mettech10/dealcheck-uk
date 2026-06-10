@@ -49,7 +49,7 @@ describe("SDLT Calculations", () => {
     expect(calculateSDLT(200000, "additional").total).toBe(11500)
   })
 
-  test("FTB £200k = £0 (relief up to £425k)", () => {
+  test("FTB £200k = £0 (relief up to £300k)", () => {
     expect(calculateSDLT(200000, "first-time").total).toBe(0)
   })
 
@@ -63,16 +63,21 @@ describe("SDLT Calculations", () => {
     expect(calculateSDLT(350000, "additional").total).toBe(25000)
   })
 
-  test("FTB £500k = £3,750", () => {
-    // £500k - £425k = £75k × 5% = £3,750
-    expect(calculateSDLT(500000, "first-time").total).toBe(3750)
+  test("FTB £500k = £10,000", () => {
+    // £500k - £300k = £200k × 5% = £10,000 (post-April-2025 thresholds)
+    expect(calculateSDLT(500000, "first-time").total).toBe(10000)
   })
 
-  test("FTB £650k loses relief, falls back to standard rates", () => {
-    // Above £625k → standard residential bands
-    expect(calculateSDLT(650000, "first-time").total).toBeGreaterThan(0)
-    expect(calculateSDLT(650000, "first-time").total).toBe(
-      calculateSDLT(650000, "standard").total
+  test("FTB £400k = £5,000", () => {
+    // £400k - £300k = £100k × 5% = £5,000
+    expect(calculateSDLT(400000, "first-time").total).toBe(5000)
+  })
+
+  test("FTB £550k loses relief, falls back to standard rates", () => {
+    // Above £500k → standard residential bands
+    expect(calculateSDLT(550000, "first-time").total).toBeGreaterThan(0)
+    expect(calculateSDLT(550000, "first-time").total).toBe(
+      calculateSDLT(550000, "standard").total
     )
   })
 })

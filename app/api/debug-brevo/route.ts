@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { isAdminEmail } from "@/lib/admin"
 
 export async function GET() {
+  // Admin gate — this diagnostic CREATES a Brevo contact on every call
+  // and previously leaked a key prefix to anonymous callers.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!isAdminEmail(user?.email)) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 })
+  }
+
   const brevoApiKey = process.env.BREVO_API_KEY
 
   if (!brevoApiKey) {
@@ -45,7 +55,7 @@ export async function GET() {
     return NextResponse.json({
       status: status === 201 || status === 204 ? "SUCCESS" : "FAILED",
       create: { status, body },
-      keyPrefix: brevoApiKey.substring(0, 15) + "...",
+
       timestamp: new Date().toISOString(),
     })
   } catch (error) {

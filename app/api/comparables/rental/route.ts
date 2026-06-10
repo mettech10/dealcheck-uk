@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/apiAuth"
 import { weeklyToMonthly } from "@/lib/propertydata"
 import { cachedGetRents } from "@/lib/propertydata-cache"
 
@@ -9,6 +10,10 @@ import { cachedGetRents } from "@/lib/propertydata-cache"
  * Returns: monthly rent estimate, confidence range, source data
  */
 export async function POST(req: Request) {
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
   try {
     const body = await req.json()
     const { postcode, bedrooms } = body

@@ -3,11 +3,14 @@ import { NextResponse } from "next/server"
 
 /**
  * POST /api/stats/increment
- * Increments the global deal count by 1 — no auth required.
+ * Increments the global deal count by 1.
  * Called from the analysis page after every completed analysis.
  *
- * Uses Supabase RPC if available, otherwise falls back to read-then-write.
- * Includes a simple fingerprint check to prevent trivial abuse.
+ * Requires a signed-in session (the analyse page is auth-gated, so every
+ * legitimate increment has one) — an anonymous caller could otherwise
+ * inflate the public counter arbitrarily. Increment goes through the
+ * atomic RPC only; the old read-then-write fallback raced under
+ * concurrency and is gone.
  */
 export async function POST(req: Request) {
   try {
@@ -32,37 +35,17 @@ export async function POST(req: Request) {
 
     const supabase = await createClient()
 
-    // Try RPC first (if the function exists in Supabase)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    }
+
     const { error: rpcError } = await supabase.rpc("increment_deal_count_rpc")
-
     if (rpcError) {
-      // Fallback: read current count, increment, write back
-      console.warn("[INCREMENT] RPC failed, using fallback:", rpcError.message)
-
-      const { data, error: readError } = await supabase
-        .from("global_stats")
-        .select("deal_count")
-        .eq("id", 1)
-        .single()
-
-      if (readError || !data) {
-        console.error("[INCREMENT] Read failed:", readError)
-        return NextResponse.json({ error: "Failed to read count" }, { status: 500 })
-      }
-
-      const newCount = (data.deal_count || 0) + 1
-
-      const { error: updateError } = await supabase
-        .from("global_stats")
-        .update({ deal_count: newCount, updated_at: new Date().toISOString() })
-        .eq("id", 1)
-
-      if (updateError) {
-        console.error("[INCREMENT] Update failed:", updateError)
-        return NextResponse.json({ error: "Failed to update count" }, { status: 500 })
-      }
-
-      return NextResponse.json({ count: newCount })
+      console.error("[INCREMENT] RPC failed:", rpcError.message)
+      return NextResponse.json({ error: "Failed to update count" }, { status: 500 })
     }
 
     // RPC succeeded — read the updated value

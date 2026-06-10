@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/apiAuth"
 import { weeklyToMonthly, mapPropertyType } from "@/lib/propertydata"
 import { cachedGetRents } from "@/lib/propertydata-cache"
 
@@ -11,6 +12,10 @@ const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.o
  * Fallback: Flask /api/rental-comparables (Rightmove actor)
  */
 export async function POST(req: Request) {
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
   try {
     const body = await req.json()
     const { postcode, bedrooms, propertyType, propertyTypeDetail, strategy } = body

@@ -49,7 +49,7 @@ export type DevUnitType =
 export type SDLTRateType = "residential" | "non-residential" | "mixed-use"
 /**
  * UK SDLT buyer-type classifications.
- *  - "first-time": first-time-buyer relief (0% to £425k, 5% £425k-£625k; relief lost above £625k)
+ *  - "first-time": first-time-buyer relief (0% to £300k, 5% £300k-£500k; relief lost above £500k)
  *  - "standard":   standard residential bands, no surcharge (someone replacing
  *                  their primary residence, not a first-time buyer)
  *  - "additional": +5% surcharge on every band (second home, BTL, investment)
