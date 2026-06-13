@@ -161,30 +161,46 @@ DECLARE
   v_free_used INTEGER := 0;
   v_paid_credits INTEGER := 0;
   v_period DATE;
+  v_carry INTEGER := 0;
   v_free_cap CONSTANT INTEGER := 3;
 BEGIN
   v_period := DATE_TRUNC('month', NOW())::DATE;
 
-  -- Carry over unspent paid credits from earlier periods. Runs at most
-  -- once per user per month (prior rows are zeroed), and concurrent
-  -- callers can't double-move because the UPDATE locks the rows.
-  WITH moved AS (
+  -- Carry over unspent paid credits from earlier periods into the current
+  -- one. Lock the source rows first (a plain SELECT — FOR UPDATE cannot be
+  -- combined with an aggregate), so two concurrent callers can't both
+  -- carry the same credits: the second blocks, then its WHERE re-check
+  -- sees the now-zeroed rows and carries nothing. Then sum the OLD
+  -- balances before zeroing (UPDATE ... RETURNING would give the
+  -- post-update value, i.e. 0, in Postgres < 18).
+  PERFORM 1
+  FROM user_usage
+  WHERE user_id = p_user_id
+    AND period_start < v_period
+    AND paid_analysis_credits > 0
+  FOR UPDATE;
+
+  SELECT COALESCE(SUM(paid_analysis_credits), 0) INTO v_carry
+  FROM user_usage
+  WHERE user_id = p_user_id
+    AND period_start < v_period
+    AND paid_analysis_credits > 0;
+
+  IF v_carry > 0 THEN
     UPDATE user_usage
     SET paid_analysis_credits = 0,
         updated_at = NOW()
     WHERE user_id = p_user_id
       AND period_start < v_period
-      AND paid_analysis_credits > 0
-    RETURNING paid_analysis_credits AS carried
-  )
-  INSERT INTO user_usage (user_id, period_start, paid_analysis_credits)
-  SELECT p_user_id, v_period, SUM(carried)
-  FROM moved
-  HAVING SUM(carried) > 0
-  ON CONFLICT (user_id, period_start)
-  DO UPDATE SET
-    paid_analysis_credits = user_usage.paid_analysis_credits + EXCLUDED.paid_analysis_credits,
-    updated_at = NOW();
+      AND paid_analysis_credits > 0;
+
+    INSERT INTO user_usage (user_id, period_start, paid_analysis_credits)
+    VALUES (p_user_id, v_period, v_carry)
+    ON CONFLICT (user_id, period_start)
+    DO UPDATE SET
+      paid_analysis_credits = user_usage.paid_analysis_credits + EXCLUDED.paid_analysis_credits,
+      updated_at = NOW();
+  END IF;
 
   SELECT COALESCE(us.tier, 'free'), COALESCE(us.status, 'active')
   INTO v_tier, v_status
