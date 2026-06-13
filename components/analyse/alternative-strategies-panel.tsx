@@ -44,11 +44,8 @@ function StrategyCard({
           : "border-border/60 bg-card"
       }`}
     >
-      {/* Icon + name */}
+      {/* Name */}
       <div className="flex items-center gap-2">
-        <span className="text-lg" aria-hidden>
-          {est.icon}
-        </span>
         <span className={`text-sm font-semibold ${disabled ? "text-muted-foreground" : "text-foreground"}`}>
           {est.label}
         </span>
@@ -123,7 +120,7 @@ export function AlternativeStrategiesPanel({
     <section className="flex flex-col gap-3 print:hidden">
       <div>
         <h3 className="text-base font-semibold text-foreground">
-          📊 How This Property Compares Across Strategies
+          How This Property Compares Across Strategies
         </h3>
         <p className="mt-0.5 text-xs text-muted-foreground">
           Indicative estimates based on market data. Switch strategy for a full analysis.
@@ -146,7 +143,7 @@ export function AlternativeStrategiesPanel({
       {showHint && best && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5">
           <p className="text-xs text-foreground">
-            💡 The <span className="font-semibold">{best.label}</span> strategy shows an estimated{" "}
+            The <span className="font-semibold">{best.label}</span> strategy shows an estimated{" "}
             <span className="font-semibold">{best.primaryMetric!.toFixed(1)}%</span>{" "}
             {best.primaryMetricLabel ?? "yield"} on this property
           </p>
@@ -163,7 +160,7 @@ export function AlternativeStrategiesPanel({
       )}
 
       <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400/90">
-        ⚠ These are rough estimates to guide strategy selection — not full analyses. Figures use
+        These are rough estimates to guide strategy selection — not full analyses. Figures use
         market averages and assumptions. Switch to a strategy for accurate numbers based on your
         specific inputs.
       </p>

@@ -263,6 +263,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       tier: "pro",
       status: "succeeded",
       description: "Pro subscription started",
+      // Pro is unlimited, not credit-based — 0 keeps credit audit sums honest.
+      credit_delta: 0,
     })
 
     if (email) {
@@ -322,6 +324,27 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   }
   const admin = createAdminClient()
 
+  // Idempotency: Stripe retries on any non-2xx/network blip. A repeat
+  // delivery would duplicate the revenue row and re-send the renewal
+  // email. The partial unique index on (stripe_invoice_id) WHERE
+  // status='succeeded' backstops this check against races.
+  {
+    const { data: existing } = await admin
+      .from("payment_history")
+      .select("id")
+      .eq("stripe_invoice_id", invoice.id)
+      .eq("status", "succeeded")
+      .limit(1)
+      .maybeSingle()
+    if (existing?.id) {
+      console.warn("[webhook] invoice.payment_succeeded already processed", {
+        invoiceId: invoice.id,
+        existingRowId: existing.id,
+      })
+      return
+    }
+  }
+
   const line = invoice.lines.data[0]
   const periodEnd = line?.period?.end ? new Date(line.period.end * 1000) : null
 
@@ -335,7 +358,7 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     .eq("user_id", userId)
 
   const amount = (invoice.amount_paid ?? 0) / 100
-  await admin.from("payment_history").insert({
+  const { error: invoiceInsertError } = await admin.from("payment_history").insert({
     user_id: userId,
     stripe_invoice_id: invoice.id,
     amount_gbp: amount,
@@ -343,6 +366,11 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
     status: "succeeded",
     description: "Pro subscription renewed",
   })
+  if (invoiceInsertError) {
+    // 23505 = a concurrent retry won the insert race — already recorded.
+    if (invoiceInsertError.code === "23505") return
+    console.error("[webhook] renewal payment_history insert failed:", invoiceInsertError)
+  }
 
   const email = await getUserEmailFromAuth(userId)
   if (email && periodEnd && invoice.billing_reason === "subscription_cycle") {

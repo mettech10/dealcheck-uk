@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
+    // tsc is clean as of 2026-06-10 — keep it that way; builds fail on
+    // type errors so credit/payment regressions surface before deploy.
+    ignoreBuildErrors: false,
   },
   images: {
     unoptimized: true,

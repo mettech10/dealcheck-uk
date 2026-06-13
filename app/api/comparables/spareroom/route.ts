@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/apiAuth"
 import {
   weeklyToMonthly,
   mapRoomType,
@@ -15,6 +16,10 @@ const FLASK_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.o
  * Fallback: Flask /api/comparables (SpareRoom/OpenRent/Rightmove actors)
  */
 export async function POST(req: Request) {
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
   try {
     const body = await req.json()
     const { postcode, maxResults } = body

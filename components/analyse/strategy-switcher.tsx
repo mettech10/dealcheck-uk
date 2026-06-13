@@ -233,7 +233,6 @@ export function StrategySwitcher({
                   : "border-border/60 text-muted-foreground hover:border-primary/50 hover:text-foreground"
               }`}
             >
-              <span aria-hidden>{meta.icon}</span>
               {meta.label}
             </button>
           )

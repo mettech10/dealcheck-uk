@@ -11,6 +11,7 @@
  * shows Land Registry comparables.
  */
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/apiAuth"
 import {
   scrapeRightmoveSold,
   type RightmoveSoldListing,
@@ -48,6 +49,10 @@ function summarise(listings: RightmoveSoldListing[]): SoldResponse {
 }
 
 export async function POST(req: Request) {
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
   let body: {
     postcode?: string
     propertyType?: string

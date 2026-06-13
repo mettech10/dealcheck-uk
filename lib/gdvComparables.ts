@@ -1,12 +1,18 @@
 /**
- * GDV / ARV comparables — combine HM Land Registry (already in the analysis
- * payload) with the Rightmove SOLD scraper (Section 5) into a single, ranked
- * comparable set with £/m² benchmarks and a three-tier ARV.
+ * GDV / ARV comparables — combine three sold-price sources into a single,
+ * ranked comparable set with £/m² benchmarks and a three-tier ARV:
  *
- * The Rightmove half is fetched from POST /api/scraper/sold and fails
- * gracefully: if it returns nothing (Bright Data not configured, blocked,
- * etc.) the Land Registry comparables still drive the estimate, so the
- * Development / BRRRR / Flip ARV sections never break.
+ *   1. HM Land Registry comps already embedded in the analysis payload
+ *      (`backend.sold_comparables`).
+ *   2. The reliable POST /api/comparables/sold route (PropertyData + Land
+ *      Registry) — the SAME source that powers the Market Comparables tab,
+ *      so the GDV evidence list populates even when the payload carried no
+ *      comps and the Rightmove scrape is unavailable.
+ *   3. The Rightmove SOLD scraper (POST /api/scraper/sold) for photos.
+ *
+ * Every network source fails gracefully and independently: if one returns
+ * nothing the others still drive the estimate, so the Development / BRRRR /
+ * Flip GDV/ARV sections never break.
  */
 import type { BackendResults } from "./types"
 
@@ -121,52 +127,102 @@ export async function buildGdvComparables(params: {
   floorSizeM2?: number | null
   isNewBuild?: boolean
   backend: BackendResults | undefined
-  /** Override the fetcher in tests. */
+  /** Override the fetchers in tests. */
   fetchRightmove?: (body: unknown) => Promise<{ listings: GdvComparable[] }>
+  fetchSold?: (body: unknown) => Promise<{ sales: GdvComparable[] }>
 }): Promise<GdvComparablesResult> {
   const landReg = landRegistryComparables(params.backend)
 
-  // Rightmove scrape — never throws; empty on any failure.
-  let rightmove: GdvComparable[] = []
-  try {
-    const fetcher =
-      params.fetchRightmove ??
-      (async (body: unknown) => {
-        const res = await fetch("/api/scraper/sold", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-        if (!res.ok) return { listings: [] as GdvComparable[] }
-        const data = await res.json()
-        const listings = (data.listings ?? []).map((l: Record<string, unknown>) => ({
-          address: String(l.address ?? ""),
-          price: Number(l.price ?? 0),
-          dateSold: (l.dateSold as string) ?? "",
-          propertyType: (l.propertyType as string) ?? "",
-          bedrooms: (l.bedrooms as number | null) ?? null,
-          floorSizeM2: (l.floorSizeM2 as number | null) ?? null,
-          pricePerM2: (l.pricePerM2 as number | null) ?? null,
-          isNewBuild: Boolean(l.isNewBuild),
-          thumbnailUrl: (l.thumbnailUrl as string | null) ?? null,
-          listingUrl: (l.listingUrl as string) ?? "",
-          source: "rightmove_sold" as const,
-          hasImages: Boolean(l.thumbnailUrl),
-        }))
-        return { listings }
-      })
-    const out = await fetcher({
-      postcode: params.postcode,
-      propertyType: params.propertyType,
-      bedrooms: params.bedrooms,
-      soldInMonths: 18,
+  // Default fetchers — each never throws; empty on any failure.
+
+  // (a) Reliable sold-price route (PropertyData + Land Registry). Same source
+  //     as the Market Comparables tab, so GDV evidence appears even when the
+  //     analysis payload carried no comps and Rightmove is blocked.
+  const defaultFetchSold = async (body: unknown): Promise<{ sales: GdvComparable[] }> => {
+    const res = await fetch("/api/comparables/sold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
     })
-    rightmove = out.listings ?? []
-  } catch {
-    rightmove = []
+    if (!res.ok) return { sales: [] }
+    const json = await res.json()
+    if (!json?.success) return { sales: [] }
+    const rows: Record<string, unknown>[] = json.data?.sales ?? json.sales ?? []
+    const sales = rows
+      .map((s) => {
+        const type = String(s.propertyType ?? s.type ?? "")
+        return {
+          address: String(s.street ?? s.address ?? ""),
+          price: Number(s.price ?? 0),
+          dateSold: String(s.date ?? ""),
+          propertyType: type,
+          bedrooms: (s.bedrooms as number | null) ?? null,
+          floorSizeM2: null,
+          pricePerM2: null,
+          isNewBuild: type.toLowerCase().includes("new"),
+          thumbnailUrl: null,
+          listingUrl: "",
+          source: "land_registry" as const,
+          hasImages: false,
+        }
+      })
+      .filter((s) => s.price > 1000)
+    return { sales }
   }
 
-  const allComps = deduplicateComps([...landReg, ...rightmove])
+  // (b) Rightmove sold scrape — adds photos when available.
+  const defaultFetchRightmove = async (body: unknown): Promise<{ listings: GdvComparable[] }> => {
+    const res = await fetch("/api/scraper/sold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) return { listings: [] as GdvComparable[] }
+    const data = await res.json()
+    const listings = (data.listings ?? []).map((l: Record<string, unknown>) => ({
+      address: String(l.address ?? ""),
+      price: Number(l.price ?? 0),
+      dateSold: (l.dateSold as string) ?? "",
+      propertyType: (l.propertyType as string) ?? "",
+      bedrooms: (l.bedrooms as number | null) ?? null,
+      floorSizeM2: (l.floorSizeM2 as number | null) ?? null,
+      pricePerM2: (l.pricePerM2 as number | null) ?? null,
+      isNewBuild: Boolean(l.isNewBuild),
+      thumbnailUrl: (l.thumbnailUrl as string | null) ?? null,
+      listingUrl: (l.listingUrl as string) ?? "",
+      source: "rightmove_sold" as const,
+      hasImages: Boolean(l.thumbnailUrl),
+    }))
+    return { listings }
+  }
+
+  const soldBody = {
+    postcode: params.postcode,
+    propertyType: params.propertyType,
+    bedrooms: params.bedrooms,
+    soldInMonths: 18,
+  }
+
+  // Fetch both network sources in parallel; neither can break the other.
+  const [apiSold, rightmove] = await Promise.all([
+    (async () => {
+      try {
+        return (await (params.fetchSold ?? defaultFetchSold)(soldBody)).sales ?? []
+      } catch {
+        return [] as GdvComparable[]
+      }
+    })(),
+    (async () => {
+      try {
+        return (await (params.fetchRightmove ?? defaultFetchRightmove)(soldBody)).listings ?? []
+      } catch {
+        return [] as GdvComparable[]
+      }
+    })(),
+  ])
+
+  // Land Registry (payload) + reliable sold route + Rightmove, de-duplicated.
+  const allComps = deduplicateComps([...landReg, ...apiSold, ...rightmove])
 
   // For a development we proxy "refurbished/new-build" comps by keeping the
   // top of the £/m² distribution (or anything explicitly new-build).
@@ -215,7 +271,7 @@ export async function buildGdvComparables(params: {
     priceRange,
     comparables: allComps,
     rightmoveComps: rightmove.length,
-    landRegComps: landReg.length,
+    landRegComps: landReg.length + apiSold.length,
     totalComps: allComps.length,
     methodology: buildMethodologyText(
       allComps.length,

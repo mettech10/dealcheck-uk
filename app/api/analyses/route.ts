@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
+import { getUserPermissions } from "@/lib/permissions"
 
 // GET /api/analyses — fetch the logged-in user's saved analyses
 export async function GET() {
@@ -44,6 +46,17 @@ export async function POST(req: Request) {
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
   }
+
+  // Saving is a paid feature. The UI gates this client-side, but the
+  // route must enforce it too or any logged-in Free user can curl
+  // unlimited saves. Pro/Enterprise save freely; PPA saves consume a
+  // floating credit (bound atomically after the insert below); Free
+  // (canSaveDeals=false) is rejected outright.
+  const perms = await getUserPermissions(user.id)
+  if (!perms.canSaveDeals) {
+    return NextResponse.json({ error: "save_requires_credit" }, { status: 402 })
+  }
+  const needsCreditBinding = perms.tier !== "pro" && perms.tier !== "enterprise"
 
   let body: Record<string, unknown>
   try {
@@ -90,6 +103,22 @@ export async function POST(req: Request) {
   if (error) {
     console.error("[POST /api/analyses]", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (needsCreditBinding) {
+    // Bind a floating PPA credit to this save in the same request, so a
+    // direct API caller can't keep the row without spending the credit.
+    // Idempotent RPC: re-binding an already-unlocked analysis is a no-op.
+    const admin = createAdminClient()
+    const { data: bound, error: bindError } = await admin.rpc(
+      "consume_ppa_credit_for_analysis",
+      { p_user_id: user.id, p_analysis_id: data.id },
+    )
+    if (bindError || bound !== true) {
+      await supabase.from("saved_analyses").delete().eq("id", data.id).eq("user_id", user.id)
+      if (bindError) console.error("[POST /api/analyses] credit bind failed:", bindError)
+      return NextResponse.json({ error: "save_requires_credit" }, { status: 402 })
+    }
   }
 
   // Fire-and-forget activity log so the admin dashboard surfaces

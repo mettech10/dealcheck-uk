@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server"
+import { getSessionUser } from "@/lib/apiAuth"
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
 export async function POST(req: Request) {
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
   try {
     const body = await req.json()
     const { pdfBase64, filename } = body

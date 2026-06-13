@@ -851,7 +851,7 @@ export function FlipResults({ data, results, backendData }: FlipResultsProps) {
               2024/25 rules for{" "}
               {data.buyerType === "additional"
                 ? "additional / second-home property (5% surcharge across all bands)"
-                : "first-time buyer (relief up to £625k)"}
+                : "first-time buyer (relief up to £500k)"}
               . Figures shown are the statutory amount due at completion,
               not an estimate.
             </div>

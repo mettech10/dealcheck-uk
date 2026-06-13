@@ -137,7 +137,7 @@ export function ServiceStatusGrid() {
           const Icon = visual.icon
           return (
             <div
-              key={probe.service + (probe as { _key?: number })._key ?? ""}
+              key={probe.service + ((probe as { _key?: number })._key ?? "")}
               className={`flex flex-col gap-2 rounded-lg border p-3 ${visual.border}`}
             >
               <div className="flex items-center justify-between gap-2">
