@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
 import { checkCanAnalyse, recordAnalysisUsed } from "@/lib/usageGate"
 import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
+import { buildContext } from "@/lib/contextBuilder"
+import { recordAnalysisToIntelligence } from "@/lib/intelligencePipeline"
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
 
@@ -351,6 +353,31 @@ export async function POST(req: Request) {
         console.warn("[api/analyse] article4 engine lookup failed:", err)
       }
 
+      // ── Metalyzi intelligence layer (Section 5) ──────────────────────
+      const userId = user?.id ?? ""
+      const strategyId = (propertyData?.investmentType as string) || "btl"
+      const postcodeStr = (propertyData?.postcode as string) || ""
+
+      // STEP 2 — build proprietary context to inject into the AI call.
+      // Never blocks/throws: failures resolve to an empty context.
+      const intelligenceContext = await buildContext(postcodeStr, userId, strategyId).catch(
+        () => ({}),
+      )
+
+      // STEP 1 — record this analysis into the intelligence tables.
+      // Fire-and-forget; must never block or fail the user's response.
+      if (userId) {
+        recordAnalysisToIntelligence(userId, postcodeStr, strategyId, propertyData, {
+          grossYield: calculationResults?.grossYield,
+          monthlyCashflow: calculationResults?.monthlyCashFlow,
+          dealScore: calculationResults?.dealScore,
+          capitalRecoveredPct: calculationResults?.capitalRecoveredPct,
+          article4Active: !!(article4Engine?.isArticle4 || article4Engine?.status === "active"),
+        }).catch((e) =>
+          console.error("[intelligence] pipeline error:", e instanceof Error ? e.message : e),
+        )
+      }
+
       // Flask /ai-analyze expects flat camelCase property fields directly in
       // the request body, not nested under propertyData.
       // Also forward the frontend's calculationResults so the backend can use
@@ -381,6 +408,8 @@ export async function POST(req: Request) {
             development: "DEV",
           }[(propertyData?.investmentType as string) || "btl"] || "BTL",
           userEmail,
+          // Metalyzi proprietary context — injected by the backend gateway.
+          _intelligenceContext: intelligenceContext,
           // Pass the frontend's calculated metrics so benchmark comparison
           // uses the same figures shown in the headline metrics cards
           _frontendMetrics: calculationResults
