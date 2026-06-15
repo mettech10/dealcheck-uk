@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getSessionUser } from "@/lib/apiAuth"
+import { buildContext } from "@/lib/contextBuilder"
 
 const BACKEND_API_URL =
   process.env.BACKEND_API_URL || "https://metusa-deal-analyzer.onrender.com"
@@ -32,10 +33,25 @@ export async function POST(req: Request) {
       )
     }
 
+    // Metalyzi proprietary context — injected by the backend gateway (Section 5).
+    const intelligenceContext = await buildContext(
+      postcode,
+      sessionUser.id,
+      (strategy as string) || "btl",
+    ).catch(() => ({}))
+
     const upstream = await fetch(`${BACKEND_API_URL}/api/analysis/area`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postcode, strategy, dealData, benchmark, articleFour, marketContext }),
+      body: JSON.stringify({
+        postcode,
+        strategy,
+        dealData,
+        benchmark,
+        articleFour,
+        marketContext,
+        _intelligenceContext: intelligenceContext,
+      }),
       // Render free tier + Anthropic latency on a large strategy-aware
       // prompt routinely lands at 30-60s. 45s was breaching mid-call;
       // 90s gives Claude enough headroom while still failing fast

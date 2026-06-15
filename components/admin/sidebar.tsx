@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   Activity,
   Server,
+  Brain,
   LogOut,
 } from "lucide-react"
 import { signOut } from "@/app/auth/actions"
@@ -44,6 +45,7 @@ const NAV: NavItem[] = [
   { href: "/admin/errors", label: "Errors", icon: AlertTriangle },
   { href: "/admin/activity", label: "Activity", icon: Activity },
   { href: "/admin/system", label: "System", icon: Server },
+  { href: "/admin/intelligence", label: "Intelligence", icon: Brain },
 ]
 
 export function AdminSidebar({
