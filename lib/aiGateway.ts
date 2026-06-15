@@ -109,14 +109,20 @@ class MetalyziAIGateway {
     // Log the call for the learning pipeline.
     const callId = await this.logCall(enrichedMessages, options)
 
+    // Graceful sovereignty fallback: a configured-but-unavailable provider
+    // never takes the platform down — we fall back to Anthropic. Accumulated
+    // intelligence is untouched. (Once OpenAI is implemented, distinguish a
+    // config error from a transient one before falling back.)
     let response: AIResponse
-    switch (this.provider) {
-      case "openai":
+    if (this.provider === "openai") {
+      try {
         response = await this.callOpenAI(enrichedMessages, options)
-        break
-      case "anthropic":
-      default:
+      } catch {
+        console.warn("[aiGateway] AI_PROVIDER=openai not implemented — falling back to anthropic")
         response = await this.callAnthropic(enrichedMessages, options)
+      }
+    } else {
+      response = await this.callAnthropic(enrichedMessages, options)
     }
 
     await this.logResponse(callId, response)
