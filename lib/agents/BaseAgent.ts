@@ -122,14 +122,19 @@ export abstract class BaseAgent {
     if (existing) {
       const row = existing as { id: string; frequency: number | null }
       const freq = (row.frequency ?? 1) + 1
-      await supabase
-        .from("deal_patterns")
-        .update({
-          frequency: freq,
-          confidence: Math.min(0.95, p.confidence ?? freq / 20),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", row.id)
+      const patch: Record<string, unknown> = {
+        frequency: freq,
+        confidence: Math.min(0.95, p.confidence ?? freq / 20),
+        updated_at: new Date().toISOString(),
+      }
+      // Refresh the human-readable fields when the caller supplies fresh ones
+      // (e.g. the latest rate move / rent change), but leave them untouched
+      // when omitted.
+      if (p.description !== undefined) patch.description = p.description
+      if (p.insight !== undefined) patch.insight = p.insight
+      if (p.recommendation !== undefined) patch.recommendation = p.recommendation
+      if (p.trigger_conditions !== undefined) patch.trigger_conditions = p.trigger_conditions
+      await supabase.from("deal_patterns").update(patch).eq("id", row.id)
     } else {
       await supabase.from("deal_patterns").insert({
         pattern_type: p.pattern_type,
