@@ -27,6 +27,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { StatCard } from "@/components/admin/stat-card"
 import { TierBadge } from "@/components/admin/tier-badge"
 import { TypeBadge } from "@/components/admin/type-badge"
+import { AgentMonitor } from "@/components/admin/agent-monitor"
 import { formatRelativeTime } from "@/lib/admin-format"
 
 export const dynamic = "force-dynamic"
@@ -290,6 +291,9 @@ export default async function AdminOverviewPage() {
           }
         />
       </section>
+
+      {/* ── Self-learning agent monitor (live) ─────────────────────── */}
+      <AgentMonitor />
 
       {/* ── Recent signups + payments ──────────────────────────────── */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">

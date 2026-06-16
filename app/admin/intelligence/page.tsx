@@ -12,6 +12,7 @@
  */
 import { createAdminClient } from "@/lib/supabase/admin"
 import { listAgents } from "@/lib/agents/orchestrator"
+import { agentLabel, describeSchedule } from "@/lib/agents/display"
 
 export const dynamic = "force-dynamic"
 
@@ -25,23 +26,6 @@ function n(v: unknown): number | null {
 function pct(v: unknown): string {
   const x = n(v)
   return x === null ? "—" : `${x.toFixed(1)}%`
-}
-
-/** Human-readable label for an agent class name ("MarketPriceAgent" → "Market Price"). */
-function agentLabel(name: string): string {
-  return name.replace(/Agent$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").trim()
-}
-
-/** Plain-English cron schedule. */
-function describeSchedule(cron: string): string {
-  const map: Record<string, string> = {
-    "0 3 1 * *": "Monthly · 1st · 03:00",
-    "0 4 1 * *": "Monthly · 1st · 04:00",
-    "0 6 * * 1": "Weekly · Mon · 06:00",
-    "0 8 * * *": "Daily · 08:00",
-    "0 2 * * 0": "Weekly · Sun · 02:00",
-  }
-  return map[cron] ?? cron
 }
 
 function timeAgo(iso: string): string {
