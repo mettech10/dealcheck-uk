@@ -239,7 +239,7 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-primary">
-                          £{rate.toFixed(rate >= 100 ? 0 : 1)}/night
+                          £{rate.toFixed(0)}/night
                         </p>
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                           {al.bedrooms > 0 && (
