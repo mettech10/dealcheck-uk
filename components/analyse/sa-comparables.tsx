@@ -122,10 +122,6 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
     })
       .then((r) => r.json())
       .then((data) => {
-        console.log("[AIRROI MARKET DATA]", JSON.stringify(data?.airroiMarket, null, 2))
-        if (data?.airroiListings?.[0]) {
-          console.log("[AIRROI LISTING SAMPLE]", JSON.stringify(data.airroiListings[0], null, 2))
-        }
         setListings(data.listings || [])
         setSummary(data.summary || null)
         setFallbackUrl(
@@ -156,9 +152,23 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
       <AlertTriangle className="size-3.5 text-amber-500" />
     ) : null
 
+  // Airroi nearby listings with a usable nightly rate, computed once so the
+  // Nightly Rate Comparables card can fall back to them when the (often empty)
+  // Apify direct-listing source returns nothing.
+  const validAirroiListings = airroiListings
+    .map((l) => ({ listing: l, rate: extractNightlyRate(l) }))
+    .filter(({ rate }) => rate > 0)
+  const airroiValidOcc = validAirroiListings.filter(({ listing }) => listing.occupancyRate > 0)
+  const airroiAvgRate = validAirroiListings.length
+    ? Math.round(validAirroiListings.reduce((s, { rate }) => s + rate, 0) / validAirroiListings.length)
+    : 0
+  const airroiAvgOcc = airroiValidOcc.length
+    ? Math.round(airroiValidOcc.reduce((s, { listing }) => s + listing.occupancyRate, 0) / airroiValidOcc.length)
+    : null
+
   return (
     <div className="space-y-4">
-      {/* ── Airroi SA Market Data Card ──────────────────────────────────── */}
+      {/* ── Airroi SA Market Data Card (metrics only) ───────────────────── */}
       {!loading && airroiMarket && (
         <Card>
           <CardHeader className="pb-3">
@@ -185,104 +195,11 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
                 <MetricRow label="Active Listings"  value={airroiMarket.totalActiveListings > 0 ? `${airroiMarket.totalActiveListings.toFixed(0)} active` : "—"} />
               </div>
             </div>
-
-            {/* Airroi nearby listings — only show those with a real
-                nightly rate; zero-price entries are filtered out so the
-                grid doesn't get padded with "Price unavailable" cards. */}
-            {(() => {
-              const validListings = airroiListings
-                .map((l) => ({ listing: l, rate: extractNightlyRate(l) }))
-                .filter(({ rate }) => rate > 0)
-              console.log("[AIRROI LISTINGS RAW]", JSON.stringify(airroiListings.slice(0, 3), null, 2))
-              console.log("[AIRROI VALID LISTINGS]", validListings.length, "of", airroiListings.length)
-              if (airroiListings.length === 0) return null
-              if (validListings.length === 0) {
-                return (
-                  <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
-                    Live pricing data unavailable for this area — use the market averages above for benchmarking.
-                  </div>
-                )
-              }
-              const validOcc = validListings.filter(({ listing }) => listing.occupancyRate > 0)
-              const avgRate = Math.round(validListings.reduce((s, { rate }) => s + rate, 0) / validListings.length)
-              const avgOcc = validOcc.length > 0
-                ? Math.round(validOcc.reduce((s, { listing }) => s + listing.occupancyRate, 0) / validOcc.length)
-                : null
-              return (
-              <div className="mt-4">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  Nearby SA Listings
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {validListings.map(({ listing: al, rate }, i) => (
-                    <a
-                      key={i}
-                      href={al.listingUrl || undefined}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex gap-3 rounded-lg border border-border/50 p-2.5 transition-colors hover:border-primary/30"
-                    >
-                      {/* Thumbnail */}
-                      <div className="size-14 shrink-0 rounded-md overflow-hidden bg-muted/50 flex items-center justify-center">
-                        {al.thumbnailUrl ? (
-                          <img
-                            src={al.thumbnailUrl}
-                            alt=""
-                            className="size-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none"
-                            }}
-                          />
-                        ) : (
-                          <Star className="size-5 text-muted-foreground/30" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-primary">
-                          £{rate.toFixed(0)}/night
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                          {al.bedrooms > 0 && (
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                              {al.bedrooms} bed
-                            </Badge>
-                          )}
-                          {al.occupancyRate > 0 && (
-                            <span className="text-[10px] text-muted-foreground">
-                              Occ: {al.occupancyRate.toFixed(0)}%
-                            </span>
-                          )}
-                        </div>
-                        {al.rating > 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            ★ {al.rating.toFixed(1)}
-                            {al.reviewCount > 0 && ` (${al.reviewCount} reviews)`}
-                          </span>
-                        )}
-                        {al.distance > 0 && (
-                          <span className="text-[10px] text-muted-foreground ml-1">
-                            · {al.distance.toFixed(1)}km away
-                          </span>
-                        )}
-                      </div>
-                      {al.listingUrl && (
-                        <ExternalLink className="mt-1 size-3 shrink-0 text-muted-foreground/40" />
-                      )}
-                    </a>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  {validListings.length} SA comparables · Avg: £{avgRate}/night
-                  {avgOcc !== null && ` · Avg occupancy: ${avgOcc}%`}
-                </p>
-              </div>
-              )
-            })()}
           </CardContent>
         </Card>
       )}
 
-      {/* ── Existing Airbnb Comparables Card ────────────────────────────── */}
+      {/* ── Nightly Rate Comparables Card ───────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
@@ -292,7 +209,9 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
             </CardTitle>
           </div>
           <CardDescription>
-            Live Airbnb listings in this area for {bedrooms}-bedroom properties
+            {listings.length > 0
+              ? `Live Airbnb listings in this area for ${bedrooms}-bedroom properties`
+              : `Nearby short-let comparables for ${bedrooms}-bedroom properties`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -302,26 +221,34 @@ export function SAComparables({ postcode, bedrooms }: SAComparablesProps) {
             </p>
           )}
 
-          {!loading && listings.length === 0 && (
+          {/* No direct Apify listings, but Airroi has usable comparables →
+              show those here so the card is never empty when data exists. */}
+          {!loading && listings.length === 0 && validAirroiListings.length > 0 && (
+            <>
+              <AirroiListingsGrid
+                items={validAirroiListings}
+                avgRate={airroiAvgRate}
+                avgOcc={airroiAvgOcc}
+              />
+              <div className="mt-3 text-center">
+                <a
+                  href={fallbackUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary underline hover:text-primary/80"
+                >
+                  View all Airbnb listings in {district} →
+                </a>
+              </div>
+            </>
+          )}
+
+          {/* Nothing from either source → guide the user to search live. */}
+          {!loading && listings.length === 0 && validAirroiListings.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-6">
-              {airroiListings.length > 0 ? (
-                // Airroi already populated the card above — this panel is
-                // redundant, so show a soft pointer rather than the Apify
-                // "paid subscription" scare message.
-                <p className="text-sm text-muted-foreground text-center">
-                  Using Airroi market data above. Direct Airbnb listings are
-                  optional — search live if you need them.
-                </p>
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    {message || "No Airbnb listings found for this area."}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    The Airbnb actor requires a paid Apify subscription ($30/month).
-                  </p>
-                </>
-              )}
+              <p className="text-sm text-muted-foreground">
+                {message || "No Airbnb listings found for this area."}
+              </p>
               <a
                 href={fallbackUrl}
                 target="_blank"
@@ -450,6 +377,84 @@ function MetricRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between px-4 py-2.5">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-sm font-medium text-foreground">{value}</span>
+    </div>
+  )
+}
+
+// ── Helper: grid of Airroi nearby listings ─────────────────────────────────
+function AirroiListingsGrid({
+  items,
+  avgRate,
+  avgOcc,
+}: {
+  items: { listing: AirroiListing; rate: number }[]
+  avgRate: number
+  avgOcc: number | null
+}) {
+  return (
+    <div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {items.map(({ listing: al, rate }, i) => (
+          <a
+            key={i}
+            href={al.listingUrl || undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex gap-3 rounded-lg border border-border/50 p-2.5 transition-colors hover:border-primary/30"
+          >
+            {/* Thumbnail */}
+            <div className="size-14 shrink-0 rounded-md overflow-hidden bg-muted/50 flex items-center justify-center">
+              {al.thumbnailUrl ? (
+                <img
+                  src={al.thumbnailUrl}
+                  alt=""
+                  className="size-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none"
+                  }}
+                />
+              ) : (
+                <Star className="size-5 text-muted-foreground/30" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-primary">
+                £{rate.toFixed(0)}/night
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                {al.bedrooms > 0 && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    {al.bedrooms} bed
+                  </Badge>
+                )}
+                {al.occupancyRate > 0 && (
+                  <span className="text-[10px] text-muted-foreground">
+                    Occ: {al.occupancyRate.toFixed(0)}%
+                  </span>
+                )}
+              </div>
+              {al.rating > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ★ {al.rating.toFixed(1)}
+                  {al.reviewCount > 0 && ` (${al.reviewCount} reviews)`}
+                </span>
+              )}
+              {al.distance > 0 && (
+                <span className="text-[10px] text-muted-foreground ml-1">
+                  · {al.distance.toFixed(1)}km away
+                </span>
+              )}
+            </div>
+            {al.listingUrl && (
+              <ExternalLink className="mt-1 size-3 shrink-0 text-muted-foreground/40" />
+            )}
+          </a>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground text-center mt-2">
+        {items.length} SA comparables · Avg: £{avgRate}/night
+        {avgOcc !== null && ` · Avg occupancy: ${avgOcc}%`}
+      </p>
     </div>
   )
 }
