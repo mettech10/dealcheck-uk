@@ -192,7 +192,255 @@ export function parsePostcode(
  * So a district that is 'active' takes precedence over a 'proposed'
  * neighbour with the same coverage.
  */
+// ── Live national Article 4 lookup ────────────────────────────────────────
+// Authoritative source: planning.data.gov.uk `article-4-direction-area`
+// dataset (~6,900 mapped directions, queried point-in-polygon). Postcodes are
+// geocoded via postcodes.io (ONS data, no key). We keep only HMO-relevant
+// directions (C3→C4) because that's what gates HMO viability. Fail-soft to
+// "unknown" on any error; results cached 7 days in-memory (directions rarely
+// change), so repeat analyses of the same postcode don't re-hit the APIs.
+
+const POSTCODES_IO = "https://api.postcodes.io/postcodes/"
+const PLANNING_DATA_A4 =
+  "https://www.planning.data.gov.uk/entity.json?dataset=article-4-direction-area"
+
+// Matches HMO / C4 directions in the free-text name/notes/description.
+const HMO_DIRECTION_RE =
+  /\bhmo\b|hous\w* in multiple occupation|multiple occupation|\bc4\b|c3\s*(?:to|-|–|→)\s*c4/i
+
+// Directions clearly about something OTHER than HMO — so a match here means
+// the A4 at this point does not restrict C3→C4 (e.g. basements, shopfronts,
+// conservation areas, agricultural, offices→resi). Used to tell a
+// "definitely-not-HMO" area apart from an opaquely-labelled one.
+const NON_HMO_DIRECTION_RE =
+  /basement|conservation|shopfront|agricultur|\boffice|\bretail|\bcommercial|demolition|boundary treatment|\bfence|\bgate|\bporch|micro.?generation|telecommunication|advertisement|woodland|hedgerow|\bfarm/i
+
+type LiveStatus = "active" | "review" | "none" | "unknown"
+interface LiveResult {
+  status: LiveStatus
+  councilName: string | null
+  directionName: string | null
+}
+
+const LIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const liveCache = new Map<string, { at: number; result: LiveResult }>()
+
+async function geocodePostcode(
+  postcode: string
+): Promise<{ lat: number; lng: number; council: string | null } | null> {
+  try {
+    const pc = postcode.replace(/\s+/g, "").toUpperCase()
+    if (!pc) return null
+    const r = await fetch(`${POSTCODES_IO}${encodeURIComponent(pc)}`, {
+      signal: AbortSignal.timeout(6000),
+    })
+    if (!r.ok) return null
+    const j = (await r.json()) as {
+      result?: { latitude?: number; longitude?: number; admin_district?: string }
+    }
+    const res = j?.result
+    if (!res || typeof res.latitude !== "number" || typeof res.longitude !== "number") {
+      return null
+    }
+    return { lat: res.latitude, lng: res.longitude, council: res.admin_district ?? null }
+  } catch {
+    return null
+  }
+}
+
+async function checkArticle4Live(postcode: string): Promise<LiveResult> {
+  const key = postcode.replace(/\s+/g, "").toUpperCase()
+  if (key) {
+    const hit = liveCache.get(key)
+    if (hit && Date.now() - hit.at < LIVE_TTL_MS) return hit.result
+  }
+
+  const geo = await geocodePostcode(postcode)
+  if (!geo) return { status: "unknown", councilName: null, directionName: null }
+
+  try {
+    const url = `${PLANNING_DATA_A4}&longitude=${geo.lng}&latitude=${geo.lat}&limit=50`
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (!r.ok) {
+      // Transient upstream failure — report unknown, don't cache.
+      return { status: "unknown", councilName: geo.council, directionName: null }
+    }
+    const j = (await r.json()) as { entities?: Array<Record<string, unknown>> }
+    const entities = j?.entities ?? []
+    // Classify each Article 4 area covering the point.
+    let hmo: Record<string, unknown> | null = null
+    let ambiguous = false
+    for (const e of entities) {
+      const blob = `${e.name ?? ""} ${e.notes ?? ""} ${e.description ?? ""}`
+      if (HMO_DIRECTION_RE.test(blob)) {
+        hmo = e
+        break
+      }
+      // An area that isn't clearly non-HMO (e.g. an opaque code like "A4D01")
+      // could still be an HMO direction — flag it for verification.
+      if (!NON_HMO_DIRECTION_RE.test(blob)) ambiguous = true
+    }
+    let result: LiveResult
+    if (hmo) {
+      result = {
+        status: "active",
+        councilName: geo.council,
+        directionName: String(hmo.notes || hmo.name || "HMO Article 4 Direction"),
+      }
+    } else if (ambiguous) {
+      result = { status: "review", councilName: geo.council, directionName: null }
+    } else {
+      // Zero areas, or only clearly-non-HMO areas → no HMO restriction here.
+      result = { status: "none", councilName: geo.council, directionName: null }
+    }
+    if (key) liveCache.set(key, { at: Date.now(), result })
+    return result
+  } catch {
+    return { status: "unknown", councilName: geo.council, directionName: null }
+  }
+}
+
+/** Synthesise an Article4Area for a live-confirmed HMO direction. */
+function liveArea(live: LiveResult): Article4Area {
+  return {
+    id: "live",
+    councilName: live.councilName ?? "Local planning authority",
+    councilCode: null,
+    region: null,
+    country: null,
+    directionType: "HMO C4",
+    propertyTypesAffected: ["HMO"],
+    boundaryGeojson: null,
+    postcodeDistricts: null,
+    postcodeSectors: null,
+    approximateCenterLat: null,
+    approximateCenterLng: null,
+    status: "active",
+    confirmedDate: null,
+    proposedDate: null,
+    consultationEndDate: null,
+    effectiveDate: null,
+    impactDescription: live.directionName,
+    planningPortalUrl: "https://www.planning.data.gov.uk/",
+    councilPlanningUrl: null,
+    sourceDocumentUrl: null,
+    verified: true,
+    dataSource: "planning.data.gov.uk",
+    lastVerifiedAt: null,
+  }
+}
+
+/**
+ * Merge the authoritative national lookup with the curated Supabase table.
+ * Priority: any active → active (the table acts as an override so curated
+ * directions still flag even if planning.data.gov.uk lacks that polygon);
+ * table proposed → proposed; a *live* "none" is a definitive national result;
+ * anything else is honest "unknown". Crucially the table's own "none" (which
+ * it returns for any unmatched district) is NOT treated as authoritative, so
+ * we never present a false "No Article 4" for areas outside the dataset.
+ */
+function mergeArticle4(
+  live: LiveResult,
+  table: Article4CheckResult,
+  district: string | null,
+  sector: string | null
+): Article4CheckResult {
+  const liveActive = live.status === "active"
+  const tableActive = table.status === "active"
+
+  if (liveActive || tableActive) {
+    const councilName =
+      (tableActive
+        ? table.areas.find((a) => a.status === "active")?.councilName
+        : null) ||
+      live.councilName ||
+      "your local planning authority"
+    const areas: Article4Area[] = [
+      ...(liveActive ? [liveArea(live)] : []),
+      ...table.areas,
+    ]
+    return {
+      isArticle4: true,
+      status: "active",
+      areas,
+      warningLevel: "red",
+      summary: `ARTICLE 4 IN FORCE: ${councilName} operates an HMO (C3→C4) Article 4 direction covering this location — HMO conversion requires full planning permission. Confirm the exact boundary with the LPA.`,
+      district,
+      sector,
+    }
+  }
+
+  if (table.status === "proposed") {
+    return { ...table, district, sector }
+  }
+
+  // An Article 4 direction covers the point but the national record doesn't
+  // clearly state whether it restricts HMO (e.g. an opaque reference code).
+  // Surface it as amber "verify" — never silently assume it's safe.
+  if (live.status === "review") {
+    return {
+      isArticle4: false,
+      status: "unknown",
+      areas: [],
+      warningLevel: "amber",
+      summary: `An Article 4 direction covers this location, but the national record doesn't state whether it restricts HMO conversion. Confirm C3→C4 permitted-development rights with ${
+        live.councilName ?? "the local planning authority"
+      } before proceeding.`,
+      district,
+      sector,
+    }
+  }
+
+  // Only a *live* "none" reflects an actual point check (national dataset
+  // returned no HMO direction here). The table's "none" is a non-match, not
+  // a guarantee — so it never produces a confident "none".
+  if (live.status === "none") {
+    return {
+      isArticle4: false,
+      status: "none",
+      areas: table.areas,
+      warningLevel: "none",
+      summary: `No HMO Article 4 direction found for ${
+        district ?? "this area"
+      } in the national planning dataset — C3→C4 conversion is likely permitted development. National coverage can lag, so confirm with ${
+        live.councilName ?? "the local planning authority"
+      } before committing.`,
+      district,
+      sector,
+    }
+  }
+
+  // Live lookup failed (geocode / API) and no curated match → honest unknown,
+  // never a false "none".
+  return {
+    isArticle4: false,
+    status: "unknown",
+    areas: [],
+    warningLevel: "none",
+    summary: `Article 4 status could not be confirmed for ${
+      district ?? "this postcode"
+    } right now — verify HMO permitted-development rights with the local planning authority.`,
+    district,
+    sector,
+  }
+}
+
 export async function checkArticle4(
+  supabase: SupabaseClient,
+  postcode: string
+): Promise<Article4CheckResult> {
+  const parsed = parsePostcode(postcode)
+  const district = parsed?.district ?? null
+  const sector = parsed?.sector ?? null
+  // Authoritative national lookup + curated table override, in parallel.
+  const [live, table] = await Promise.all([
+    checkArticle4Live(postcode),
+    checkArticle4Table(supabase, postcode),
+  ])
+  return mergeArticle4(live, table, district, sector)
+}
+
+async function checkArticle4Table(
   supabase: SupabaseClient,
   postcode: string
 ): Promise<Article4CheckResult> {
