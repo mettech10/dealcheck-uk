@@ -484,12 +484,14 @@ function AnalysePage() {
       const skipKeys: SourceKey[] = []
       if (strategy !== "hmo") skipKeys.push("spareRoom")
       if (strategy !== "r2sa" && strategy !== "sa") skipKeys.push("airroi")
-      // r2sa renders SAComparables instead of PropertyComparables, so
-      // the propertyData + comparables keys are never reported from
-      // a child — skip them up-front for SA flows.
-      if (strategy === "r2sa" || strategy === "sa") {
-        skipKeys.push("propertyData", "comparables")
-      }
+      // The comparables sources (PropertyComparables / SAComparables) render
+      // inside the lazy "Comparables" tab, which Radix does NOT mount until
+      // the user clicks it. So on initial load these keys are never reported
+      // and would keep the overlay spinning until the 30s safety timeout (or
+      // until the user manually clicks Comparables). They must not gate the
+      // overlay for ANY strategy — skip them up-front. Comparables still
+      // fetch normally the moment the tab is opened.
+      skipKeys.push("propertyData", "comparables")
       if (skipKeys.length) loadingTracker.skip(skipKeys)
 
       try {
