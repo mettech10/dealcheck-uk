@@ -26,7 +26,6 @@ import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
 import {
   LoadingTrackerProvider,
   useLoadingTracker,
-  type SourceKey,
 } from "@/lib/useLoadingTracker"
 import type { ScrapedListing } from "@/components/analyse/property-listing-card"
 import { calculateAll, calculateDealScore } from "@/lib/calculations"
@@ -474,25 +473,30 @@ function AnalysePage() {
       // and the 30s safety timeout starts. Children + the main
       // analyse response progressively flip them back to true.
       loadingTracker.start()
-      // Pre-skip data sources irrelevant to the current strategy
-      // so they don't block the overlay. The bundled /ai-analyze
-      // response already covers article4 + benchmarks; we mark
-      // those as done in this fetch's finally block.
-      const strategy = String(
-        (body.propertyData as Record<string, unknown> | undefined)?.investmentType ?? "btl",
-      ).toLowerCase()
-      const skipKeys: SourceKey[] = []
-      if (strategy !== "hmo") skipKeys.push("spareRoom")
-      if (strategy !== "r2sa" && strategy !== "sa") skipKeys.push("airroi")
-      // The comparables sources (PropertyComparables / SAComparables) render
-      // inside the lazy "Comparables" tab, which Radix does NOT mount until
-      // the user clicks it. So on initial load these keys are never reported
-      // and would keep the overlay spinning until the 30s safety timeout (or
-      // until the user manually clicks Comparables). They must not gate the
-      // overlay for ANY strategy — skip them up-front. Comparables still
-      // fetch normally the moment the tab is opened.
-      skipKeys.push("propertyData", "comparables")
-      if (skipKeys.length) loadingTracker.skip(skipKeys)
+      // The overlay must lift the moment the CORE analysis is ready — i.e.
+      // when the bundled /ai-analyze response returns (it carries the AI
+      // narrative + calculations + article4 + benchmarks, all marked done in
+      // this fetch's finally block). EVERY other data source renders in its
+      // own card with an inline loading state, so none of them should gate
+      // the full-screen overlay:
+      //   • propertyData / comparables → live inside the lazy "Comparables"
+      //     tab, which Radix doesn't even mount until it's clicked (so they
+      //     never report on initial load → overlay would hang to the 30s
+      //     safety timeout, or until the user clicked Comparables).
+      //   • spareRoom (HMO rooms) / airroi (SA nightly) / aiAreaAnalysis →
+      //     supplementary AI/scrape calls that can be slow; a single slow one
+      //     used to keep the whole "Analysing…" spinner up.
+      // Skipping them here makes isFullyLoaded flip as soon as /ai-analyze
+      // resolves. The individual cards still fetch and show their own
+      // spinners. Prevents the overlay from getting stuck after results are
+      // actually on screen.
+      loadingTracker.skip([
+        "propertyData",
+        "comparables",
+        "spareRoom",
+        "airroi",
+        "aiAreaAnalysis",
+      ])
 
       try {
         const res = await fetch("/api/analyse", {
