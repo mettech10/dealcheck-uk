@@ -1849,6 +1849,14 @@ function AnalysePage() {
                 onSwitchStrategy={handleStrategySwitch}
                 previousStrategy={previousStrategy}
                 onBack={handleBackStrategy}
+                onNewAnalysis={() => {
+                  resetAll()
+                  window.scrollTo({ top: 0, behavior: "smooth" })
+                }}
+                onUpgrade={() => {
+                  setUpgradeReason("free_limit_reached")
+                  setShowUpgrade(true)
+                }}
               />
             ) : (
               /* URL mode -- AI text only (no structured data from backend) */
