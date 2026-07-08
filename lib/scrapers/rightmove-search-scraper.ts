@@ -274,7 +274,7 @@ function normaliseSearchCard(c: RawSearchCard): RightmoveSearchResult {
     bedrooms: bedsMatch ? parseInt(bedsMatch[1], 10) : null,
     bathrooms: bathsMatch ? parseInt(bathsMatch[1], 10) : null,
     propertyType: c.propType || null,
-    tenure: c.tenureType ? c.tenureType.toLowerCase() : null
+    tenure: c.tenureType ? c.tenureType.toLowerCase() : null,
     thumbnailUrl: c.thumbnailUrl,
     description: c.description,
     addedDate: c.addedDate,
