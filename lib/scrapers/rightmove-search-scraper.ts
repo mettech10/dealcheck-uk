@@ -61,20 +61,68 @@ interface RawSearchCard {
   bedsText: string
   bathsText: string
   propType: string
+  tenureType: string
   thumbnailUrl: string | null
   description: string | null
   addedDate: string | null
   isReduced: boolean
 }
 
+/**
+ * Rightmove location identifiers are internal numeric ids (OUTCODE^1550 =
+ * LS6) — passing the outcode string 404s. Resolve via their typeahead API.
+ */
+export async function resolveOutcodeIdentifier(
+  postcode: string,
+): Promise<string | null> {
+  const outcode = postcode.trim().split(/\s+/)[0].toUpperCase()
+  if (!outcode) return null
+  try {
+    const res = await fetch(
+      `https://los.rightmove.co.uk/typeahead?query=${encodeURIComponent(outcode)}&limit=10`,
+      {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(8000),
+      },
+    )
+    if (!res.ok) {
+      console.warn(`[RM-Search] typeahead HTTP ${res.status} for ${outcode}`)
+      return null
+    }
+    const data = (await res.json()) as {
+      matches?: Array<{ id: string; type: string; displayName: string }>
+    }
+    const match = (data.matches ?? []).find(
+      (m) => m.type === "OUTCODE" && m.displayName?.toUpperCase() === outcode,
+    )
+    if (!match) {
+      console.warn(`[RM-Search] no OUTCODE match for ${outcode}`)
+      return null
+    }
+    return `OUTCODE^${match.id}`
+  } catch (err) {
+    console.warn(
+      "[RM-Search] typeahead error:",
+      err instanceof Error ? err.message : String(err),
+    )
+    return null
+  }
+}
+
 export async function scrapeRightmoveSearch(
   params: SearchParams,
 ): Promise<RightmoveSearchResult[]> {
-  const searchUrl = buildRightmoveSearchUrl(params)
-  if (!searchUrl) {
-    console.warn("[RM-Search] no locationIdentifier or postcode — cannot build URL")
+  let locationIdentifier = params.locationIdentifier ?? null
+  if (!locationIdentifier && params.postcode) {
+    locationIdentifier = await resolveOutcodeIdentifier(params.postcode)
+  }
+  if (!locationIdentifier) {
+    console.warn("[RM-Search] no resolvable location — cannot build URL")
     return []
   }
+
+  const searchUrl = buildRightmoveSearchUrl({ ...params, locationIdentifier })
+  if (!searchUrl) return []
 
   console.log("[RM-Search] scrape", { searchUrl, params })
 
@@ -103,10 +151,24 @@ export async function scrapeRightmoveSearch(
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const rows: RawSearchCard[] = []
 
-      // ── 1. jsonModel — search-page hydration JSON ──────────────────
-      const model = (window as any).jsonModel
-      if (Array.isArray(model?.properties) && model.properties.length > 0) {
-        for (const p of model.properties.slice(0, limit)) {
+      // ── 1. Hydration JSON — Next.js __NEXT_DATA__ (current) or the
+      //       legacy window.jsonModel ──────────────────────────────────
+      let properties: any[] | undefined
+      try {
+        const nextData = document.getElementById("__NEXT_DATA__")?.textContent
+        if (nextData) {
+          const parsed = JSON.parse(nextData)
+          properties = parsed?.props?.pageProps?.searchResults?.properties
+        }
+      } catch {
+        /* fall through to jsonModel / DOM */
+      }
+      if (!Array.isArray(properties) || properties.length === 0) {
+        properties = (window as any).jsonModel?.properties
+      }
+
+      if (Array.isArray(properties) && properties.length > 0) {
+        for (const p of properties.slice(0, limit)) {
           rows.push({
             listingId: String(p.id ?? ""),
             listingPath: String(p.propertyUrl ?? `/properties/${p.id}`),
@@ -117,12 +179,15 @@ export async function scrapeRightmoveSearch(
             bedsText: String(p.bedrooms ?? ""),
             bathsText: String(p.bathrooms ?? ""),
             propType: String(p.propertySubType ?? p.propertyTypeFullDescription ?? ""),
+            tenureType: String(p.tenure?.tenureType ?? ""),
             thumbnailUrl: p.propertyImages?.mainImageSrc
               ? String(p.propertyImages.mainImageSrc)
               : null,
             description: p.summary ? String(p.summary) : null,
-            addedDate: p.firstVisibleDate ? String(p.firstVisibleDate) : null,
-            isReduced: /reduced/i.test(String(p.addedOrReduced ?? "")),
+            addedDate: String(p.firstVisibleDate ?? p.listingUpdate?.listingUpdateDate ?? "") || null,
+            isReduced:
+              /reduced/i.test(String(p.addedOrReduced ?? "")) ||
+              /price_reduced|reduced/i.test(String(p.listingUpdate?.listingUpdateReason ?? "")),
           })
         }
         return rows
@@ -153,6 +218,7 @@ export async function scrapeRightmoveSearch(
             propType: text(
               '[data-testid="property-type"], [class*="propertyType"], [class*="property-information"]',
             ),
+            tenureType: "",
             thumbnailUrl:
               card.querySelector("img")?.getAttribute("src") ?? null,
             description: text('[class*="summary"], [class*="description"]') || null,
@@ -208,7 +274,7 @@ function normaliseSearchCard(c: RawSearchCard): RightmoveSearchResult {
     bedrooms: bedsMatch ? parseInt(bedsMatch[1], 10) : null,
     bathrooms: bathsMatch ? parseInt(bathsMatch[1], 10) : null,
     propertyType: c.propType || null,
-    tenure: null, // not exposed on search cards
+    tenure: c.tenureType ? c.tenureType.toLowerCase() : null
     thumbnailUrl: c.thumbnailUrl,
     description: c.description,
     addedDate: c.addedDate,
@@ -223,15 +289,10 @@ export function buildRightmoveSearchUrl(params: SearchParams): string | null {
   const base = "https://www.rightmove.co.uk/property-for-sale/find.html"
   const q = new URLSearchParams()
 
+  // Callers resolve postcodes to a numeric identifier first (see
+  // resolveOutcodeIdentifier) — the raw outcode string is NOT accepted here.
   if (params.locationIdentifier) {
     q.set("locationIdentifier", params.locationIdentifier)
-  } else if (params.postcode) {
-    // Outcode search, e.g. "M14 5AA" → OUTCODE^M14. Rightmove also accepts
-    // the raw outcode string here (it resolves internally).
-    q.set(
-      "locationIdentifier",
-      `OUTCODE^${params.postcode.split(" ")[0].toUpperCase()}`,
-    )
   } else {
     return null
   }

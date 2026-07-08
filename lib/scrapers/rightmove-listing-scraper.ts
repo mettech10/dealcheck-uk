@@ -165,8 +165,52 @@ export async function scrapeRightmoveListing(
       }
 
       // ── 1. PAGE_MODEL — Rightmove's embedded hydration JSON ─────────
-      const model = (window as any).PAGE_MODEL
-      const pd = model?.propertyData
+      // Two variants in the wild:
+      //   window.PAGE_MODEL    — legacy plain object
+      //   window.__PAGE_MODEL  — { data: string, encoding: "on" }: devalue-
+      //     style index encoding (top-level JSON array; numbers inside
+      //     containers are pointers to other array entries).
+      const decodeIndexed = (rawStr: string): any => {
+        const arr = JSON.parse(rawStr)
+        const cache = new Map<number, any>()
+        const decode = (i: any): any => {
+          if (typeof i !== "number") return i
+          if (i === -1) return undefined
+          if (i === -2) return NaN
+          if (i === -3) return Infinity
+          if (i === -4) return -Infinity
+          if (i === -5) return -0
+          if (cache.has(i)) return cache.get(i)
+          const node = arr[i]
+          if (node === null || typeof node !== "object") {
+            cache.set(i, node)
+            return node
+          }
+          if (Array.isArray(node)) {
+            const list: any[] = []
+            cache.set(i, list)
+            for (const el of node) list.push(decode(el))
+            return list
+          }
+          const obj: Record<string, any> = {}
+          cache.set(i, obj)
+          for (const [k, v] of Object.entries(node)) obj[k] = decode(v)
+          return obj
+        }
+        return decode(0)
+      }
+
+      let pd = (window as any).PAGE_MODEL?.propertyData
+      if (!pd) {
+        const encoded = (window as any).__PAGE_MODEL
+        if (encoded && typeof encoded.data === "string") {
+          try {
+            pd = decodeIndexed(encoded.data)?.propertyData
+          } catch {
+            pd = undefined
+          }
+        }
+      }
       if (pd) {
         out.fromPageModel = true
         out.priceText = String(pd.prices?.primaryPrice ?? "")
@@ -227,7 +271,7 @@ export async function scrapeRightmoveListing(
       // ── 2. DOM fallbacks for anything PAGE_MODEL didn't give us ─────
       if (!out.priceText) {
         out.priceText = getText(
-          '[data-testid="price-value"], .property-header-price, article[class*="price"] span',
+          '[data-testid="primaryPrice"], [data-testid="price-value"], .property-header-price, article[class*="price"] span',
         )
       }
       if (!out.address) {
@@ -312,7 +356,12 @@ export async function scrapeRightmoveListing(
 // ── Normalisation (plain Node — keep page.evaluate dumb) ───────────────────
 
 function normaliseListing(url: string, raw: RawExtract): RightmoveListing {
-  const price = parseInt(raw.priceText.replace(/[^0-9]/g, ""), 10) || 0
+  // Prefer the first £-amount — DOM fallback text can carry trailing copy
+  // (e.g. mortgage-calculator blurb) whose digits would corrupt a naive strip.
+  const priceMatch = raw.priceText.match(/£\s*([\d,]+)/)
+  const price = priceMatch
+    ? parseInt(priceMatch[1].replace(/,/g, ""), 10)
+    : parseInt(raw.priceText.replace(/[^0-9]/g, ""), 10) || 0
 
   // Floor size — PAGE_MODEL sizings first, then key features, then description.
   let floorSizeSqft: number | null = null
