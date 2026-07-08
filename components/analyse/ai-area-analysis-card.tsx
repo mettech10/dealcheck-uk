@@ -97,35 +97,50 @@ export function AiAreaAnalysisCard({
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch("/api/analysis/area", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        postcode,
-        strategy,
-        dealData,
-        benchmark,
-        articleFour,
-        marketContext,
-      }),
-    })
-      .then(async (r) => {
-        const j = await r.json().catch(() => null)
-        if (cancelled) return
-        if (!r.ok || !j?.success) {
-          setError(j?.message || "Area analysis unavailable")
-          return
+
+    // The Flask call behind this route runs a large Claude prompt on
+    // Render's free tier — cold starts and transient timeouts happen.
+    // One retry turns most "Area Analysis unavailable" fallbacks into
+    // the full 5-section card.
+    const attempt = async (): Promise<AreaPayload> => {
+      const r = await fetch("/api/analysis/area", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postcode,
+          strategy,
+          dealData,
+          benchmark,
+          articleFour,
+          marketContext,
+        }),
+      })
+      const j = await r.json().catch(() => null)
+      if (!r.ok || !j?.success) {
+        throw new Error(j?.message || "Area analysis unavailable")
+      }
+      return j as AreaPayload
+    }
+
+    ;(async () => {
+      try {
+        const payload = await attempt().catch(async (firstErr) => {
+          if (cancelled) throw firstErr
+          await new Promise((res) => setTimeout(res, 2500))
+          if (cancelled) throw firstErr
+          return attempt()
+        })
+        if (!cancelled) setData(payload)
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "Network error")
         }
-        setData(j as AreaPayload)
-      })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : "Network error")
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
         markDone("aiAreaAnalysis")
-      })
+      }
+    })()
+
     return () => {
       cancelled = true
     }
@@ -166,7 +181,9 @@ export function AiAreaAnalysisCard({
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
             <MapPin className="size-4 text-primary" />
-            <CardTitle className="text-sm">Area Analysis</CardTitle>
+            {/* Same title as the full card — the fallback must read as the
+                same (single) section, not a different stray block. */}
+            <CardTitle className="text-sm">AI Area Analysis</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
