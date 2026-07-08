@@ -832,22 +832,54 @@ function AnalysePage() {
       setIsLoading(true)
 
       try {
-        const res = await fetch("/api/analyse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "scrape-only", url: listingUrl }),
-        })
+        // Rightmove URLs go to the Bright Data scraper first (Apify is
+        // unavailable); anything else — and any Bright Data failure —
+        // falls through to the legacy /api/analyse scrape-only path,
+        // whose Flask side still runs Apify + Firecrawl + basic scraper.
+        // Both endpoints return the same { success, propertyData } shape,
+        // so the pre-fill mapping below is identical either way.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let data: { success?: boolean; propertyData?: any } | null = null
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => null)
-          throw new Error(
-            errData?.error || "Failed to fetch the listing. Please try again."
-          )
+        if (listingUrl.includes("rightmove.co.uk")) {
+          try {
+            const bdRes = await fetch("/api/scraper/listing", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: listingUrl }),
+            })
+            if (bdRes.ok) {
+              const bdData = await bdRes.json()
+              if (bdData?.success && bdData?.propertyData) {
+                data = bdData
+              }
+            }
+            if (!data) {
+              console.warn("[SCRAPE] Bright Data route returned no data — falling back to /api/analyse")
+            }
+          } catch (bdErr) {
+            console.warn("[SCRAPE] Bright Data route error — falling back to /api/analyse", bdErr)
+          }
         }
 
-        const data = await res.json()
+        if (!data) {
+          const res = await fetch("/api/analyse", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "scrape-only", url: listingUrl }),
+          })
 
-        if (!data.success || !data.propertyData) {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => null)
+            throw new Error(
+              errData?.error || "Failed to fetch the listing. Please try again."
+            )
+          }
+
+          data = await res.json()
+        }
+
+        if (!data?.success || !data.propertyData) {
           throw new Error("No property data was returned from the listing.")
         }
 

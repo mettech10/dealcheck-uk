@@ -8,6 +8,16 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // playwright-core loads browsers.json (and other assets) with dynamic
+  // requires that Vercel's file tracer can't follow — without this the
+  // scraper routes crash at import with "Cannot find module
+  // .../playwright-core/browsers.json". Keep it external and force the
+  // whole package into the traced output for the scraper functions.
+  serverExternalPackages: ['playwright-core'],
+  outputFileTracingIncludes: {
+    '/api/scraper/listing': ['./node_modules/playwright-core/**'],
+    '/api/scraper/search': ['./node_modules/playwright-core/**'],
+  },
   async rewrites() {
     return []
   },
