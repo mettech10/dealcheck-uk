@@ -1,7 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { ExternalLink, Loader2, RotateCcw } from "lucide-react"
+import {
+  ExternalLink,
+  Loader2,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  BarChart3,
+  RotateCcw,
+} from "lucide-react"
 import { useLoadingTracker } from "@/lib/useLoadingTracker"
 
 interface RoomListing {
@@ -29,6 +37,14 @@ interface RoomSummary {
   radius: string
 }
 
+interface HmoAnalysis {
+  demand: "strong" | "moderate" | "weak"
+  rentRange: string
+  roomTypes: string
+  patterns: string
+  verdict: string
+}
+
 interface ManualSearchInfo {
   searchUrl: string
   openrentUrl?: string
@@ -39,6 +55,35 @@ interface HmoComparablesProps {
   postcode: string
 }
 
+const DEMAND_CONFIG = {
+  strong: { label: "Strong HMO Demand", icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-200" },
+  moderate: { label: "Moderate HMO Demand", icon: Minus, color: "text-amber-600", bg: "bg-amber-50 border-amber-200" },
+  weak: { label: "Weak HMO Demand", icon: TrendingDown, color: "text-red-600", bg: "bg-red-50 border-red-200" },
+}
+
+function DemandBadge({ demand }: { demand: "strong" | "moderate" | "weak" }) {
+  const cfg = DEMAND_CONFIG[demand] || DEMAND_CONFIG.moderate
+  const Icon = cfg.icon
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium ${cfg.color} ${cfg.bg}`}>
+      <Icon className="size-4" />
+      {cfg.label}
+    </span>
+  )
+}
+
+/** Derive demand from PropertyData stats */
+function deriveDemand(summaries: RoomSummary[]): "strong" | "moderate" | "weak" {
+  if (summaries.length === 0) return "weak"
+  // Strong: 4 room types found with tight radius (< 1km avg)
+  const avgRadius = summaries.reduce((s, r) => s + parseFloat(r.radius), 0) / summaries.length
+  const totalPoints = summaries.reduce((s, r) => s + r.count, 0)
+  if (summaries.length >= 4 && avgRadius < 1.0) return "strong"
+  if (summaries.length >= 3 && avgRadius < 2.0) return "moderate"
+  if (totalPoints >= 40) return "moderate"
+  return "weak"
+}
+
 /** Weekly to monthly for display */
 function wkToMo(weekly: number): number {
   return Math.round((weekly * 52) / 12)
@@ -47,10 +92,12 @@ function wkToMo(weekly: number): number {
 export function HmoComparables({ postcode }: HmoComparablesProps) {
   const [listings, setListings] = useState<RoomListing[]>([])
   const [roomSummaries, setRoomSummaries] = useState<RoomSummary[]>([])
+  const [analysis, setAnalysis] = useState<HmoAnalysis | null>(null)
   const [searchArea, setSearchArea] = useState<string>("")
   const [manualSearch, setManualSearch] = useState<ManualSearchInfo | null>(null)
   const [dataSource, setDataSource] = useState<string>("unknown")
   const [loadingListings, setLoadingListings] = useState(true)
+  const [loadingAnalysis, setLoadingAnalysis] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Manual retry counter — bumping it re-runs fetchData. Lives
   // outside the loading-tracker dep so a retry can't re-block the
@@ -115,8 +162,31 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           setListings(rawListings)
           setLoadingListings(false)
 
-          // Area commentary now lives solely in the AI Area Analysis card
-          // on the results page — no per-component analysis here.
+          // Build analysis from PropertyData stats (no AI call needed)
+          const demand = deriveDemand(data.roomSummaries)
+          const rents = data.roomSummaries.map((r: RoomSummary) => r.avgMonthly)
+          const minRent = Math.min(...rents)
+          const maxRent = Math.max(...rents)
+          const types = data.roomSummaries.map((r: RoomSummary) => r.roomType).join(", ")
+          const totalPoints = data.roomSummaries.reduce((s: number, r: RoomSummary) => s + r.count, 0)
+
+          setAnalysis({
+            demand,
+            rentRange: `£${minRent} – £${maxRent} pcm`,
+            roomTypes: types,
+            patterns: `${totalPoints} data points analysed across ${data.roomSummaries.length} room types. ` +
+              (data.hmoAttributes?.bills_inc
+                ? `${data.hmoAttributes.bills_inc}% of rooms include bills. `
+                : "") +
+              (data.hmoAttributes?.furnished
+                ? `${data.hmoAttributes.furnished}% are furnished.`
+                : ""),
+            verdict: demand === "strong"
+              ? "Strong HMO market with good availability of data. Room rents are well-established in this area."
+              : demand === "moderate"
+                ? "Moderate HMO activity. Sufficient data to support investment decisions but check local Article 4 restrictions."
+                : "Limited HMO data in this area. Consider whether demand supports an HMO conversion.",
+          })
           return
         }
 
@@ -163,8 +233,21 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
           setLoadingListings(false)
         }
 
-        // The old per-component "Area HMO Analysis" AI call was removed —
-        // the strategy-aware AI Area Analysis card covers area commentary.
+        if (fetchedListings.length === 0) return
+
+        // Run HMO area analysis via AI
+        setLoadingAnalysis(true)
+        const aiRes = await fetch("/api/comparables/hmo-analysis", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postcode, listings: fetchedListings }),
+        })
+        const aiData = await aiRes.json()
+        if (cancelled) return
+
+        if (aiData.success && aiData.analysis) {
+          setAnalysis(aiData.analysis)
+        }
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err)
         console.error("[HMO] ERROR:", errMsg)
@@ -172,6 +255,7 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
       } finally {
         if (!cancelled) {
           setLoadingListings(false)
+          setLoadingAnalysis(false)
         }
         markDone("spareRoom")
       }
@@ -372,8 +456,47 @@ export function HmoComparables({ postcode }: HmoComparablesProps) {
         </div>
       )}
 
-      {/* "Area HMO Analysis" removed — area commentary renders once, in the
-          strategy-aware AI Area Analysis card on the results page. */}
+      {/* ── Area HMO Analysis ──────────────────────────────────────────── */}
+      {(analysis || loadingAnalysis) && (
+        <div className="flex flex-col gap-4 rounded-xl border border-border/50 bg-card p-5">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h3 className="text-base font-semibold text-foreground">Area HMO Analysis</h3>
+            {loadingAnalysis && !analysis && (
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" /> Analysing…
+              </span>
+            )}
+            {analysis && <DemandBadge demand={analysis.demand} />}
+          </div>
+
+          {analysis && (
+            <div className="flex flex-col gap-3 text-sm">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-lg bg-muted/50 px-3 py-2">
+                  <p className="text-xs text-muted-foreground mb-0.5">Typical Rent Range</p>
+                  <p className="font-medium text-foreground">{analysis.rentRange}</p>
+                </div>
+                <div className="rounded-lg bg-muted/50 px-3 py-2">
+                  <p className="text-xs text-muted-foreground mb-0.5">Room Types Available</p>
+                  <p className="font-medium text-foreground">{analysis.roomTypes}</p>
+                </div>
+              </div>
+              {analysis.patterns && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Market Insights</p>
+                  <p className="text-muted-foreground leading-relaxed">{analysis.patterns}</p>
+                </div>
+              )}
+              {analysis.verdict && (
+                <div className="border-t border-border/50 pt-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Overall Verdict</p>
+                  <p className="text-foreground leading-relaxed">{analysis.verdict}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
