@@ -98,7 +98,10 @@ export async function POST(request: Request) {
     )
   }
 
-  if (supabase) {
+  // Only cache results with real substance — a partial extraction (e.g.
+  // address-only after a blocked page) would otherwise poison 4 hours of
+  // requests for this listing.
+  if (supabase && listing.price > 0) {
     const { error: cacheErr } = await supabase.from("scraper_cache").upsert(
       {
         cache_key: cacheKey,
