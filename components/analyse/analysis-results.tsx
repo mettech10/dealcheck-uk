@@ -23,7 +23,6 @@ import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
 import { DevelopmentResults } from "./development-results"
-import { AlternativeStrategiesPanel } from "./alternative-strategies-panel"
 import { StrategySwitcher } from "./strategy-switcher"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
@@ -1514,9 +1513,6 @@ export function AnalysisResults({
   scrapedListing,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
-  // Strategy targeted by the Alternative-panel "Switch →" buttons; opens the
-  // switcher's mini-form modal (Feature B).
-  const [switchTarget, setSwitchTarget] = useState<InvestmentType | null>(null)
 
   const parsedAI = parseAIAnalysis(aiText)
 
@@ -1635,9 +1631,8 @@ export function AnalysisResults({
     <div className="flex flex-col gap-6 print-results-root">
 
       {/* ── Strategy Switch Toggle (Feature B) ──────────────────────── */}
-      {/* Sits above the deal score dial so users can re-analyse the same
-          property under a different strategy. `switchTarget` lets the
-          Alternative-panel "Switch →" buttons open this same modal. */}
+      {/* Strategy pills — the single place to re-analyse the same property
+          under a different strategy. */}
       {onSwitchStrategy && (
         <StrategySwitcher
           data={data}
@@ -1645,8 +1640,6 @@ export function AnalysisResults({
           onSwitch={onSwitchStrategy}
           backStrategy={previousStrategy}
           onBack={onBack}
-          externalTarget={switchTarget}
-          onExternalTargetHandled={() => setSwitchTarget(null)}
         />
       )}
 
@@ -1753,7 +1746,7 @@ export function AnalysisResults({
       {/* Renders critical flag banners (hard-cap triggers + soft
           warnings), score dial, colour-coded label, and collapsible
           category breakdown.                                          */}
-      <DealScorePanel result={scoreResult} />
+      <DealScorePanel result={scoreResult} hideScore />
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (
@@ -2016,16 +2009,8 @@ export function AnalysisResults({
                   </span>
                   <span className="font-medium text-foreground">{formatCurrency(results.sdltAmount)}</span>
                 </div>
-                {results.sdltBreakdown.length > 0 && (
-                  <div className="ml-4 flex flex-col gap-1 rounded-md bg-muted/30 px-3 py-2">
-                    {results.sdltBreakdown.map((band) => (
-                      <div key={band.band} className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Band: {band.band}</span>
-                        <span className="text-foreground">{formatCurrency(band.tax)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Band-by-band detail lives in the SDLT Breakdown accordion
+                    above — not repeated here. */}
 
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Legal Fees</span>
@@ -2417,15 +2402,9 @@ export function AnalysisResults({
         </div>
       </div>
 
-      {/* ── Alternative Strategies Panel (Feature A) ───────────────── */}
-      {/* Rough client-side estimates for the other strategies so users
-          can compare exits at a glance and jump to a full re-analysis. */}
-      <AlternativeStrategiesPanel
-        data={data}
-        results={results}
-        backendData={backendData}
-        onSwitch={onSwitchStrategy ? (s) => setSwitchTarget(s) : undefined}
-      />
+      {/* Alternative Strategies dropdown removed — it duplicated the
+          strategy pills (StrategySwitcher) at the top of the results.
+          Backend per-strategy notes still render in Strategy Suitability. */}
 
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}

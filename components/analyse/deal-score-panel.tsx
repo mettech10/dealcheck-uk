@@ -27,6 +27,10 @@ import type { ScoreResult, ScoreColour, ScoreCategory } from "@/lib/dealScoring"
 
 interface DealScorePanelProps {
   result: ScoreResult
+  /** Skip the dial/number/label — used when the page header already shows
+      the score, so only critical flags, warnings and the collapsible
+      category breakdown render. */
+  hideScore?: boolean
 }
 
 const colourToBadge: Record<ScoreColour, string> = {
@@ -45,7 +49,7 @@ const colourToBar: Record<ScoreColour, string> = {
   red: "bg-red-500",
 }
 
-export function DealScorePanel({ result }: DealScorePanelProps) {
+export function DealScorePanel({ result, hideScore = false }: DealScorePanelProps) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -72,37 +76,43 @@ export function DealScorePanel({ result }: DealScorePanelProps) {
         </div>
       )}
 
-      {/* ── Score card with dial + label ───────────────────────── */}
+      {/* ── Score card — dial hidden when the header already shows it ── */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Deal Score</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex items-center gap-6">
-            <div className="relative flex size-24 items-center justify-center">
-              <ScoreDial total={result.total} colour={result.colour} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <span
-                className={`inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${colourToBadge[result.colour]}`}
-              >
-                {result.label}
-              </span>
-              <span className="text-3xl font-bold tabular-nums text-foreground">
-                {result.total}
-                <span className="text-base font-medium text-muted-foreground">
-                  /100
+        {!hideScore && (
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Deal Score</CardTitle>
+          </CardHeader>
+        )}
+        <CardContent className={`flex flex-col gap-4 ${hideScore ? "py-4" : ""}`}>
+          {!hideScore && (
+            <div className="flex items-center gap-6">
+              <div className="relative flex size-24 items-center justify-center">
+                <ScoreDial total={result.total} colour={result.colour} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span
+                  className={`inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${colourToBadge[result.colour]}`}
+                >
+                  {result.label}
                 </span>
-              </span>
-              {result.warnings.length > 0 && (
-                <ul className="mt-1 flex flex-col gap-0.5 text-xs text-amber-700 dark:text-amber-400">
-                  {result.warnings.map((w, i) => (
-                    <li key={i}>• {w}</li>
-                  ))}
-                </ul>
-              )}
+                <span className="text-3xl font-bold tabular-nums text-foreground">
+                  {result.total}
+                  <span className="text-base font-medium text-muted-foreground">
+                    /100
+                  </span>
+                </span>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Soft warnings stay visible in both modes */}
+          {result.warnings.length > 0 && (
+            <ul className="flex flex-col gap-0.5 text-xs text-amber-700 dark:text-amber-400">
+              {result.warnings.map((w, i) => (
+                <li key={i}>• {w}</li>
+              ))}
+            </ul>
+          )}
 
           <Button
             variant="ghost"
