@@ -19,7 +19,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import { DealScore, getScoreColor, getScoreLabel } from "./deal-score"
 import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
@@ -32,31 +31,28 @@ import { SAAreaIntelligence } from "./sa-area-intelligence"
 import { HmoComparables } from "./hmo-comparables"
 import { AiAreaAnalysisCard } from "./ai-area-analysis-card"
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  AnalyseAnotherCard,
+  DealSummaryHeader,
+  FiveYearProjectionCard,
+  KeyMetricsStrip,
+  MonthlyCashFlowCard,
+  MortgageSummaryCard,
+  SdltBreakdownCard,
+  type StripMetric,
+} from "./result-sections"
+import {
   Tooltip,
-  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
 } from "recharts"
 import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark, InvestmentType } from "@/lib/types"
 import { formatCurrency, formatPercent, calculateDealScore, calculateAll, estimateRefurbCost } from "@/lib/calculations"
 import { scoreDeal, type ScoreResult } from "@/lib/dealScoring"
 import { buildScoringInput } from "@/lib/buildScoringInput"
 import {
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  PoundSterling,
   Home,
-  Percent,
   AlertTriangle,
   CheckCircle2,
   Sparkles,
@@ -87,6 +83,10 @@ interface AnalysisResultsProps {
   /** Previous strategy for the "← Back to X" breadcrumb, if any. */
   previousStrategy?: InvestmentType | null
   onBack?: () => void
+  /** Sidebar CTA card — start a fresh analysis (falls back to /analyse link). */
+  onNewAnalysis?: () => void
+  /** Sidebar CTA card — open the upgrade modal (falls back to /account link). */
+  onUpgrade?: () => void
 }
 
 // Series colours pull from the themed --chart-* tokens so they stay
@@ -114,41 +114,157 @@ function Row({ label, value, muted = false }: { label: string; value: number; mu
   )
 }
 
-function MetricCard({
-  label,
-  value,
-  sub,
-  positive,
-  icon: Icon,
-}: {
-  label: string
-  value: string
-  sub?: string
-  positive?: boolean
-  icon: React.ElementType
-}) {
-  return (
-    <div className="flex items-start gap-3 rounded-lg border border-border/50 bg-card p-4">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-        <Icon className="size-4 text-primary" />
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span
-          className={`text-lg font-semibold ${
-            positive === true
-              ? "text-success"
-              : positive === false
-              ? "text-destructive"
-              : "text-foreground"
-          }`}
-        >
-          {value}
-        </span>
-        {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
-      </div>
-    </div>
-  )
+// Strategy-aware metric list for the horizontal key-metrics strip. Only
+// metrics that make sense for the active strategy are emitted; anything
+// dropped is reported in `omissions` so the layout logger can surface it.
+function buildStripMetrics(
+  data: PropertyFormData,
+  results: CalculationResults,
+): { items: StripMetric[]; omissions: string[] } {
+  const omissions: string[] = []
+  const strategy = data.investmentType
+
+  if (strategy === "development") {
+    omissions.push(
+      "key-metrics-strip: development metrics covered by the feasibility panel",
+    )
+    return { items: [], omissions }
+  }
+
+  if (strategy === "flip") {
+    omissions.push("monthly-rent/yield strip metrics: not applicable to flip")
+    return {
+      items: [
+        { label: "Purchase Price", value: formatCurrency(data.purchasePrice) },
+        { label: "SDLT", value: formatCurrency(results.sdltAmount) },
+        { label: "Total Capital", value: formatCurrency(results.totalCapitalRequired) },
+        {
+          label: "Gross Profit",
+          value: formatCurrency(results.flipGrossProfit ?? 0),
+          positive: (results.flipGrossProfit ?? 0) >= 0,
+        },
+        {
+          label: "Net Profit",
+          value: formatCurrency(results.flipNetProfit ?? 0),
+          positive: (results.flipNetProfit ?? 0) >= 0,
+        },
+        {
+          label: "Flip ROI",
+          value: formatPercent(results.flipROI ?? 0),
+          positive: (results.flipROI ?? 0) >= 20,
+        },
+        { label: "Finance Costs", value: formatCurrency(results.flipFinanceCosts ?? 0) },
+        { label: "Selling Costs", value: formatCurrency(results.flipSellingCosts ?? 0) },
+      ],
+      omissions,
+    }
+  }
+
+  if (strategy === "r2sa") {
+    const isOwned = data.saOwnershipType === "own"
+    const monthlyRevenue = results.monthlyIncome
+    const occ = data.saOccupancyRate ?? 0
+    const items: StripMetric[] = [
+      {
+        label: "Monthly Revenue",
+        value: formatCurrency(monthlyRevenue),
+        sub: occ > 0 ? `At ${occ}% occupancy` : undefined,
+        positive: monthlyRevenue > 0,
+      },
+      {
+        label: "Monthly Net Profit",
+        value: formatCurrency(results.monthlyCashFlow),
+        positive: results.monthlyCashFlow >= 0,
+      },
+      { label: "Annual Revenue", value: formatCurrency(Math.round(monthlyRevenue * 12)) },
+      { label: "Total Capital", value: formatCurrency(results.totalCapitalRequired) },
+    ]
+    if (isOwned) {
+      items.push(
+        { label: "Purchase Price", value: formatCurrency(data.purchasePrice) },
+        { label: "SDLT", value: formatCurrency(results.sdltAmount) },
+        {
+          label: "Gross Yield",
+          value: formatPercent(results.grossYield),
+          positive: results.grossYield >= 8,
+        },
+        {
+          label: "Net Yield",
+          value: formatPercent(results.netYield),
+          positive: results.netYield >= 4,
+        },
+      )
+    } else {
+      const nightly = data.saNightlyRate ?? 0
+      const breakevenOcc =
+        nightly > 0 ? ((results.monthlyExpenses ?? 0) / (nightly * 30)) * 100 : 0
+      const leaseRent = data.saMonthlyLease || data.monthlyRent || 0
+      const revToRent = leaseRent > 0 ? monthlyRevenue / leaseRent : 0
+      items.push(
+        {
+          label: "Break-even Occ.",
+          value:
+            breakevenOcc > 0 && breakevenOcc < 200
+              ? `${breakevenOcc.toFixed(1)}%`
+              : "—",
+          sub: "Min to cover all costs",
+          positive: breakevenOcc > 0 && breakevenOcc < occ,
+        },
+        {
+          label: "Revenue : Rent",
+          value: revToRent > 0 ? `${revToRent.toFixed(2)}×` : "—",
+          sub: "Target 2.0× or better",
+          positive: revToRent >= 2,
+        },
+      )
+      omissions.push(
+        "purchase-price/SDLT/yield strip metrics: rent-to-SA has no purchase",
+      )
+    }
+    return { items, omissions }
+  }
+
+  // Standard rental strategies — BTL, BRRRR, HMO
+  const y5 = results.fiveYearProjection[results.fiveYearProjection.length - 1]
+  const fiveYrRoi =
+    y5 && results.totalCapitalRequired > 0
+      ? (y5.totalReturn / results.totalCapitalRequired) * 100
+      : undefined
+  return {
+    items: [
+      { label: "Purchase Price", value: formatCurrency(data.purchasePrice) },
+      { label: "SDLT", value: formatCurrency(results.sdltAmount) },
+      { label: "Total Acquisition", value: formatCurrency(results.totalPurchaseCost) },
+      { label: "Monthly Rent", value: formatCurrency(data.monthlyRent) },
+      {
+        label: "Gross Yield",
+        value: formatPercent(results.grossYield),
+        positive: results.grossYield >= 6,
+      },
+      {
+        label: "Net Yield",
+        value: formatPercent(results.netYield),
+        positive: results.netYield >= 4,
+      },
+      {
+        label: "Monthly Cash Flow",
+        value: formatCurrency(results.monthlyCashFlow),
+        positive: results.monthlyCashFlow >= 0,
+      },
+      fiveYrRoi !== undefined
+        ? {
+            label: "5-Yr ROI",
+            value: formatPercent(fiveYrRoi),
+            positive: fiveYrRoi >= 0,
+          }
+        : {
+            label: "Cash-on-Cash",
+            value: formatPercent(results.cashOnCashReturn),
+            positive: results.cashOnCashReturn >= 5,
+          },
+    ],
+    omissions,
+  }
 }
 
 function parseAIAnalysis(text: string) {
@@ -180,82 +296,6 @@ function parseAIAnalysis(text: string) {
   }
 
   return { score, sections, rawText: text }
-}
-
-// ── Verdict Banner ─────────────────────────────────────────────────────────
-function VerdictBanner({
-  verdict,
-  score,
-  label,
-}: {
-  verdict?: string
-  score?: number
-  label?: string
-}) {
-  if (!verdict && score === undefined) return null
-
-  const config =
-    verdict
-      ? ({
-          PROCEED: {
-            bg: "bg-success/10 border-success/30",
-            text: "text-success",
-            icon: <CheckCircle2 className="size-5" />,
-            title: "Proceed",
-            desc: "This deal meets investment targets. Strong fundamentals.",
-          },
-          REVIEW: {
-            bg: "bg-warning/10 border-warning/30",
-            text: "text-warning",
-            icon: <AlertTriangle className="size-5" />,
-            title: "Review",
-            desc: "Borderline deal. Investigate further before committing.",
-          },
-          AVOID: {
-            bg: "bg-destructive/10 border-destructive/30",
-            text: "text-destructive",
-            icon: <ShieldAlert className="size-5" />,
-            title: "Avoid",
-            desc: "Numbers don't stack up. High risk or poor returns.",
-          },
-        }[verdict] ?? {
-          bg: "bg-muted/40 border-border/50",
-          text: "text-foreground",
-          icon: null,
-          title: verdict,
-          desc: "",
-        })
-      : {
-          bg: "bg-muted/40 border-border/50",
-          text: "text-foreground",
-          icon: null,
-          title: "",
-          desc: "",
-        }
-
-  const displayScore = score ?? 0
-  const scoreColor = getScoreColor(displayScore)
-  const displayLabel = label || getScoreLabel(displayScore)
-
-  return (
-    <div className={`flex flex-col items-center gap-4 rounded-xl border px-6 py-6 ${config.bg}`}>
-      {/* Circular dial + verdict side by side */}
-      <div className="flex items-center gap-6">
-        <DealScore score={displayScore} label={displayLabel} />
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            {config.icon && <span className={config.text}>{config.icon}</span>}
-            <span className="text-xl font-bold" style={{ color: scoreColor }}>
-              {displayLabel}
-            </span>
-          </div>
-          {config.desc && (
-            <p className="max-w-xs text-sm text-muted-foreground">{config.desc}</p>
-          )}
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // ── Location Card ──────────────────────────────────────────────────────────
@@ -1465,6 +1505,8 @@ export function AnalysisResults({
   onSwitchStrategy,
   previousStrategy,
   onBack,
+  onNewAnalysis,
+  onUpgrade,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
   // Strategy targeted by the Alternative-panel "Switch →" buttons; opens the
@@ -1483,16 +1525,6 @@ export function AnalysisResults({
   const dealScore = scoreResult.total
   const verdict = backendData?.verdict
   const verdictLabel = scoreResult.label
-  void parsedAI // legacy score path retained for now; new engine is SSOT
-
-  const cashFlowData = [
-    {
-      name: "Monthly",
-      Income: Math.round(results.monthlyIncome),
-      Mortgage: Math.round(results.monthlyMortgagePayment),
-      "Running Costs": Math.round(results.monthlyRunningCosts),
-    },
-  ]
 
   const costBreakdown = [
     { name: "Deposit", value: results.depositAmount },
@@ -1504,13 +1536,6 @@ export function AnalysisResults({
       : []),
   ].filter((item) => item.value > 0)
 
-  const projectionData = results.fiveYearProjection.map((year) => ({
-    name: `Year ${year.year}`,
-    Equity: year.equity,
-    "Cumulative Cash Flow": year.cumulativeCashFlow,
-    "Total Return": year.totalReturn,
-  }))
-
   const hasSoldComparables = true // Always show — PropertyComparables fetches from Land Registry
   const hasRentComparables = (backendData?.rent_comparables?.length ?? 0) > 0
   const hasStrategies =
@@ -1519,20 +1544,82 @@ export function AnalysisResults({
   const hasLocation = !!(backendData?.location?.council || backendData?.location?.region)
   // Always show valuation card — it handles its own loading/empty states
   const hasValuation = true
-  // Truthy if backendData carries ANY AI-generated content. The strengths /
-  // risks / next_steps cards only render when their array is non-empty,
-  // so the OR includes verdict + area as well — that way a partial Claude
-  // response (e.g. one section empty) doesn't drop us into the blank
-  // fallback card.
-  const hasAIInsights = !!(
+  // Structured AI insights (strengths / risks / next steps) render as their
+  // own cards; the narrative card carries ai_verdict (or the raw aiText
+  // fallback) — shown whenever there's a verdict or nothing structured to
+  // fall back on, mirroring the old either/or behaviour.
+  const hasStructuredInsights = !!(
     backendData?.ai_strengths?.length ||
     backendData?.ai_risks?.length ||
-    backendData?.ai_next_steps?.length ||
-    backendData?.ai_area ||
-    backendData?.ai_verdict
+    backendData?.ai_next_steps?.length
   )
+  const showNarrativeCard = !!backendData?.ai_verdict || !hasStructuredInsights
   const hasRiskFlags = (backendData?.risk_flags?.length ?? 0) > 0
   const hasBenchmark = !!backendData?.regional_benchmark
+
+  // ── New-layout derived data ─────────────────────────────────────────
+  const { items: stripMetrics, omissions: stripOmissions } = useMemo(
+    () => buildStripMetrics(data, results),
+    [data, results],
+  )
+
+  // Flip/development have no meaningful 5-year rental projection.
+  const showProjection =
+    data.investmentType !== "flip" &&
+    data.investmentType !== "development" &&
+    results.fiveYearProjection.length > 0
+
+  // "Benchmarked vs …" tag on the AI narrative card — best available source.
+  const pb = backendData?.postcode_benchmark
+  const comparableCount =
+    (backendData?.sold_comparables?.length ?? 0) +
+    (backendData?.rent_comparables?.length ?? 0)
+  const benchmarkTag = pb?.transaction_count_12m
+    ? `Benchmarked vs ${pb.transaction_count_12m.toLocaleString()} ${pb.postcode_district} transactions`
+    : backendData?.regional_benchmark
+    ? `Benchmarked vs ${backendData.regional_benchmark.region_name} regional data`
+    : comparableCount > 0
+    ? `Benchmarked vs ${comparableCount} local comparables`
+    : null
+
+  const verdictHeadline =
+    verdict === "PROCEED"
+      ? "Proceed — this deal meets investment targets."
+      : verdict === "REVIEW"
+      ? "Review — borderline deal, investigate further before committing."
+      : verdict === "AVOID"
+      ? "Avoid — numbers don't stack up; high risk or poor returns."
+      : undefined
+
+  // Per-analysis record of which layout sections were omitted and why, so
+  // missing-data behaviour can be reviewed per strategy (Section 4 of the
+  // layout spec). Info-level: this is expected behaviour, not an error.
+  useEffect(() => {
+    const omitted = [...stripOmissions]
+    if (!showProjection)
+      omitted.push("five-year-projection: not applicable to strategy or no data")
+    if (results.sdltAmount <= 0) omitted.push("sdlt-breakdown: no SDLT due")
+    if (data.purchaseType === "cash" || results.mortgageAmount <= 0)
+      omitted.push("mortgage-summary: cash purchase or no loan")
+    if (results.monthlyIncome <= 0)
+      omitted.push("monthly-cash-flow-chart: no monthly income for strategy")
+    if (!hasRiskFlags) omitted.push("risk-flags: none returned by backend")
+    if (!benchmarkTag) omitted.push("ai-benchmark-tag: no benchmark data")
+    console.info(
+      `[results-layout] strategy=${data.investmentType} — omitted sections:`,
+      omitted.length > 0 ? omitted : "none",
+    )
+  }, [
+    data.investmentType,
+    data.purchaseType,
+    stripOmissions,
+    showProjection,
+    results.sdltAmount,
+    results.mortgageAmount,
+    results.monthlyIncome,
+    hasRiskFlags,
+    benchmarkTag,
+  ])
 
   return (
     /* `print-results-root` is the wrapper isolated by body.print-results
@@ -1558,257 +1645,106 @@ export function AnalysisResults({
         />
       )}
 
-      {/* ── Verdict Banner (legacy text strip from AI) ──────────────── */}
-      <VerdictBanner verdict={verdict} score={dealScore} label={verdictLabel} />
+      {/* ── A. Deal summary header row ──────────────────────────────── */}
+      <DealSummaryHeader data={data} score={dealScore} label={verdictLabel} />
 
-      {/* ── Unified Deal Score Panel ────────────────────────────────── */}
-      {/* Replaces single-axis backend score. Renders critical flag
-          banners (hard-cap triggers + soft warnings), score dial,
-          colour-coded label, and collapsible category breakdown.      */}
-      <DealScorePanel result={scoreResult} />
+      {/* ── B. Key metrics strip — strategy-aware ───────────────────── */}
+      <KeyMetricsStrip items={stripMetrics} />
 
-      {/* ── Tools CTA strip ─────────────────────────────────────────── */}
-      {/* Cross-link to the standalone tools so users naturally flow
-          from analysis → portfolio tracking and comparison.         */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 text-sm print:hidden">
-        <span className="text-muted-foreground">Next steps:</span>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/tools/portfolio?prefill=${encodeURIComponent(JSON.stringify({
-              address: data.address,
-              postcode: data.postcode,
-              purchase_price: data.purchasePrice,
-              monthly_rent: data.monthlyRent,
-              strategy: (data.investmentType || "btl").toUpperCase(),
-            }))}`}
-            className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
-          >
-            Add to portfolio →
-          </Link>
-          <Link
-            href="/tools/compare"
-            className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
-          >
-            Compare with another deal →
-          </Link>
-        </div>
-      </div>
+      {/* ── C. Two-column body — sidebar stacks below on mobile ─────── */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {/* ── Left column — main content ─────────────────────────────── */}
+        <div className="flex min-w-0 flex-col gap-6">
 
-      {/* ── Key Metrics Grid ────────────────────────────────────────── */}
-      {/* Development: full panel renders all metrics + viability + cost stack
-          + finance + RLV + sensitivity. Skip the yield/cashflow grid which
-          is all zeros for a build-to-sell scheme. */}
-      {data.investmentType === "development" ? null : data.investmentType === "r2sa" ? (
-        /* SA / R2SA — revenue/profit/yield framing instead of BTL rent/yield */
-        (() => {
-          const isSAOwned = data.saOwnershipType === "own"
-          const monthlyRevenue = results.monthlyIncome
-          const annualRevenue = monthlyRevenue * 12
-          const platformPct = data.saPlatformFeePercent ?? 15
-          const platformCost = monthlyRevenue * (platformPct / 100)
-          const occ = data.saOccupancyRate ?? 0
-
-          // S4 spec: break-even occupancy + revenue:rent ratio for rent-to-SA
-          const nightly = data.saNightlyRate ?? 0
-          const leaseRent = data.saMonthlyLease || data.monthlyRent || 0
-          const totalMonthlyCosts = results.monthlyExpenses ?? 0
-          const breakevenOcc =
-            nightly > 0 ? (totalMonthlyCosts / (nightly * 30)) * 100 : 0
-          const revToRentRatio =
-            leaseRent > 0 ? monthlyRevenue / leaseRent : 0
-
-          return (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <MetricCard
-                label="Monthly Revenue"
-                value={formatCurrency(monthlyRevenue)}
-                sub={occ > 0 ? `At ${occ}% occupancy` : "Set nightly rate + occupancy"}
-                icon={PoundSterling}
-                positive={monthlyRevenue > 0}
-              />
-              <MetricCard
-                label="Monthly Net Profit"
-                value={formatCurrency(results.monthlyCashFlow)}
-                icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
-                positive={results.monthlyCashFlow >= 0}
-              />
-              <MetricCard
-                label="Annual Revenue"
-                value={formatCurrency(annualRevenue)}
-                icon={TrendingUp}
-                positive={annualRevenue > 0}
-              />
-              <MetricCard
-                label="Total Capital Required"
-                value={formatCurrency(results.totalCapitalRequired)}
-                sub={isSAOwned ? "Deposit + SDLT + fees + setup" : "Rent deposit + advance + insurance + setup costs"}
-                icon={Wallet}
-              />
-              {isSAOwned ? (
-                <MetricCard
-                  label="Gross Yield"
-                  value={formatPercent(results.grossYield)}
-                  icon={Percent}
-                  positive={results.grossYield >= 8}
-                />
-              ) : (
-                <MetricCard
-                  label="Break-even Occupancy"
-                  value={
-                    breakevenOcc > 0 && breakevenOcc < 200
-                      ? `${breakevenOcc.toFixed(1)}%`
-                      : "—"
-                  }
-                  sub={
-                    breakevenOcc > occ && occ > 0
-                      ? `Above your ${occ}% — review`
-                      : "Min to cover all costs"
-                  }
-                  icon={Percent}
-                  positive={breakevenOcc > 0 && breakevenOcc < occ}
-                />
-              )}
-              {isSAOwned ? (
-                <MetricCard
-                  label="Platform Cost"
-                  value={`${formatCurrency(platformCost)}/mo`}
-                  sub={`${platformPct}% of revenue`}
-                  icon={Wallet}
-                />
-              ) : (
-                <MetricCard
-                  label="Revenue : Rent Ratio"
-                  value={revToRentRatio > 0 ? `${revToRentRatio.toFixed(2)}×` : "—"}
-                  sub="Target 2.0× or better"
-                  icon={TrendingUp}
-                  positive={revToRentRatio >= 2}
-                />
+      {/* ── AI Analysis narrative — verdict + benchmark tag ─────────── */}
+      {showNarrativeCard && (
+        <Card className="border-primary/20">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" />
+                <CardTitle className="text-base">AI Analysis</CardTitle>
+              </div>
+              {benchmarkTag && (
+                <span className="rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
+                  {benchmarkTag}
+                </span>
               )}
             </div>
-          )
-        })()
-      ) : data.investmentType === "flip" ? (
-        /* Flip-specific metrics */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Net Profit"
-            value={formatCurrency(results.flipNetProfit ?? 0)}
-            icon={(results.flipNetProfit ?? 0) >= 0 ? TrendingUp : TrendingDown}
-            positive={(results.flipNetProfit ?? 0) >= 0}
-          />
-          <MetricCard
-            label="Flip ROI"
-            value={formatPercent(results.flipROI ?? 0)}
-            icon={PoundSterling}
-            positive={(results.flipROI ?? 0) >= 20}
-          />
-          <MetricCard
-            label="Gross Profit"
-            value={formatCurrency(results.flipGrossProfit ?? 0)}
-            sub="ARV − Purchase − Refurb"
-            icon={TrendingUp}
-            positive={(results.flipGrossProfit ?? 0) >= 0}
-          />
-          <MetricCard
-            label="Selling Costs"
-            value={formatCurrency(results.flipSellingCosts ?? 0)}
-            sub="Agent fee + selling legal"
-            icon={Home}
-          />
-          <MetricCard
-            label="Finance Costs"
-            value={formatCurrency(results.flipFinanceCosts ?? 0)}
-            sub={results.bridgingLoanDetails ? `Bridging @ ${results.bridgingLoanDetails.monthlyInterestRate}%/mo` : "Interest during hold period"}
-            icon={Wallet}
-          />
-          <MetricCard
-            label="Total Capital Required"
-            value={formatCurrency(results.totalCapitalRequired)}
-            icon={Wallet}
-          />
-          <MetricCard
-            label="SDLT"
-            value={formatCurrency(results.sdltAmount)}
-            sub={data.buyerType === "additional" ? "Incl. 5% surcharge" : "First-time buyer rate"}
-            icon={Home}
-          />
-        </div>
-      ) : (
-        /* Standard metrics for BTL, BRRRR, HMO, SA */
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Gross Yield"
-            value={formatPercent(results.grossYield)}
-            icon={Percent}
-            positive={results.grossYield >= 6}
-          />
-          <MetricCard
-            label="Net Yield"
-            value={formatPercent(results.netYield)}
-            icon={Percent}
-            positive={results.netYield >= 4}
-          />
-          <MetricCard
-            label="Monthly Cash Flow"
-            value={formatCurrency(results.monthlyCashFlow)}
-            icon={results.monthlyCashFlow >= 0 ? TrendingUp : TrendingDown}
-            positive={results.monthlyCashFlow >= 0}
-          />
-          <MetricCard
-            label="Cash-on-Cash ROI"
-            value={formatPercent(results.cashOnCashReturn)}
-            icon={PoundSterling}
-            positive={results.cashOnCashReturn >= 5}
-          />
-          <MetricCard
-            label="Total Capital Required"
-            value={formatCurrency(results.totalCapitalRequired)}
-            sub={data.investmentType === "brr" && results.moneyLeftInDeal !== undefined
-              ? `Money left in deal after refinance`
-              : undefined}
-            icon={Wallet}
-          />
-          <MetricCard
-            label="SDLT"
-            value={formatCurrency(results.sdltAmount)}
-            sub={
-              data.buyerType === "additional"
-                ? "Incl. 5% surcharge"
-                : "First-time buyer rate"
-            }
-            icon={Home}
-          />
-          {/* BRRRR-specific extra cards */}
-          {data.investmentType === "brr" && results.refinancedMortgageAmount !== undefined && (
-            <>
-              <MetricCard
-                label="Refinanced Mortgage"
-                value={formatCurrency(results.refinancedMortgageAmount)}
-                sub={`${data.depositPercentage}% LTV on ARV ${formatCurrency(data.arv || 0)}`}
-                icon={Building2}
-              />
-              <MetricCard
-                label="Equity Gained"
-                value={formatCurrency(results.equityGained ?? 0)}
-                sub="Forced appreciation from refurb"
-                icon={TrendingUp}
-                positive={(results.equityGained ?? 0) > 0}
-              />
-            </>
-          )}
-        </div>
+            {verdictHeadline && <CardDescription>{verdictHeadline}</CardDescription>}
+          </CardHeader>
+          <CardContent>
+            {backendData?.ai_verdict ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                {backendData.ai_verdict}
+              </p>
+            ) : aiLoading && !aiText ? (
+              <div className="flex items-center gap-3 py-6 text-muted-foreground">
+                <Loader2 className="size-5 animate-spin text-primary" />
+                <span className="text-sm">Analysing your deal...</span>
+              </div>
+            ) : !aiText && parsedAI.sections.length === 0 ? (
+              // No insights at all — show an explicit message so the user
+              // knows AI generation failed, instead of seeing a blank card.
+              <div className="flex flex-col items-start gap-3 py-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <AlertTriangle className="size-4 text-warning" />
+                  AI insights couldn&apos;t be generated for this analysis.
+                </div>
+                <p className="text-xs text-muted-foreground/80">
+                  This usually clears on a retry. Re-run the analysis or
+                  reload the saved deal to fetch fresh commentary.
+                </p>
+              </div>
+            ) : (
+              <div className="prose prose-sm prose-invert max-w-none">
+                {parsedAI.sections.length > 0 ? (
+                  parsedAI.sections.map((section, i) => (
+                    <div key={i} className="mb-4">
+                      <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                        {section.heading.toLowerCase().includes("strength") ? (
+                          <CheckCircle2 className="size-4 text-success" />
+                        ) : section.heading.toLowerCase().includes("risk") ? (
+                          <AlertTriangle className="size-4 text-warning" />
+                        ) : null}
+                        {section.heading}
+                      </h4>
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        {section.content}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                    {aiText}
+                    {aiLoading && (
+                      <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary" />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {/* ── Alternative Strategies Panel (Feature A) ───────────────── */}
-      {/* Placed after the headline metrics and before House Valuation:
-          rough client-side estimates for the other strategies so users
-          can compare exits at a glance and jump to a full re-analysis. */}
-      <AlternativeStrategiesPanel
-        data={data}
-        results={results}
-        backendData={backendData}
-        onSwitch={onSwitchStrategy ? (s) => setSwitchTarget(s) : undefined}
-      />
+      {/* ── Structured AI insights — strengths / risks / next steps ─── */}
+      {hasStructuredInsights && (
+        <AIInsightsCard
+          strengths={backendData?.ai_strengths}
+          risks={backendData?.ai_risks}
+          nextSteps={backendData?.ai_next_steps}
+        />
+      )}
+
+      {/* ── Unified Deal Score Panel ────────────────────────────────── */}
+      {/* Renders critical flag banners (hard-cap triggers + soft
+          warnings), score dial, colour-coded label, and collapsible
+          category breakdown.                                          */}
+      <DealScorePanel result={scoreResult} />
+
+
+
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (
@@ -1825,261 +1761,24 @@ export function AnalysisResults({
         <DevelopmentResults data={data} results={results} backendData={backendData} />
       )}
 
-      {/* ── Location & Council ──────────────────────────────────────── */}
-      {hasLocation && <LocationCard location={backendData?.location} />}
 
-      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
-      {data.investmentType === "r2sa" && data.postcode && (
-        <SAAreaIntelligence
-          postcode={data.postcode}
-          bedrooms={data.bedrooms}
-          userNightlyRate={data.saNightlyRate}
-          userOccupancyRate={data.saOccupancyRate}
+
+
+      {/* ── 5-Year Projection — toggle chart + year table ───────────── */}
+      {showProjection && (
+        <FiveYearProjectionCard
+          projection={results.fiveYearProjection}
+          capitalGrowthRate={data.capitalGrowthRate}
+          annualRentIncrease={data.annualRentIncrease}
         />
       )}
 
-      {/* ── House Valuation ─────────────────────────────────────────── */}
-      {hasValuation && data.investmentType !== "r2sa" && (
-        <HouseValuationCard
-          valuation={backendData?.house_valuation}
-          purchasePrice={data.purchasePrice}
-          avgSoldPrice={backendData?.avg_sold_price}
-          comparables={comparablesData}
-          investmentType={data.investmentType}
-          userMonthlyRent={data.monthlyRent}
-          bedrooms={data.bedrooms}
-          roomCount={data.roomCount}
-          avgRoomRate={data.avgRoomRate}
-          postcode={data.postcode}
-        />
-      )}
-
-      {/* ── Charts ──────────────────────────────────────────────────── */}
-      <Tabs defaultValue="cashflow" className="w-full">
-        <TabsList
-          className={`w-full grid ${
-            hasSoldComparables || hasRentComparables ? "grid-cols-4" : "grid-cols-3"
-          }`}
-        >
-          <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
-          <TabsTrigger value="costs">Costs</TabsTrigger>
-          <TabsTrigger value="projection">5-Year</TabsTrigger>
-          {(hasSoldComparables || hasRentComparables) && (
-            <TabsTrigger value="comparables">Comparables</TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent value="cashflow" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Monthly Cash Flow Breakdown</CardTitle>
-              <CardDescription>Income vs expenses each month</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={cashFlowData} barGap={8}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="var(--border)"
-                    />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                    />
-                    <YAxis
-                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                      tickFormatter={(v) => `£${v}`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        color: "var(--foreground)",
-                      }}
-                      formatter={(value: number) => [`£${value}`, undefined]}
-                    />
-                    <Legend
-                      wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 12 }}
-                    />
-                    <Bar
-                      dataKey="Income"
-                      fill={CHART_COLORS[0]}
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="Mortgage"
-                      fill={CHART_COLORS[2]}
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="Running Costs"
-                      fill={CHART_COLORS[4]}
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="costs" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Capital Cost Breakdown</CardTitle>
-              <CardDescription>
-                Total capital: {formatCurrency(results.totalCapitalRequired)}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={costBreakdown}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={90}
-                      paddingAngle={3}
-                      dataKey="value"
-                      label={({ name, value }) =>
-                        `${name}: £${value.toLocaleString()}`
-                      }
-                    >
-                      {costBreakdown.map((_, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={CHART_COLORS[index % CHART_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        color: "var(--foreground)",
-                      }}
-                      formatter={(value: number) => [
-                        `£${value.toLocaleString()}`,
-                        undefined,
-                      ]}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="projection" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">5-Year Projection</CardTitle>
-              <CardDescription>
-                Assuming {data.capitalGrowthRate ?? 4}% capital growth and{" "}
-                {data.annualRentIncrease}% rent increase
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={projectionData}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="var(--border)"
-                    />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                    />
-                    <YAxis
-                      tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
-                      tickFormatter={(v) => `£${(v / 1000).toFixed(0)}k`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "var(--card)",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        color: "var(--foreground)",
-                      }}
-                      formatter={(value: number) => [
-                        `£${value.toLocaleString()}`,
-                        undefined,
-                      ]}
-                    />
-                    <Legend
-                      wrapperStyle={{ color: "var(--muted-foreground)", fontSize: 12 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Equity"
-                      stroke={CHART_COLORS[0]}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Cumulative Cash Flow"
-                      stroke={CHART_COLORS[1]}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Total Return"
-                      stroke={CHART_COLORS[2]}
-                      strokeWidth={2}
-                      dot={{ r: 4 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {(hasSoldComparables || hasRentComparables) && (
-          <TabsContent value="comparables" className="mt-4">
-            {/* SA: single scroll view — SA Market Data + Nightly Rate
-                Comparables. No sold/rental/room sub-tabs (irrelevant for
-                short-let). All other strategies get the standard
-                PropertyComparables with sold/rental/room sub-tabs. */}
-            {data.investmentType === "r2sa" ? (
-              data.postcode ? (
-                <SAComparables
-                  postcode={data.postcode}
-                  bedrooms={data.bedrooms}
-                />
-              ) : (
-                <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-                  Add a postcode to load SA market data and nightly-rate comparables.
-                </p>
-              )
-            ) : (
-              <PropertyComparables
-                postcode={data.postcode}
-                bedrooms={data.bedrooms}
-                currentPrice={data.purchasePrice}
-                propertyType={data.propertyType}
-                propertyTypeDetail={data.propertyTypeDetail}
-                tenureType={data.tenureType}
-                investmentType={data.investmentType}
-                onDataLoaded={setComparablesData}
-              />
-            )}
-          </TabsContent>
-        )}
-      </Tabs>
-
-      {/* ── HMO Room Rents & Area HMO Analysis (standalone, below Market Comparables) */}
-      {data.investmentType === "hmo" && data.postcode && (
-        <HmoComparables postcode={data.postcode} />
-      )}
+      {/* ── SDLT Breakdown — collapsed accordion, expands to bands ──── */}
+      <SdltBreakdownCard
+        amount={results.sdltAmount}
+        breakdown={results.sdltBreakdown}
+        buyerType={data.buyerType}
+      />
 
       {/* ── Full Financial Breakdown — SA / R2SA ────────────────────── */}
       {data.investmentType === "r2sa" && (() => {
@@ -2556,6 +2255,193 @@ export function AnalysisResults({
         </Card>
       )}
 
+        </div>
+
+        {/* ── Right column — sidebar ─────────────────────────────────── */}
+        <div className="flex flex-col gap-6">
+          {/* Mortgage / bridging summary — hidden for cash purchases */}
+          <MortgageSummaryCard data={data} results={results} />
+
+          {/* Monthly cash flow bars — rent → costs → net */}
+          <MonthlyCashFlowCard data={data} results={results} />
+
+          {/* Risk flags — one row per flag with severity badge */}
+          {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
+
+          {/* Analyse-another CTA with plan/usage note */}
+          <AnalyseAnotherCard onNewAnalysis={onNewAnalysis} onUpgrade={onUpgrade} />
+        </div>
+      </div>
+
+      {/* ── Tools CTA strip ─────────────────────────────────────────── */}
+      {/* Cross-link to the standalone tools so users naturally flow
+          from analysis → portfolio tracking and comparison.         */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 text-sm print:hidden">
+        <span className="text-muted-foreground">Next steps:</span>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/tools/portfolio?prefill=${encodeURIComponent(JSON.stringify({
+              address: data.address,
+              postcode: data.postcode,
+              purchase_price: data.purchasePrice,
+              monthly_rent: data.monthlyRent,
+              strategy: (data.investmentType || "btl").toUpperCase(),
+            }))}`}
+            className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
+          >
+            Add to portfolio →
+          </Link>
+          <Link
+            href="/tools/compare"
+            className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
+          >
+            Compare with another deal →
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Alternative Strategies Panel (Feature A) ───────────────── */}
+      {/* Rough client-side estimates for the other strategies so users
+          can compare exits at a glance and jump to a full re-analysis. */}
+      <AlternativeStrategiesPanel
+        data={data}
+        results={results}
+        backendData={backendData}
+        onSwitch={onSwitchStrategy ? (s) => setSwitchTarget(s) : undefined}
+      />
+
+      {/* ── Location & Council ──────────────────────────────────────── */}
+      {hasLocation && <LocationCard location={backendData?.location} />}
+
+      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
+      {data.investmentType === "r2sa" && data.postcode && (
+        <SAAreaIntelligence
+          postcode={data.postcode}
+          bedrooms={data.bedrooms}
+          userNightlyRate={data.saNightlyRate}
+          userOccupancyRate={data.saOccupancyRate}
+        />
+      )}
+
+      {/* ── House Valuation ─────────────────────────────────────────── */}
+      {hasValuation && data.investmentType !== "r2sa" && (
+        <HouseValuationCard
+          valuation={backendData?.house_valuation}
+          purchasePrice={data.purchasePrice}
+          avgSoldPrice={backendData?.avg_sold_price}
+          comparables={comparablesData}
+          investmentType={data.investmentType}
+          userMonthlyRent={data.monthlyRent}
+          bedrooms={data.bedrooms}
+          roomCount={data.roomCount}
+          avgRoomRate={data.avgRoomRate}
+          postcode={data.postcode}
+        />
+      )}
+
+      {/* ── Market data — costs pie + comparables ───────────────────── */}
+      {/* Cash-flow and 5-year tabs removed: superseded by the sidebar
+          Monthly Cash Flow chart and the 5-Year Projection card.      */}
+      <Tabs defaultValue="costs" className="w-full">
+        <TabsList
+          className={`w-full grid ${
+            hasSoldComparables || hasRentComparables ? "grid-cols-2" : "grid-cols-1"
+          }`}
+        >
+          <TabsTrigger value="costs">Costs</TabsTrigger>
+          {(hasSoldComparables || hasRentComparables) && (
+            <TabsTrigger value="comparables">Comparables</TabsTrigger>
+          )}
+        </TabsList>
+
+        <TabsContent value="costs" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Capital Cost Breakdown</CardTitle>
+              <CardDescription>
+                Total capital: {formatCurrency(results.totalCapitalRequired)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={costBreakdown}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={90}
+                      paddingAngle={3}
+                      dataKey="value"
+                      label={({ name, value }) =>
+                        `${name}: £${value.toLocaleString()}`
+                      }
+                    >
+                      {costBreakdown.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={CHART_COLORS[index % CHART_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "8px",
+                        color: "var(--foreground)",
+                      }}
+                      formatter={(value: number) => [
+                        `£${value.toLocaleString()}`,
+                        undefined,
+                      ]}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {(hasSoldComparables || hasRentComparables) && (
+          <TabsContent value="comparables" className="mt-4">
+            {/* SA: single scroll view — SA Market Data + Nightly Rate
+                Comparables. No sold/rental/room sub-tabs (irrelevant for
+                short-let). All other strategies get the standard
+                PropertyComparables with sold/rental/room sub-tabs. */}
+            {data.investmentType === "r2sa" ? (
+              data.postcode ? (
+                <SAComparables
+                  postcode={data.postcode}
+                  bedrooms={data.bedrooms}
+                />
+              ) : (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+                  Add a postcode to load SA market data and nightly-rate comparables.
+                </p>
+              )
+            ) : (
+              <PropertyComparables
+                postcode={data.postcode}
+                bedrooms={data.bedrooms}
+                currentPrice={data.purchasePrice}
+                propertyType={data.propertyType}
+                propertyTypeDetail={data.propertyTypeDetail}
+                tenureType={data.tenureType}
+                investmentType={data.investmentType}
+                onDataLoaded={setComparablesData}
+              />
+            )}
+          </TabsContent>
+        )}
+      </Tabs>
+
+      {/* ── HMO Room Rents & Area HMO Analysis ──────────────────────── */}
+      {data.investmentType === "hmo" && data.postcode && (
+        <HmoComparables postcode={data.postcode} />
+      )}
+
       {/* ── Article 4 & Planning ────────────────────────────────────── */}
       {/* Always rendered — the card checks the Metalyzi Article 4 database
           itself using data.postcode, so it works even if the Flask backend
@@ -2588,8 +2474,6 @@ export function AnalysisResults({
         postcode={data.postcode}
       />
 
-      {/* ── Risk Flags ──────────────────────────────────────────────── */}
-      {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
 
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
@@ -2666,75 +2550,6 @@ export function AnalysisResults({
         />
       )}
 
-      {/* ── AI Insights (Strengths / Risks / Next Steps) ──────────────── */}
-      {hasAIInsights ? (
-        <AIInsightsCard
-          strengths={backendData?.ai_strengths}
-          risks={backendData?.ai_risks}
-          nextSteps={backendData?.ai_next_steps}
-        />
-      ) : (
-        /* Fallback: raw AI text when no structured insights available */
-        <Card className="border-primary/20">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" />
-              <CardTitle className="text-base">AI Investment Analysis</CardTitle>
-            </div>
-            <CardDescription>
-              Powered by AI — reviewing your deal against market benchmarks
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {aiLoading && !aiText ? (
-              <div className="flex items-center gap-3 py-8 text-muted-foreground">
-                <Loader2 className="size-5 animate-spin text-primary" />
-                <span className="text-sm">Analysing your deal...</span>
-              </div>
-            ) : !aiText && parsedAI.sections.length === 0 ? (
-              // No insights at all — show an explicit message so the user
-              // knows AI generation failed, instead of seeing a blank card.
-              <div className="flex flex-col items-start gap-3 py-6">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <AlertTriangle className="size-4 text-warning" />
-                  AI insights couldn&apos;t be generated for this analysis.
-                </div>
-                <p className="text-xs text-muted-foreground/80">
-                  This usually clears on a retry. Re-run the analysis or
-                  reload the saved deal to fetch fresh commentary.
-                </p>
-              </div>
-            ) : (
-              <div className="prose prose-sm prose-invert max-w-none">
-                {parsedAI.sections.length > 0 ? (
-                  parsedAI.sections.map((section, i) => (
-                    <div key={i} className="mb-4">
-                      <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-                        {section.heading.toLowerCase().includes("strength") ? (
-                          <CheckCircle2 className="size-4 text-success" />
-                        ) : section.heading.toLowerCase().includes("risk") ? (
-                          <AlertTriangle className="size-4 text-warning" />
-                        ) : null}
-                        {section.heading}
-                      </h4>
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                        {section.content}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                    {aiText}
-                    {aiLoading && (
-                      <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary" />
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Report-an-issue — opens Crisp pre-filled with the deal
           context so the user doesn't have to re-type which analysis
