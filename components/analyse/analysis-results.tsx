@@ -40,6 +40,7 @@ import {
   SdltBreakdownCard,
   type StripMetric,
 } from "./result-sections"
+import type { ScrapedListing } from "./property-listing-card"
 import {
   Tooltip,
   ResponsiveContainer,
@@ -87,6 +88,9 @@ interface AnalysisResultsProps {
   onNewAnalysis?: () => void
   /** Sidebar CTA card — open the upgrade modal (falls back to /account link). */
   onUpgrade?: () => void
+  /** Scraped listing (Rightmove/OTM) — shown compactly in the deal header
+      with a View-details expander for the full listing card. */
+  scrapedListing?: ScrapedListing | null
 }
 
 // Series colours pull from the themed --chart-* tokens so they stay
@@ -1507,6 +1511,7 @@ export function AnalysisResults({
   onBack,
   onNewAnalysis,
   onUpgrade,
+  scrapedListing,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
   // Strategy targeted by the Alternative-panel "Switch →" buttons; opens the
@@ -1646,7 +1651,12 @@ export function AnalysisResults({
       )}
 
       {/* ── A. Deal summary header row ──────────────────────────────── */}
-      <DealSummaryHeader data={data} score={dealScore} label={verdictLabel} />
+      <DealSummaryHeader
+        data={data}
+        score={dealScore}
+        label={verdictLabel}
+        listing={scrapedListing}
+      />
 
       {/* ── B. Key metrics strip — strategy-aware ───────────────────── */}
       <KeyMetricsStrip items={stripMetrics} />
@@ -1656,24 +1666,26 @@ export function AnalysisResults({
         {/* ── Left column — main content ─────────────────────────────── */}
         <div className="flex min-w-0 flex-col gap-6">
 
-      {/* ── AI Analysis narrative — verdict + benchmark tag ─────────── */}
+      {/* ── AI Analysis narrative — flat section, no card box ─────────── */}
       {showNarrativeCard && (
-        <Card className="border-primary/20">
-          <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-primary" />
-                <CardTitle className="text-base">AI Analysis</CardTitle>
-              </div>
-              {benchmarkTag && (
-                <span className="rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
-                  {benchmarkTag}
-                </span>
-              )}
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-primary" />
+              <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                AI Analysis
+              </h3>
             </div>
-            {verdictHeadline && <CardDescription>{verdictHeadline}</CardDescription>}
-          </CardHeader>
-          <CardContent>
+            {benchmarkTag && (
+              <span className="rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
+                {benchmarkTag}
+              </span>
+            )}
+          </div>
+          {verdictHeadline && (
+            <p className="text-sm font-medium text-foreground">{verdictHeadline}</p>
+          )}
+          <div>
             {backendData?.ai_verdict ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                 {backendData.ai_verdict}
@@ -1724,8 +1736,8 @@ export function AnalysisResults({
                 )}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
       {/* ── Structured AI insights — strengths / risks / next steps ─── */}
@@ -1743,9 +1755,6 @@ export function AnalysisResults({
           category breakdown.                                          */}
       <DealScorePanel result={scoreResult} />
 
-
-
-
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (
         <BRRRRResults data={data} results={results} backendData={backendData} />
@@ -1760,9 +1769,6 @@ export function AnalysisResults({
       {data.investmentType === "development" && (
         <DevelopmentResults data={data} results={results} backendData={backendData} />
       )}
-
-
-
 
       {/* ── 5-Year Projection — toggle chart + year table ───────────── */}
       {showProjection && (
@@ -2268,77 +2274,19 @@ export function AnalysisResults({
           {/* Risk flags — one row per flag with severity badge */}
           {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
 
-          {/* Analyse-another CTA with plan/usage note */}
-          <AnalyseAnotherCard onNewAnalysis={onNewAnalysis} onUpgrade={onUpgrade} />
-        </div>
-      </div>
-
-      {/* ── Tools CTA strip ─────────────────────────────────────────── */}
-      {/* Cross-link to the standalone tools so users naturally flow
-          from analysis → portfolio tracking and comparison.         */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 text-sm print:hidden">
-        <span className="text-muted-foreground">Next steps:</span>
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/tools/portfolio?prefill=${encodeURIComponent(JSON.stringify({
-              address: data.address,
-              postcode: data.postcode,
-              purchase_price: data.purchasePrice,
-              monthly_rent: data.monthlyRent,
-              strategy: (data.investmentType || "btl").toUpperCase(),
-            }))}`}
-            className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
-          >
-            Add to portfolio →
-          </Link>
-          <Link
-            href="/tools/compare"
-            className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
-          >
-            Compare with another deal →
-          </Link>
-        </div>
-      </div>
-
-      {/* ── Alternative Strategies Panel (Feature A) ───────────────── */}
-      {/* Rough client-side estimates for the other strategies so users
-          can compare exits at a glance and jump to a full re-analysis. */}
-      <AlternativeStrategiesPanel
-        data={data}
-        results={results}
-        backendData={backendData}
-        onSwitch={onSwitchStrategy ? (s) => setSwitchTarget(s) : undefined}
+          {/* Article 4 & planning — moved into the sidebar */}
+      {/* ── Article 4 & Planning ────────────────────────────────────── */}
+      {/* Always rendered — the card checks the Metalyzi Article 4 database
+          itself using data.postcode, so it works even if the Flask backend
+          didn't return article_4 (legacy field passed as fallback advice). */}
+      <Article4Card
+        postcode={data.postcode}
+        legacy={backendData?.article_4}
+        investmentType={data.investmentType}
+        devConstructionType={data.devConstructionType}
       />
 
-      {/* ── Location & Council ──────────────────────────────────────── */}
-      {hasLocation && <LocationCard location={backendData?.location} />}
-
-      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
-      {data.investmentType === "r2sa" && data.postcode && (
-        <SAAreaIntelligence
-          postcode={data.postcode}
-          bedrooms={data.bedrooms}
-          userNightlyRate={data.saNightlyRate}
-          userOccupancyRate={data.saOccupancyRate}
-        />
-      )}
-
-      {/* ── House Valuation ─────────────────────────────────────────── */}
-      {hasValuation && data.investmentType !== "r2sa" && (
-        <HouseValuationCard
-          valuation={backendData?.house_valuation}
-          purchasePrice={data.purchasePrice}
-          avgSoldPrice={backendData?.avg_sold_price}
-          comparables={comparablesData}
-          investmentType={data.investmentType}
-          userMonthlyRent={data.monthlyRent}
-          bedrooms={data.bedrooms}
-          roomCount={data.roomCount}
-          avgRoomRate={data.avgRoomRate}
-          postcode={data.postcode}
-        />
-      )}
-
+          {/* Market data — costs pie + comparables (sidebar) */}
       {/* ── Market data — costs pie + comparables ───────────────────── */}
       {/* Cash-flow and 5-year tabs removed: superseded by the sidebar
           Monthly Cash Flow chart and the 5-Year Projection card.      */}
@@ -2437,21 +2385,81 @@ export function AnalysisResults({
         )}
       </Tabs>
 
+          {/* Analyse-another CTA with plan/usage note */}
+          <AnalyseAnotherCard onNewAnalysis={onNewAnalysis} onUpgrade={onUpgrade} />
+        </div>
+      </div>
+
+      {/* ── Tools CTA strip ─────────────────────────────────────────── */}
+      {/* Cross-link to the standalone tools so users naturally flow
+          from analysis → portfolio tracking and comparison.         */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 text-sm print:hidden">
+        <span className="text-muted-foreground">Next steps:</span>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/tools/portfolio?prefill=${encodeURIComponent(JSON.stringify({
+              address: data.address,
+              postcode: data.postcode,
+              purchase_price: data.purchasePrice,
+              monthly_rent: data.monthlyRent,
+              strategy: (data.investmentType || "btl").toUpperCase(),
+            }))}`}
+            className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-500/10 dark:text-emerald-400"
+          >
+            Add to portfolio →
+          </Link>
+          <Link
+            href="/tools/compare"
+            className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-400"
+          >
+            Compare with another deal →
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Alternative Strategies Panel (Feature A) ───────────────── */}
+      {/* Rough client-side estimates for the other strategies so users
+          can compare exits at a glance and jump to a full re-analysis. */}
+      <AlternativeStrategiesPanel
+        data={data}
+        results={results}
+        backendData={backendData}
+        onSwitch={onSwitchStrategy ? (s) => setSwitchTarget(s) : undefined}
+      />
+
+      {/* ── Location & Council ──────────────────────────────────────── */}
+      {hasLocation && <LocationCard location={backendData?.location} />}
+
+      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
+      {data.investmentType === "r2sa" && data.postcode && (
+        <SAAreaIntelligence
+          postcode={data.postcode}
+          bedrooms={data.bedrooms}
+          userNightlyRate={data.saNightlyRate}
+          userOccupancyRate={data.saOccupancyRate}
+        />
+      )}
+
+      {/* ── House Valuation ─────────────────────────────────────────── */}
+      {hasValuation && data.investmentType !== "r2sa" && (
+        <HouseValuationCard
+          valuation={backendData?.house_valuation}
+          purchasePrice={data.purchasePrice}
+          avgSoldPrice={backendData?.avg_sold_price}
+          comparables={comparablesData}
+          investmentType={data.investmentType}
+          userMonthlyRent={data.monthlyRent}
+          bedrooms={data.bedrooms}
+          roomCount={data.roomCount}
+          avgRoomRate={data.avgRoomRate}
+          postcode={data.postcode}
+        />
+      )}
+
       {/* ── HMO Room Rents & Area HMO Analysis ──────────────────────── */}
       {data.investmentType === "hmo" && data.postcode && (
         <HmoComparables postcode={data.postcode} />
       )}
-
-      {/* ── Article 4 & Planning ────────────────────────────────────── */}
-      {/* Always rendered — the card checks the Metalyzi Article 4 database
-          itself using data.postcode, so it works even if the Flask backend
-          didn't return article_4 (legacy field passed as fallback advice). */}
-      <Article4Card
-        postcode={data.postcode}
-        legacy={backendData?.article_4}
-        investmentType={data.investmentType}
-        devConstructionType={data.devConstructionType}
-      />
 
       {/* ── Strategy Suitability ────────────────────────────────────── */}
       {hasStrategies && (
@@ -2473,7 +2481,6 @@ export function AnalysisResults({
         propertyType={data.propertyType}
         postcode={data.postcode}
       />
-
 
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
@@ -2549,7 +2556,6 @@ export function AnalysisResults({
           fallbackText={backendData?.ai_area}
         />
       )}
-
 
       {/* Report-an-issue — opens Crisp pre-filled with the deal
           context so the user doesn't have to re-type which analysis

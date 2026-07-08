@@ -1866,8 +1866,10 @@ function AnalysePage() {
               )}
             </div>
 
-            {/* Property listing card — shown when scraped from Rightmove/OTM */}
-            {scrapedListing && (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket") && (
+            {/* Property listing card — standalone only in the AI-text-only
+                view; with full results it lives inside the deal-summary
+                header (compact photo + address + View-details expander). */}
+            {scrapedListing && (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket") && !(results && formData) && (
               <PropertyListingCard listing={scrapedListing} />
             )}
 
@@ -1878,6 +1880,12 @@ function AnalysePage() {
                 aiText={aiText}
                 aiLoading={aiLoading}
                 backendData={backendData}
+                scrapedListing={
+                  scrapedListing &&
+                  (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket")
+                    ? scrapedListing
+                    : null
+                }
                 onSwitchStrategy={handleStrategySwitch}
                 previousStrategy={previousStrategy}
                 onBack={handleBackStrategy}
