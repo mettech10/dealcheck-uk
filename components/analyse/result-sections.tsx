@@ -47,6 +47,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { getScoreColor } from "./deal-score"
+import {
+  PropertyListingCard,
+  type ScrapedListing,
+} from "./property-listing-card"
 import type {
   CalculationResults,
   PropertyFormData,
@@ -79,13 +83,18 @@ export function DealSummaryHeader({
   data,
   score,
   label,
+  listing,
   analysedAt,
 }: {
   data: PropertyFormData
   score: number
   label: string
+  /** Scraped listing (Rightmove/OTM) — renders the photo + View details. */
+  listing?: ScrapedListing | null
   analysedAt?: string | Date | null
 }) {
+  const [showDetails, setShowDetails] = useState(false)
+
   const typeLabel =
     PROPERTY_TYPE_LABEL[data.propertyTypeDetail ?? ""] ??
     PROPERTY_TYPE_LABEL[data.propertyType] ??
@@ -104,36 +113,93 @@ export function DealSummaryHeader({
       ? "bg-warning/10 text-warning border-warning/30"
       : "bg-destructive/10 text-destructive border-destructive/30"
 
+  const address = data.address || listing?.address || ""
+  const price = data.purchasePrice || listing?.price || 0
+  const thumb = listing?.images?.[0]
+  const sourceLabel =
+    listing?.source === "rightmove"
+      ? "Rightmove"
+      : listing?.source === "onthemarket"
+      ? "OnTheMarket"
+      : listing?.source
+
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex flex-col gap-1">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Deal Analysis
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {typeLabel}
-          {data.bedrooms > 0 && <> · {data.bedrooms} bed</>}
-          {" · "}Analysed {dateLabel}
-        </p>
+    /* Single header block — property identity left, score right, one thin
+       rule underneath separating it from the metrics strip. */
+    <div className="flex flex-col gap-4 border-b border-border/40 pb-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-4">
+          {thumb && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={thumb}
+              alt={address ? `Photo of ${address}` : "Property photo"}
+              className="h-20 w-28 shrink-0 rounded-lg border border-border/40 object-cover"
+              onError={(e) => {
+                ;(e.target as HTMLImageElement).style.display = "none"
+              }}
+            />
+          )}
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Deal Analysis
+            </p>
+            {address && (
+              <h2 className="text-xl font-semibold leading-tight text-foreground sm:text-2xl">
+                {address}
+              </h2>
+            )}
+            <p className="text-sm text-muted-foreground">
+              {price > 0 && (
+                <span className="font-medium text-foreground">
+                  {formatCurrency(price)}
+                  {" · "}
+                </span>
+              )}
+              {data.postcode && <>{data.postcode} · </>}
+              {typeLabel}
+              {data.bedrooms > 0 && <> · {data.bedrooms} bed</>}
+              {" · "}Analysed {dateLabel}
+            </p>
+            {listing && (
+              <button
+                type="button"
+                onClick={() => setShowDetails((v) => !v)}
+                className="mt-1 inline-flex w-fit items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                {sourceLabel && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium">
+                    {sourceLabel}
+                  </span>
+                )}
+                {showDetails ? "Hide details ▴" : "View details ▾"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* AI Deal Score — same level as the property block */}
+        <div className="flex min-w-[170px] flex-col items-center gap-1.5 px-4 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            AI Deal Score
+          </p>
+          <p className="leading-none">
+            <span className="text-4xl font-bold" style={{ color: scoreColor }}>
+              {score}
+            </span>
+            <span className="ml-1 text-sm text-muted-foreground">/100</span>
+          </p>
+          <span
+            className={`rounded-md border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${badgeClass}`}
+          >
+            {label}
+          </span>
+        </div>
       </div>
 
-      {/* AI Deal Score card — top-right of the header row */}
-      <div className="flex min-w-[180px] flex-col items-center gap-1.5 rounded-xl border border-border/50 bg-card px-6 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-          AI Deal Score
-        </p>
-        <p className="leading-none">
-          <span className="text-4xl font-bold" style={{ color: scoreColor }}>
-            {score}
-          </span>
-          <span className="ml-1 text-sm text-muted-foreground">/100</span>
-        </p>
-        <span
-          className={`rounded-md border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider ${badgeClass}`}
-        >
-          {label}
-        </span>
-      </div>
+      {/* Expanded scraped-listing details — the full existing card,
+          untouched, shown on demand instead of permanently. */}
+      {showDetails && listing && <PropertyListingCard listing={listing} />}
     </div>
   )
 }
