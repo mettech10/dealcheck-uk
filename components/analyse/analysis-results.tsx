@@ -17,7 +17,6 @@ import {
   CardDescription,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
@@ -1537,8 +1536,6 @@ export function AnalysisResults({
       : []),
   ].filter((item) => item.value > 0)
 
-  const hasSoldComparables = true // Always show — PropertyComparables fetches from Land Registry
-  const hasRentComparables = (backendData?.rent_comparables?.length ?? 0) > 0
   const hasStrategies =
     !!backendData?.strategy_recommendations &&
     Object.keys(backendData.strategy_recommendations).length > 0
@@ -1658,6 +1655,110 @@ export function AnalysisResults({
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* ── Left column — main content ─────────────────────────────── */}
         <div className="flex min-w-0 flex-col gap-6">
+
+      {/* ── Area context — location, valuation, HMO market, AI area ── */}
+      {/* ── Location & Council ──────────────────────────────────────── */}
+      {hasLocation && <LocationCard location={backendData?.location} />}
+
+      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
+      {data.investmentType === "r2sa" && data.postcode && (
+        <SAAreaIntelligence
+          postcode={data.postcode}
+          bedrooms={data.bedrooms}
+          userNightlyRate={data.saNightlyRate}
+          userOccupancyRate={data.saOccupancyRate}
+        />
+      )}
+
+      {/* ── House Valuation ─────────────────────────────────────────── */}
+      {hasValuation && data.investmentType !== "r2sa" && (
+        <HouseValuationCard
+          valuation={backendData?.house_valuation}
+          purchasePrice={data.purchasePrice}
+          avgSoldPrice={backendData?.avg_sold_price}
+          comparables={comparablesData}
+          investmentType={data.investmentType}
+          userMonthlyRent={data.monthlyRent}
+          bedrooms={data.bedrooms}
+          roomCount={data.roomCount}
+          avgRoomRate={data.avgRoomRate}
+          postcode={data.postcode}
+        />
+      )}
+
+      {/* ── HMO Room Rents & Area HMO Analysis ──────────────────────── */}
+      {data.investmentType === "hmo" && data.postcode && (
+        <HmoComparables postcode={data.postcode} />
+      )}
+
+      {/* ── AI Area Analysis — strategy-aware 5-section card ──────────── */}
+      {/* Threads strategy-specific signals (ARV, room rates, SA nightly,
+          DEV unit mix etc) into the Flask Claude prompt so each strategy
+          gets section titles and analytical lens calibrated to that
+          strategy's investor questions — not a one-size BTL-style report. */}
+      {data.postcode && (
+        <AiAreaAnalysisCard
+          postcode={data.postcode}
+          strategy={data.investmentType}
+          dealData={{
+            purchasePrice: data.purchasePrice,
+            grossYield: results.grossYield,
+            monthlyCashFlow: results.monthlyCashFlow,
+            cashOnCashReturn: results.cashOnCashReturn,
+            bedrooms: data.bedrooms,
+            sqft: data.sqft,
+            propertyType: data.propertyType,
+            propertyTypeDetail: data.propertyTypeDetail,
+            tenureType: data.tenureType,
+            condition: data.condition,
+            refurbishmentBudget: data.refurbishmentBudget,
+            // Strategy-specific extras — Flask uses these to enrich the prompt
+            arv: data.arv,
+            arvBasis: data.arvBasis,
+            // HMO
+            roomCount: data.roomCount,
+            avgRoomRate: data.avgRoomRate,
+            hmoLicenceCost: data.hmoLicenceCost,
+            // BRRRR
+            brrrrCapitalRecycledPct: results.brrrrCapitalRecycledPct,
+            brrrrRefurbUpliftRatio: results.brrrrRefurbUpliftRatio,
+            moneyLeftInDeal: results.moneyLeftInDeal,
+            equityGained: results.equityGained,
+            refinancedMortgageAmount: results.refinancedMortgageAmount,
+            // Flip
+            flipPostTaxProfit: results.flipPostTaxProfit,
+            flipPostTaxROI: results.flipPostTaxROI,
+            flipPassesStrict70: results.flipPassesStrict70,
+            flipHoldingMonths: data.flipHoldingMonths,
+            flipOwnershipStructure: data.flipOwnershipStructure,
+            // SA / R2SA
+            saOwnershipType: data.saOwnershipType,
+            saNightlyRate: data.saNightlyRate,
+            saOccupancyRate: data.saOccupancyRate,
+            saMonthlyLease: data.saMonthlyLease,
+            // Development
+            devSiteType: data.devSiteType,
+            devPlanningStatus: data.devPlanningStatus,
+            devUnitMixSize: Array.isArray(data.devUnitMix) ? data.devUnitMix.length : 0,
+            devTotalUnits: Array.isArray(data.devUnitMix)
+              ? data.devUnitMix.reduce((s, u) => s + (Number(u.numberOfUnits) || 0), 0)
+              : 0,
+            devGdv: results.development?.totalGDV,
+            devTdc: results.development?.totalDevelopmentCost,
+            devProfitOnCostPct: results.development?.profitOnCost,
+            devRlv: results.development?.residualLandValue,
+          }}
+          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
+          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
+          marketContext={{
+            soldComparables: backendData?.sold_comparables ?? null,
+            rentComparables: backendData?.rent_comparables ?? null,
+            avgSoldPrice: backendData?.avg_sold_price ?? null,
+            houseValuation: backendData?.house_valuation ?? null,
+          }}
+          fallbackText={backendData?.ai_area}
+        />
+      )}
 
       {/* ── AI Analysis narrative — flat section, no card box ─────────── */}
       {showNarrativeCard && (
@@ -2246,48 +2347,7 @@ export function AnalysisResults({
         </Card>
       )}
 
-        </div>
-
-        {/* ── Right column — sidebar ─────────────────────────────────── */}
-        <div className="flex flex-col gap-6">
-          {/* Mortgage / bridging summary — hidden for cash purchases */}
-          <MortgageSummaryCard data={data} results={results} />
-
-          {/* Monthly cash flow bars — rent → costs → net */}
-          <MonthlyCashFlowCard data={data} results={results} />
-
-          {/* Risk flags — one row per flag with severity badge */}
-          {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
-
-          {/* Article 4 & planning — moved into the sidebar */}
-      {/* ── Article 4 & Planning ────────────────────────────────────── */}
-      {/* Always rendered — the card checks the Metalyzi Article 4 database
-          itself using data.postcode, so it works even if the Flask backend
-          didn't return article_4 (legacy field passed as fallback advice). */}
-      <Article4Card
-        postcode={data.postcode}
-        legacy={backendData?.article_4}
-        investmentType={data.investmentType}
-        devConstructionType={data.devConstructionType}
-      />
-
-          {/* Market data — costs pie + comparables (sidebar) */}
-      {/* ── Market data — costs pie + comparables ───────────────────── */}
-      {/* Cash-flow and 5-year tabs removed: superseded by the sidebar
-          Monthly Cash Flow chart and the 5-Year Projection card.      */}
-      <Tabs defaultValue="costs" className="w-full">
-        <TabsList
-          className={`w-full grid ${
-            hasSoldComparables || hasRentComparables ? "grid-cols-2" : "grid-cols-1"
-          }`}
-        >
-          <TabsTrigger value="costs">Costs</TabsTrigger>
-          {(hasSoldComparables || hasRentComparables) && (
-            <TabsTrigger value="comparables">Comparables</TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent value="costs" className="mt-4">
+      {/* ── Capital Cost Breakdown — standalone pie (was a tab) ──── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Capital Cost Breakdown</CardTitle>
@@ -2335,41 +2395,76 @@ export function AnalysisResults({
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        {(hasSoldComparables || hasRentComparables) && (
-          <TabsContent value="comparables" className="mt-4">
-            {/* SA: single scroll view — SA Market Data + Nightly Rate
-                Comparables. No sold/rental/room sub-tabs (irrelevant for
-                short-let). All other strategies get the standard
-                PropertyComparables with sold/rental/room sub-tabs. */}
-            {data.investmentType === "r2sa" ? (
-              data.postcode ? (
-                <SAComparables
-                  postcode={data.postcode}
-                  bedrooms={data.bedrooms}
-                />
-              ) : (
-                <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-                  Add a postcode to load SA market data and nightly-rate comparables.
-                </p>
-              )
-            ) : (
-              <PropertyComparables
+      {/* ── Refurbishment Estimates ─────────────────────────────────── */}
+      <RefurbEstimatesCard
+        sqft={data.sqft}
+        condition={data.condition}
+        propertyType={data.propertyType}
+        postcode={data.postcode}
+      />
+
+      {/* ── Regional Benchmarks ─────────────────────────────────────── */}
+      {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
+
+      {/* ── Sensitivity Analysis ────────────────────────────────────── */}
+      <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
+
+      {/* ── Strategy Suitability ────────────────────────────────────── */}
+      {hasStrategies && (
+        <StrategySuitability strategies={backendData?.strategy_recommendations} />
+      )}
+
+        </div>
+
+        {/* ── Right column — sidebar ─────────────────────────────────── */}
+        <div className="flex flex-col gap-6">
+          {/* Mortgage / bridging summary — hidden for cash purchases */}
+          <MortgageSummaryCard data={data} results={results} />
+
+          {/* Monthly cash flow bars — rent → costs → net */}
+          <MonthlyCashFlowCard data={data} results={results} />
+
+          {/* Risk flags — one row per flag with severity badge */}
+          {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
+
+          {/* Article 4 & planning — moved into the sidebar */}
+      {/* ── Article 4 & Planning ────────────────────────────────────── */}
+      {/* Always rendered — the card checks the Metalyzi Article 4 database
+          itself using data.postcode, so it works even if the Flask backend
+          didn't return article_4 (legacy field passed as fallback advice). */}
+      <Article4Card
+        postcode={data.postcode}
+        legacy={backendData?.article_4}
+        investmentType={data.investmentType}
+        devConstructionType={data.devConstructionType}
+      />
+
+          {/* Comparables — standalone box, nothing else in it.
+              PropertyComparables / SAComparables render their own card. */}
+          {data.investmentType === "r2sa" ? (
+            data.postcode ? (
+              <SAComparables
                 postcode={data.postcode}
                 bedrooms={data.bedrooms}
-                currentPrice={data.purchasePrice}
-                propertyType={data.propertyType}
-                propertyTypeDetail={data.propertyTypeDetail}
-                tenureType={data.tenureType}
-                investmentType={data.investmentType}
-                onDataLoaded={setComparablesData}
               />
-            )}
-          </TabsContent>
-        )}
-      </Tabs>
-
+            ) : (
+              <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
+                Add a postcode to load SA market data and nightly-rate comparables.
+              </p>
+            )
+          ) : (
+            <PropertyComparables
+              postcode={data.postcode}
+              bedrooms={data.bedrooms}
+              currentPrice={data.purchasePrice}
+              propertyType={data.propertyType}
+              propertyTypeDetail={data.propertyTypeDetail}
+              tenureType={data.tenureType}
+              investmentType={data.investmentType}
+              onDataLoaded={setComparablesData}
+            />
+          )}
           {/* Analyse-another CTA with plan/usage note */}
           <AnalyseAnotherCard onNewAnalysis={onNewAnalysis} onUpgrade={onUpgrade} />
         </div>
@@ -2401,140 +2496,6 @@ export function AnalysisResults({
           </Link>
         </div>
       </div>
-
-      {/* Alternative Strategies dropdown removed — it duplicated the
-          strategy pills (StrategySwitcher) at the top of the results.
-          Backend per-strategy notes still render in Strategy Suitability. */}
-
-      {/* ── Location & Council ──────────────────────────────────────── */}
-      {hasLocation && <LocationCard location={backendData?.location} />}
-
-      {/* ── SA Area Intelligence (replaces House Valuation for r2sa) ── */}
-      {data.investmentType === "r2sa" && data.postcode && (
-        <SAAreaIntelligence
-          postcode={data.postcode}
-          bedrooms={data.bedrooms}
-          userNightlyRate={data.saNightlyRate}
-          userOccupancyRate={data.saOccupancyRate}
-        />
-      )}
-
-      {/* ── House Valuation ─────────────────────────────────────────── */}
-      {hasValuation && data.investmentType !== "r2sa" && (
-        <HouseValuationCard
-          valuation={backendData?.house_valuation}
-          purchasePrice={data.purchasePrice}
-          avgSoldPrice={backendData?.avg_sold_price}
-          comparables={comparablesData}
-          investmentType={data.investmentType}
-          userMonthlyRent={data.monthlyRent}
-          bedrooms={data.bedrooms}
-          roomCount={data.roomCount}
-          avgRoomRate={data.avgRoomRate}
-          postcode={data.postcode}
-        />
-      )}
-
-      {/* ── HMO Room Rents & Area HMO Analysis ──────────────────────── */}
-      {data.investmentType === "hmo" && data.postcode && (
-        <HmoComparables postcode={data.postcode} />
-      )}
-
-      {/* ── Strategy Suitability ────────────────────────────────────── */}
-      {hasStrategies && (
-        <StrategySuitability strategies={backendData?.strategy_recommendations} />
-      )}
-
-      {/* ── Sold & Rent Comparables ─────────────────────────────────── */}
-      {/* Removed: SoldComparablesTable and RentComparablesTable were
-          duplicating data already shown in the Market Comparables
-          tabbed section (PropertyComparables component). */}
-
-      {/* ── HMO Rental Comparables & Area Analysis ─────────────────── */}
-      {/* Standalone HmoComparables now placed above Full Financial Breakdown */}
-
-      {/* ── Refurbishment Estimates ─────────────────────────────────── */}
-      <RefurbEstimatesCard
-        sqft={data.sqft}
-        condition={data.condition}
-        propertyType={data.propertyType}
-        postcode={data.postcode}
-      />
-
-      {/* ── Regional Benchmarks ─────────────────────────────────────── */}
-      {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
-
-      {/* ── Sensitivity Analysis ────────────────────────────────────── */}
-      <SensitivityAnalysisPanel baseFormData={data} baseResults={results} />
-
-      {/* ── AI Area Analysis — strategy-aware 5-section card ──────────── */}
-      {/* Threads strategy-specific signals (ARV, room rates, SA nightly,
-          DEV unit mix etc) into the Flask Claude prompt so each strategy
-          gets section titles and analytical lens calibrated to that
-          strategy's investor questions — not a one-size BTL-style report. */}
-      {data.postcode && (
-        <AiAreaAnalysisCard
-          postcode={data.postcode}
-          strategy={data.investmentType}
-          dealData={{
-            purchasePrice: data.purchasePrice,
-            grossYield: results.grossYield,
-            monthlyCashFlow: results.monthlyCashFlow,
-            cashOnCashReturn: results.cashOnCashReturn,
-            bedrooms: data.bedrooms,
-            sqft: data.sqft,
-            propertyType: data.propertyType,
-            propertyTypeDetail: data.propertyTypeDetail,
-            tenureType: data.tenureType,
-            condition: data.condition,
-            refurbishmentBudget: data.refurbishmentBudget,
-            // Strategy-specific extras — Flask uses these to enrich the prompt
-            arv: data.arv,
-            arvBasis: data.arvBasis,
-            // HMO
-            roomCount: data.roomCount,
-            avgRoomRate: data.avgRoomRate,
-            hmoLicenceCost: data.hmoLicenceCost,
-            // BRRRR
-            brrrrCapitalRecycledPct: results.brrrrCapitalRecycledPct,
-            brrrrRefurbUpliftRatio: results.brrrrRefurbUpliftRatio,
-            moneyLeftInDeal: results.moneyLeftInDeal,
-            equityGained: results.equityGained,
-            refinancedMortgageAmount: results.refinancedMortgageAmount,
-            // Flip
-            flipPostTaxProfit: results.flipPostTaxProfit,
-            flipPostTaxROI: results.flipPostTaxROI,
-            flipPassesStrict70: results.flipPassesStrict70,
-            flipHoldingMonths: data.flipHoldingMonths,
-            flipOwnershipStructure: data.flipOwnershipStructure,
-            // SA / R2SA
-            saOwnershipType: data.saOwnershipType,
-            saNightlyRate: data.saNightlyRate,
-            saOccupancyRate: data.saOccupancyRate,
-            saMonthlyLease: data.saMonthlyLease,
-            // Development
-            devSiteType: data.devSiteType,
-            devPlanningStatus: data.devPlanningStatus,
-            devUnitMixSize: Array.isArray(data.devUnitMix) ? data.devUnitMix.length : 0,
-            devTotalUnits: Array.isArray(data.devUnitMix)
-              ? data.devUnitMix.reduce((s, u) => s + (Number(u.numberOfUnits) || 0), 0)
-              : 0,
-            devGdv: results.development?.totalGDV,
-            devTdc: results.development?.totalDevelopmentCost,
-            devProfitOnCostPct: results.development?.profitOnCost,
-            devRlv: results.development?.residualLandValue,
-          }}
-          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
-          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
-          marketContext={{
-            soldComparables: backendData?.sold_comparables ?? null,
-            rentComparables: backendData?.rent_comparables ?? null,
-            avgSoldPrice: backendData?.avg_sold_price ?? null,
-            houseValuation: backendData?.house_valuation ?? null,
-          }}
-          fallbackText={backendData?.ai_area}
-        />
-      )}
 
       {/* Report-an-issue — opens Crisp pre-filled with the deal
           context so the user doesn't have to re-type which analysis
