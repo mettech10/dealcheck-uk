@@ -33,11 +33,18 @@ export default function VerificationSuccessPage() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <Image
+              src="/logo-navy.png"
+              alt="Metalyzi Logo"
+              width={28}
+              height={28}
+              className="rounded-lg object-contain dark:hidden"
+            />
+            <Image
               src="/logo.png"
               alt="Metalyzi Logo"
               width={28}
               height={28}
-              className="rounded-lg object-contain"
+              className="rounded-lg object-contain hidden dark:block"
             />
             <span className="text-sm font-semibold text-foreground">
               Metalyzi
@@ -51,11 +58,18 @@ export default function VerificationSuccessPage() {
           {/* Logo */}
           <div className="mx-auto mb-6 flex size-16 items-center justify-center rounded-xl bg-primary/10">
             <Image
+              src="/logo-navy.png"
+              alt="Metalyzi Logo"
+              width={48}
+              height={48}
+              className="rounded-lg object-contain dark:hidden"
+            />
+            <Image
               src="/logo.png"
               alt="Metalyzi Logo"
               width={48}
               height={48}
-              className="rounded-lg object-contain"
+              className="rounded-lg object-contain hidden dark:block"
             />
           </div>
 

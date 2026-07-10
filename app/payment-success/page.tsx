@@ -136,11 +136,18 @@ function PaymentSuccessInner() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <Image
+              src="/logo-navy.png"
+              alt="Metalyzi Logo"
+              width={28}
+              height={28}
+              className="rounded-lg object-contain dark:hidden"
+            />
+            <Image
               src="/logo.png"
               alt="Metalyzi Logo"
               width={28}
               height={28}
-              className="rounded-lg object-contain"
+              className="rounded-lg object-contain hidden dark:block"
             />
             <span className="text-sm font-semibold text-foreground">
               Metalyzi
