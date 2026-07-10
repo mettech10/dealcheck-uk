@@ -44,7 +44,8 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https:",
+              // blob: — client-generated share-card PNG previews
+              "img-src 'self' data: blob: https:",
               "font-src 'self'",
               "connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com",
               "frame-ancestors 'none'",
