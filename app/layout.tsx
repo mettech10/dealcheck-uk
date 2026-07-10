@@ -6,6 +6,7 @@ import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
 import CrispChat from '@/components/CrispChat'
 import BetaBanner from '@/components/BetaBanner'
+import { ReferralCapture } from '@/components/referral-capture'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -56,6 +57,7 @@ export default function RootLayout({
           </div>
           <Footer />
           <CookieConsent />
+          <ReferralCapture />
           <ConditionalAnalytics />
           <CrispChat />
         </ThemeProvider>

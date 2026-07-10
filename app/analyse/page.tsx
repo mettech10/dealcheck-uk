@@ -446,6 +446,21 @@ function AnalysePage() {
   // "Share This Deal" branded-card modal
   const [showShareModal, setShowShareModal] = useState(false)
   const [referralCode, setReferralCode] = useState<string | null>(null)
+
+  // Fetch (or lazily create) the user's referral code for the share card.
+  // Anonymous visitors get a 401 and the card simply omits the code.
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/user/referral")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.referralCode) setReferralCode(d.referralCode)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason>("free_limit_reached")
   const [upgradeFreeUsed, setUpgradeFreeUsed] = useState(0)
   const [aiLoading, setAiLoading] = useState(false)
