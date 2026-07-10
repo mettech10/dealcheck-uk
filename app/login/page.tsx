@@ -120,7 +120,7 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="light-header-wash relative flex min-h-screen flex-col bg-background">
       {/* Top bar */}
       <header className="border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">

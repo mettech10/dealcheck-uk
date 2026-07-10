@@ -1324,7 +1324,7 @@ function AnalysePage() {
     <>
       {showOverlay && <AnalysisLoadingOverlay />}
       <div
-        className={`flex min-h-screen flex-col bg-background ${
+        className={`light-header-wash relative flex min-h-screen flex-col bg-background ${
           showOverlay ? "invisible" : "visible"
         }`}
       >
