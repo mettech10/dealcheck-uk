@@ -18,6 +18,9 @@ export function CTA() {
           >
             {/* Glow effect */}
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,oklch(0.75_0.15_190_/_0.08)_0%,transparent_70%)]" />
+            {/* Light-mode gradient — diagonal navy→teal tint so the panel
+                reads as a designed surface rather than flat grey. */}
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(10,31,78,0.08)_0%,rgba(13,148,136,0.05)_55%,rgba(13,148,136,0.09)_100%)] dark:hidden" />
 
             <div className="relative">
               <motion.div 

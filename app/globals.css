@@ -485,6 +485,31 @@
 
 /* ── Light-mode polish (Feature 1, Section 4) ────────────────────────── */
 
+/* Light-mode atmosphere — soft navy→teal washes at the top of the page so
+   the bright background has depth instead of reading flat. background-image
+   only, so it coexists with the bg-background utility (background-color)
+   and never renders in dark mode. Pages whose wrappers paint a solid
+   bg-background add their own local gradient band (see .light-header-wash). */
+html:not(.dark) body {
+  background-image:
+    radial-gradient(1100px 420px at 12% -80px, rgba(10, 31, 78, 0.07), transparent 65%),
+    radial-gradient(900px 380px at 88% -60px, rgba(13, 148, 136, 0.06), transparent 60%);
+  background-repeat: no-repeat;
+}
+
+/* Reusable light-only header wash — a gradient band for pages that cover
+   the body with an opaque bg-background wrapper (analyse, login). The
+   wrapper must be position:relative; the band sits behind the content. */
+html:not(.dark) .light-header-wash::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 420px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(10, 31, 78, 0.06) 0%, rgba(13, 148, 136, 0.03) 45%, transparent 100%);
+}
+
 /* Leaflet (Article 4 map) popups — OpenStreetMap tiles are already light,
    but the popup chrome defaults to white. Drive it from the theme tokens
    so the popup matches whichever theme is active (white in light mode,

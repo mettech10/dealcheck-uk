@@ -42,6 +42,9 @@ export function Hero() {
       />
       {/* Radial glow — dark mode only */}
       <div className="pointer-events-none absolute inset-0 hidden bg-[radial-gradient(ellipse_at_center,oklch(0.75_0.15_190_/_0.08)_0%,transparent_70%)] dark:block" />
+      {/* Light-mode glow — navy wash top-left, teal top-right, giving the
+          hero the same depth the dark theme gets from its radial glow. */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_420px_at_20%_-60px,rgba(10,31,78,0.09),transparent_65%),radial-gradient(760px_360px_at_85%_-30px,rgba(13,148,136,0.08),transparent_60%)] dark:hidden" />
 
       <div className="relative mx-auto flex max-w-7xl flex-col items-center px-6 pb-24 pt-20 text-center md:pb-32 md:pt-28">
         {/* Animated Badge */}
