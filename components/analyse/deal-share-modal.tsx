@@ -82,13 +82,11 @@ export function DealShareModal({
   useEffect(() => {
     if (!open) return
     const run = ++runRef.current
-    let objectUrl: string | null = null
 
     ;(async () => {
       setGenerating(true)
       setStatus(null)
       setCardBlob(null)
-      setCardUrl(null)
 
       const blurred = photoUrl ? await blurPropertyImage(photoUrl) : null
       if (runRef.current !== run) return
@@ -102,9 +100,14 @@ export function DealShareModal({
       if (runRef.current !== run) return
 
       if (blob) {
-        objectUrl = URL.createObjectURL(blob)
         setCardBlob(blob)
-        setCardUrl(objectUrl)
+        // Revoke only when REPLACING a url — revoking in the effect cleanup
+        // breaks the preview under StrictMode's double-mount, which revokes
+        // the url the surviving render is still displaying.
+        setCardUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev)
+          return URL.createObjectURL(blob)
+        })
       } else {
         setStatus("Couldn't generate the card — please try again.")
       }
@@ -113,7 +116,6 @@ export function DealShareModal({
 
     return () => {
       runRef.current++
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, photoUrl])
@@ -252,9 +254,12 @@ export function DealShareModal({
           <div
             aria-hidden
             style={{
-              position: "fixed",
+              // absolute (not fixed) — html2canvas mis-computes the crop for
+              // fixed elements outside the viewport and throws a zero-size
+              // createPattern error.
+              position: "absolute",
               left: "-12000px",
-              top: 0,
+              top: "0",
               pointerEvents: "none",
             }}
           >

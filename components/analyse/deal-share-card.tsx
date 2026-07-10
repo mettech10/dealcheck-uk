@@ -81,6 +81,9 @@ export function DealShareCard({
         fontFamily:
           '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         background: "#0a1628",
+        // Explicit root colour — without it descendants inherit the body's
+        // oklch-token colour, whose computed lab() value crashes html2canvas.
+        color: "#ffffff",
       }}
     >
       {/* ── Background — pre-blurred photo or brand gradient ─────────── */}
@@ -94,9 +97,10 @@ export function DealShareCard({
               width: "100%",
               height: "100%",
               objectFit: "cover",
-              // Belt-and-braces CSS blur for the on-screen preview; the
-              // exported pixels are already blurred in the data URL.
-              filter: "blur(12px) brightness(0.9)",
+              // NO CSS filter here: the data URL is already blurred+darkened
+              // (lib/generateDealCard.ts), and html2canvas both ignores CSS
+              // filters in output AND crashes (zero-size createPattern) when
+              // asked to rasterise a filtered off-screen element.
               transform: "scale(1.1)", // hide blur edge fringing
             }}
           />

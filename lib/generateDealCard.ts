@@ -15,7 +15,7 @@
  * downloadDealCard / copyDealCardToClipboard — delivery helpers.
  */
 
-import html2canvas from "html2canvas"
+import { domToBlob } from "modern-screenshot"
 import { CARD_WIDTH, CARD_HEIGHT } from "@/components/analyse/deal-share-card"
 
 /** Minimum protection per spec: blur(12px) brightness(0.3). We go a touch
@@ -71,18 +71,17 @@ export async function generateDealCardImage(
   }
 
   try {
-    const canvas = await html2canvas(element, {
+    // modern-screenshot (SVG-serialisation) — html2canvas 1.4.x crashes on
+    // this card (zero-size createPattern) and can't parse the app's oklch
+    // theme tokens; this renderer handles both. Images must be same-origin
+    // or data URLs, which they are (pre-blurred data URL + local logo).
+    return await domToBlob(element, {
       width: CARD_WIDTH,
       height: CARD_HEIGHT,
       scale: 1,
-      useCORS: true,
-      allowTaint: false,
+      type: "image/png",
       backgroundColor: "#0a1628",
-      logging: false,
-      imageTimeout: 10000,
-    })
-    return await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), "image/png")
+      timeout: 15000,
     })
   } catch (err) {
     console.error(
