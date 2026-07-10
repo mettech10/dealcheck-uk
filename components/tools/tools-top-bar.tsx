@@ -25,11 +25,18 @@ export function ToolsTopBar() {
         className="inline-flex items-center gap-2 text-foreground transition-opacity hover:opacity-80"
       >
         <Image
+          src="/logo-navy.png"
+          alt="Metalyzi"
+          width={28}
+          height={28}
+          className="rounded-md object-contain dark:hidden"
+        />
+        <Image
           src="/logo.png"
           alt="Metalyzi"
           width={28}
           height={28}
-          className="rounded-md object-contain"
+          className="rounded-md object-contain hidden dark:block"
         />
         <span className="text-base font-semibold tracking-tight">Metalyzi</span>
       </Link>

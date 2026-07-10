@@ -10,11 +10,18 @@ export function Footer() {
         {/* Logo */}
         <div className="flex shrink-0 items-center">
           <Image
+            src="/logo-navy.png"
+            alt="Metalyzi Logo"
+            width={24}
+            height={24}
+            className="rounded-md object-contain dark:hidden"
+          />
+          <Image
             src="/logo.png"
             alt="Metalyzi Logo"
             width={24}
             height={24}
-            className="rounded-md object-contain"
+            className="rounded-md object-contain hidden dark:block"
           />
         </div>
 

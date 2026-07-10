@@ -10,7 +10,7 @@
    Status tokens (--success / --warning / --destructive) keep their semantic
    meaning in both themes, just tuned for contrast on a light background. */
 :root {
-  --background: #faf7f0;          /* cream white page background */
+  --background: #f6f8fb;          /* bright cool white page background */
   --foreground: #0f172a;
   --card: #ffffff;               /* cards are pure white for contrast */
   --card-foreground: #0f172a;
@@ -18,16 +18,16 @@
   --popover-foreground: #0f172a;
   --primary: #0a1f4e;            /* deep navy — primary action colour */
   --primary-foreground: #ffffff;
-  --secondary: #eef2f7;
+  --secondary: #eff3f8;
   --secondary-foreground: #0f172a;
-  --muted: #eef2f7;
-  --muted-foreground: #475569;
-  --accent: #e2e8f0;
+  --muted: #eff3f8;
+  --muted-foreground: #52627a;
+  --accent: #e5edf6;
   --accent-foreground: #0f172a;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #d1dce8;
-  --input: #cbd5e1;
+  --border: #e0e7f0;             /* lighter hairline borders — crisper cards */
+  --input: #d6e0ea;
   --ring: #0a1f4e;
   --chart-1: oklch(0.6 0.13 190);
   --chart-2: oklch(0.58 0.13 160);

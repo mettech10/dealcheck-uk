@@ -79,7 +79,8 @@ export default function ComparePage() {
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.png" alt="Metalyzi" width={32} height={32} className="rounded-lg" />
+            <Image src="/logo-navy.png" alt="Metalyzi" width={32} height={32} className="rounded-lg dark:hidden" />
+            <Image src="/logo.png" alt="Metalyzi" width={32} height={32} className="rounded-lg hidden dark:block" />
             <span className="text-lg font-semibold">Metalyzi</span>
           </Link>
           <Button variant="ghost" size="sm" asChild>
