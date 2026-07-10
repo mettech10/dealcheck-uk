@@ -41,7 +41,9 @@ import {
   FileUp,
   AlertTriangle,
   X,
+  Share2,
 } from "lucide-react"
+import { DealShareModal } from "@/components/analyse/deal-share-modal"
 
 // ─── Rental vs Sale Detection ────────────────────────────────────────────────
 type RentalDetection = "rental" | "sale" | "uncertain"
@@ -441,6 +443,9 @@ function AnalysePage() {
   const [aiText, setAiText] = useState("")
   // ── Usage-gate paywall state ─────────────────────────────────────────
   const [showUpgrade, setShowUpgrade] = useState(false)
+  // "Share This Deal" branded-card modal
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [referralCode, setReferralCode] = useState<string | null>(null)
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason>("free_limit_reached")
   const [upgradeFreeUsed, setUpgradeFreeUsed] = useState(0)
   const [aiLoading, setAiLoading] = useState(false)
@@ -1714,6 +1719,19 @@ function AnalysePage() {
                 New Analysis
               </Button>
 
+              {/* Share — branded PNG card, no link to the full results */}
+              {results && formData && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowShareModal(true)}
+                  className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  <Share2 className="size-3.5" />
+                  Share Deal
+                </Button>
+              )}
+
               {/* Save Deal — primary unlock signal is runAccessLevel
                   (the credit type spent at run time). If the user
                   paid for this analysis (Pro or credit), save is
@@ -1959,6 +1977,24 @@ function AnalysePage() {
         freeUsed={upgradeFreeUsed}
         onClose={() => setShowUpgrade(false)}
       />
+
+      {/* Share This Deal — branded PNG card with blurred photo */}
+      {results && formData && (
+        <DealShareModal
+          open={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          data={formData}
+          results={results}
+          backendData={backendData}
+          scrapedListing={
+            scrapedListing &&
+            (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket")
+              ? scrapedListing
+              : null
+          }
+          referralCode={referralCode}
+        />
+      )}
       </div>
     </>
   )
