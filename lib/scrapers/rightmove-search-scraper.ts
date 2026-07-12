@@ -51,6 +51,9 @@ export interface SearchParams {
   radius?: number
   sortType?: "newest" | "price_asc" | "price_desc"
   maxResults?: number
+  /** "buy" (default) searches property-for-sale; "rent" property-to-rent —
+      prices on rent cards are per calendar month. */
+  channel?: "buy" | "rent"
 }
 
 interface RawSearchCard {
@@ -286,7 +289,10 @@ function normaliseSearchCard(c: RawSearchCard): RightmoveSearchResult {
 }
 
 export function buildRightmoveSearchUrl(params: SearchParams): string | null {
-  const base = "https://www.rightmove.co.uk/property-for-sale/find.html"
+  const base =
+    params.channel === "rent"
+      ? "https://www.rightmove.co.uk/property-to-rent/find.html"
+      : "https://www.rightmove.co.uk/property-for-sale/find.html"
   const q = new URLSearchParams()
 
   // Callers resolve postcodes to a numeric identifier first (see
