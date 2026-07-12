@@ -25,6 +25,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000
 
 function cacheKeyForParams(params: SearchParams): string {
   const stable = JSON.stringify({
+    c: params.channel ?? "buy",
     l: params.locationIdentifier ?? params.postcode?.split(" ")[0]?.toUpperCase(),
     xp: params.maxPrice,
     np: params.minPrice,
