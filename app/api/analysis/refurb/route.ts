@@ -87,6 +87,8 @@ Boiler replacement: £2,000-£4,000 · New roof: £5,000-£15,000
 Windows per unit: £400-£800 · Damp treatment: £500-£3,000
 Full decoration per room: £300-£600 · Landscaping/garden: £500-£3,000
 
+Keep every notes/reasoning/recommendation string CONCISE — under 20 words. Cover at most 8 rooms.
+
 RESPOND ONLY WITH JSON IN EXACTLY THIS SHAPE (no other text, no markdown fences):
 
 {
@@ -246,13 +248,24 @@ export async function POST(request: Request) {
 
     const response = await client.messages.create({
       model,
-      max_tokens: 3000,
+      // Room-by-room JSON with 8 rooms + red flags runs well past 3k
+      // tokens — a tight cap truncates mid-JSON and the parse fails.
+      max_tokens: 6000,
       messages: [{ role: "user", content }],
     })
 
     const textBlock = response.content.find((b) => b.type === "text")
-    const responseText = textBlock && textBlock.type === "text" ? textBlock.text : ""
-    console.log("[REFURB-VISION] response:", responseText.slice(0, 160))
+    let responseText = textBlock && textBlock.type === "text" ? textBlock.text : ""
+    console.log(
+      `[REFURB-VISION] response: stop=${response.stop_reason} len=${responseText.length}`,
+      responseText.slice(0, 160),
+    )
+
+    // Strip markdown fences if the model wrapped the JSON anyway.
+    responseText = responseText
+      .replace(/^\s*```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim()
 
     // Parse — direct first, then the outermost JSON object as a rescue.
     let parsed: Record<string, unknown> | null = null
@@ -270,7 +283,9 @@ export async function POST(request: Request) {
     }
 
     if (!parsed || !parsed.totals || !Array.isArray(parsed.rooms)) {
-      console.error("[REFURB-VISION] unparseable/incomplete response")
+      console.error(
+        `[REFURB-VISION] unparseable/incomplete response (stop=${response.stop_reason}, len=${responseText.length}, tail=${JSON.stringify(responseText.slice(-120))})`,
+      )
       return NextResponse.json(
         { error: "Failed to parse AI response", fallback: true },
         { status: 502 },
