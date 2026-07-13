@@ -39,6 +39,9 @@ import {
   type StripMetric,
 } from "./result-sections"
 import type { ScrapedListing } from "./property-listing-card"
+import { runRefurbAnalysis, type RefurbAnalysisResult } from "@/lib/refurbAnalysis"
+import { getStrategyLabel } from "@/lib/dealCardMetrics"
+import { AIRefurbEstimator } from "./ai-refurb-estimator"
 import {
   Tooltip,
   ResponsiveContainer,
@@ -1513,6 +1516,51 @@ export function AnalysisResults({
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
 
+  // ── AI Refurb Estimator — vision analysis of the scraped photos ──────
+  // Runs AFTER the main results render (component mount = results shown),
+  // never blocks them, and only when listing photos exist. null result =
+  // the static RefurbEstimatesCard renders instead.
+  const [refurbAnalysis, setRefurbAnalysis] = useState<RefurbAnalysisResult | null>(null)
+  const [refurbLoading, setRefurbLoading] = useState(false)
+  const listingImages = useMemo(
+    () => scrapedListing?.images ?? [],
+    [scrapedListing],
+  )
+
+  useEffect(() => {
+    if (listingImages.length === 0) return
+    let cancelled = false
+
+    // Small delay so the main results paint before the vision call fires.
+    const timer = setTimeout(async () => {
+      if (cancelled) return
+      setRefurbLoading(true)
+      const result = await runRefurbAnalysis({
+        images: listingImages,
+        bedrooms: data.bedrooms ?? null,
+        bathrooms: scrapedListing?.bathrooms ?? null,
+        propertyType: data.propertyTypeDetail ?? data.propertyType ?? null,
+        floorSizeSqft: data.sqft ?? null,
+        floorSizeM2: data.sqft ? Math.round(data.sqft * 0.0929) : null,
+        postcode: data.postcode ?? "",
+        region: backendData?.location?.region ?? "UK",
+        strategy: getStrategyLabel(data.investmentType),
+        condition: data.condition ?? null,
+        purchasePrice: data.purchasePrice ?? 0,
+      })
+      if (!cancelled) {
+        setRefurbAnalysis(result)
+        setRefurbLoading(false)
+      }
+    }, 1500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingImages, data.investmentType, data.condition])
+
   const parsedAI = parseAIAnalysis(aiText)
 
   // New unified multi-factor scorer (lib/dealScoring.ts) — replaces the
@@ -2397,12 +2445,37 @@ export function AnalysisResults({
           </Card>
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
-      <RefurbEstimatesCard
-        sqft={data.sqft}
-        condition={data.condition}
-        propertyType={data.propertyType}
-        postcode={data.postcode}
-      />
+      {/* Mode A: AI vision breakdown from listing photos (with loading
+          state while Claude analyses). Mode B: the untouched static
+          tier table — always the fallback when photos are absent or the
+          vision call fails. */}
+      {refurbLoading ? (
+        <Card className="border-primary/20">
+          <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+            <Loader2 className="size-10 animate-spin text-primary" />
+            <div>
+              <p className="font-semibold text-foreground">
+                AI is analysing property photos
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Estimating refurb costs from the listing photos…
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground/70">
+              This takes 10–20 seconds
+            </p>
+          </CardContent>
+        </Card>
+      ) : refurbAnalysis ? (
+        <AIRefurbEstimator analysis={refurbAnalysis} />
+      ) : (
+        <RefurbEstimatesCard
+          sqft={data.sqft}
+          condition={data.condition}
+          propertyType={data.propertyType}
+          postcode={data.postcode}
+        />
+      )}
 
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
