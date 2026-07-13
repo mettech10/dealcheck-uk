@@ -39,6 +39,8 @@ import {
   type StripMetric,
 } from "./result-sections"
 import type { ScrapedListing } from "./property-listing-card"
+import { runRefurbAnalysis, type RefurbAnalysisResult } from "@/lib/refurbAnalysis"
+import { getStrategyLabel } from "@/lib/dealCardMetrics"
 import {
   Tooltip,
   ResponsiveContainer,
@@ -1512,6 +1514,51 @@ export function AnalysisResults({
   scrapedListing,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
+
+  // ── AI Refurb Estimator — vision analysis of the scraped photos ──────
+  // Runs AFTER the main results render (component mount = results shown),
+  // never blocks them, and only when listing photos exist. null result =
+  // the static RefurbEstimatesCard renders instead.
+  const [refurbAnalysis, setRefurbAnalysis] = useState<RefurbAnalysisResult | null>(null)
+  const [refurbLoading, setRefurbLoading] = useState(false)
+  const listingImages = useMemo(
+    () => scrapedListing?.images ?? [],
+    [scrapedListing],
+  )
+
+  useEffect(() => {
+    if (listingImages.length === 0) return
+    let cancelled = false
+
+    // Small delay so the main results paint before the vision call fires.
+    const timer = setTimeout(async () => {
+      if (cancelled) return
+      setRefurbLoading(true)
+      const result = await runRefurbAnalysis({
+        images: listingImages,
+        bedrooms: data.bedrooms ?? null,
+        bathrooms: scrapedListing?.bathrooms ?? null,
+        propertyType: data.propertyTypeDetail ?? data.propertyType ?? null,
+        floorSizeSqft: data.sqft ?? null,
+        floorSizeM2: data.sqft ? Math.round(data.sqft * 0.0929) : null,
+        postcode: data.postcode ?? "",
+        region: backendData?.location?.region ?? "UK",
+        strategy: getStrategyLabel(data.investmentType),
+        condition: data.condition ?? null,
+        purchasePrice: data.purchasePrice ?? 0,
+      })
+      if (!cancelled) {
+        setRefurbAnalysis(result)
+        setRefurbLoading(false)
+      }
+    }, 1500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingImages, data.investmentType, data.condition])
 
   const parsedAI = parseAIAnalysis(aiText)
 
