@@ -41,6 +41,7 @@ import {
 import type { ScrapedListing } from "./property-listing-card"
 import { runRefurbAnalysis, type RefurbAnalysisResult } from "@/lib/refurbAnalysis"
 import { getStrategyLabel } from "@/lib/dealCardMetrics"
+import { AIRefurbEstimator } from "./ai-refurb-estimator"
 import {
   Tooltip,
   ResponsiveContainer,
@@ -2444,12 +2445,37 @@ export function AnalysisResults({
           </Card>
 
       {/* ── Refurbishment Estimates ─────────────────────────────────── */}
-      <RefurbEstimatesCard
-        sqft={data.sqft}
-        condition={data.condition}
-        propertyType={data.propertyType}
-        postcode={data.postcode}
-      />
+      {/* Mode A: AI vision breakdown from listing photos (with loading
+          state while Claude analyses). Mode B: the untouched static
+          tier table — always the fallback when photos are absent or the
+          vision call fails. */}
+      {refurbLoading ? (
+        <Card className="border-primary/20">
+          <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+            <Loader2 className="size-10 animate-spin text-primary" />
+            <div>
+              <p className="font-semibold text-foreground">
+                AI is analysing property photos
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Estimating refurb costs from the listing photos…
+              </p>
+            </div>
+            <p className="text-xs text-muted-foreground/70">
+              This takes 10–20 seconds
+            </p>
+          </CardContent>
+        </Card>
+      ) : refurbAnalysis ? (
+        <AIRefurbEstimator analysis={refurbAnalysis} />
+      ) : (
+        <RefurbEstimatesCard
+          sqft={data.sqft}
+          condition={data.condition}
+          propertyType={data.propertyType}
+          postcode={data.postcode}
+        />
+      )}
 
       {/* ── Regional Benchmarks ─────────────────────────────────────── */}
       {hasBenchmark && <RegionalBenchmarkPanel benchmark={backendData?.regional_benchmark} />}
