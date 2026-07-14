@@ -92,6 +92,9 @@ interface AnalysisResultsProps {
   /** Scraped listing (Rightmove/OTM) — shown compactly in the deal header
       with a View-details expander for the full listing card. */
   scrapedListing?: ScrapedListing | null
+  /** Lifts the AI refurb result to the page so the Deal Package PDF can
+      include the refurbishment plan exactly as displayed. */
+  onRefurbAnalysis?: (result: RefurbAnalysisResult | null) => void
 }
 
 // Series colours pull from the themed --chart-* tokens so they stay
@@ -1513,6 +1516,7 @@ export function AnalysisResults({
   onNewAnalysis,
   onUpgrade,
   scrapedListing,
+  onRefurbAnalysis,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
 
@@ -1551,6 +1555,7 @@ export function AnalysisResults({
       if (!cancelled) {
         setRefurbAnalysis(result)
         setRefurbLoading(false)
+        onRefurbAnalysis?.(result)
       }
     }, 1500)
 

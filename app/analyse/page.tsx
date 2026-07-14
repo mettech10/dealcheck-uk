@@ -44,6 +44,7 @@ import {
   Share2,
 } from "lucide-react"
 import { DealShareModal } from "@/components/analyse/deal-share-modal"
+import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
 
 // ─── Rental vs Sale Detection ────────────────────────────────────────────────
 type RentalDetection = "rental" | "sale" | "uncertain"
@@ -445,6 +446,10 @@ function AnalysePage() {
   const [showUpgrade, setShowUpgrade] = useState(false)
   // "Share This Deal" branded-card modal
   const [showShareModal, setShowShareModal] = useState(false)
+  // Deal Package PDF — AI refurb result lifted from AnalysisResults so the
+  // report includes the refurbishment plan exactly as displayed.
+  const [dealRefurbAnalysis, setDealRefurbAnalysis] = useState<RefurbAnalysisResult | null>(null)
+  const [pdfGenerating, setPdfGenerating] = useState(false)
   const [referralCode, setReferralCode] = useState<string | null>(null)
 
   // Fetch (or lazily create) the user's referral code for the share card.
@@ -1747,6 +1752,70 @@ function AnalysePage() {
                 </Button>
               )}
 
+              {/* Deal Package — the 8-page branded PDF report. Server
+                  enforces the tier gate; 401/403 opens the upgrade modal. */}
+              {results && formData && (
+                <Button
+                  size="sm"
+                  disabled={pdfGenerating}
+                  onClick={async () => {
+                    setPdfGenerating(true)
+                    try {
+                      const res = await fetch("/api/generate-pdf", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          data: formData,
+                          results,
+                          backendData,
+                          refurbAnalysis: dealRefurbAnalysis,
+                          images: scrapedListing?.images ?? [],
+                          floorplans: scrapedListing?.floorplans ?? [],
+                        }),
+                      })
+                      if (res.status === 401 || res.status === 403) {
+                        setUpgradeReason("pdf_locked")
+                        setShowUpgrade(true)
+                        return
+                      }
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => null)
+                        throw new Error(err?.error || "PDF generation failed")
+                      }
+                      const blob = await res.blob()
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement("a")
+                      const pc = (formData.postcode ?? "UK").replace(/\s/g, "")
+                      a.href = url
+                      a.download = `metalyzi-${pc}-${new Date().toISOString().split("T")[0]}.pdf`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    } catch (err) {
+                      setError(
+                        err instanceof Error
+                          ? err.message
+                          : "PDF generation failed — please try again.",
+                      )
+                    } finally {
+                      setPdfGenerating(false)
+                    }
+                  }}
+                  className="gap-1.5"
+                >
+                  {pdfGenerating ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Generating PDF…
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="size-3.5" />
+                      Download Deal Package
+                    </>
+                  )}
+                </Button>
+              )}
+
               {/* Save Deal — primary unlock signal is runAccessLevel
                   (the credit type spent at run time). If the user
                   paid for this analysis (Pro or credit), save is
@@ -1927,6 +1996,7 @@ function AnalysePage() {
                 onSwitchStrategy={handleStrategySwitch}
                 previousStrategy={previousStrategy}
                 onBack={handleBackStrategy}
+                onRefurbAnalysis={setDealRefurbAnalysis}
                 onNewAnalysis={() => {
                   resetAll()
                   window.scrollTo({ top: 0, behavior: "smooth" })
