@@ -111,7 +111,7 @@ function ImageGallery({ images, floorplans }: { images?: string[]; floorplans?: 
   )
 }
 
-function ListingModal({ listing, onClose }: { listing: ScrapedListing; onClose: () => void }) {
+export function ListingModal({ listing, onClose }: { listing: ScrapedListing; onClose: () => void }) {
   const sourceLabel = listing.source === "rightmove" ? "Rightmove" : listing.source === "onthemarket" ? "OnTheMarket" : "Listing"
 
   return (

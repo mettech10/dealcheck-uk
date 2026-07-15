@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react"
-import { AlertTriangle, Home, Sparkles } from "lucide-react"
+import { AlertTriangle, Home } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -20,12 +20,12 @@ import {
 } from "@/components/ui/card"
 import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
 
-const CONDITION_META: Record<string, { label: string; cls: string }> = {
-  move_in_ready: { label: "Move-in Ready", cls: "text-success" },
-  cosmetic: { label: "Cosmetic Work Only", cls: "text-success" },
-  light_refurb: { label: "Light Refurb Needed", cls: "text-warning" },
-  full_refurb: { label: "Full Refurbishment", cls: "text-destructive" },
-  structural: { label: "Structural Works Required", cls: "text-destructive" },
+const CONDITION_META: Record<string, { label: string; dot: string }> = {
+  move_in_ready: { label: "Move-in Ready", dot: "bg-success" },
+  cosmetic: { label: "Cosmetic Work Only", dot: "bg-success" },
+  light_refurb: { label: "Light Refurb Needed", dot: "bg-warning" },
+  full_refurb: { label: "Full Refurbishment", dot: "bg-destructive" },
+  structural: { label: "Structural Works Required", dot: "bg-destructive" },
 }
 
 const ROOM_DOT: Record<string, string> = {
@@ -35,10 +35,10 @@ const ROOM_DOT: Record<string, string> = {
   poor: "bg-destructive",
 }
 
-const SEVERITY_META: Record<string, { icon: string; cls: string }> = {
-  high: { icon: "🔴", cls: "text-destructive" },
-  medium: { icon: "🟡", cls: "text-warning" },
-  low: { icon: "🟢", cls: "text-success" },
+const SEVERITY_DOT: Record<string, string> = {
+  high: "bg-destructive",
+  medium: "bg-warning",
+  low: "bg-success",
 }
 
 const fmtK = (n: number) =>
@@ -53,7 +53,7 @@ export function AIRefurbEstimator({
 
   const cond = CONDITION_META[analysis.overallCondition] ?? {
     label: analysis.overallCondition,
-    cls: "text-foreground",
+    dot: "bg-muted-foreground",
   }
 
   const totals =
@@ -77,17 +77,13 @@ export function AIRefurbEstimator({
   )
 
   return (
-    <Card className="overflow-hidden border-primary/20 py-0">
+    <Card className="overflow-hidden py-0">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/40 py-4">
         <div>
           <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-            <Home className="size-4 text-primary" />
-            AI Refurb Estimator
-            <span className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-primary">
-              <Sparkles className="size-3" />
-              AI POWERED
-            </span>
+            <Home className="size-4 text-muted-foreground" />
+            Refurb Calculator
           </CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
             Analysed {analysis.photosAnalysed} listing photos · {analysis.region}
@@ -109,7 +105,10 @@ export function AIRefurbEstimator({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Condition detected from photos
           </p>
-          <p className={`mt-1 text-xl font-bold ${cond.cls}`}>{cond.label}</p>
+          <p className="mt-1 flex items-center gap-2 text-lg font-semibold text-foreground">
+            <span className={`size-2.5 rounded-full ${cond.dot}`} />
+            {cond.label}
+          </p>
           <p className="mt-1 text-sm italic text-muted-foreground">
             “{analysis.conditionReasoning}”
           </p>
@@ -117,20 +116,22 @@ export function AIRefurbEstimator({
 
         {/* ── Red flags ─────────────────────────────────────────────── */}
         {analysis.redFlags.length > 0 && (
-          <div className="border-b border-destructive/20 bg-destructive/5 px-6 py-4">
-            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-destructive">
-              <AlertTriangle className="size-4" />
-              Red flags detected
+          <div className="border-b border-border/40 px-6 py-4">
+            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <AlertTriangle className="size-4 text-muted-foreground" />
+              Issues to investigate
             </p>
             <div className="flex flex-col gap-2.5">
               {analysis.redFlags.map((flag, i) => (
                 <div
                   key={i}
-                  className="flex gap-3 rounded-lg border border-destructive/20 bg-card/60 p-3"
+                  className="flex gap-3 rounded-lg border border-border/40 bg-muted/20 p-3"
                 >
-                  <span className="shrink-0 text-base">
-                    {SEVERITY_META[flag.severity]?.icon ?? "🟡"}
-                  </span>
+                  <span
+                    className={`mt-1.5 size-2 shrink-0 rounded-full ${
+                      SEVERITY_DOT[flag.severity] ?? "bg-warning"
+                    }`}
+                  />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground">
                       {flag.flag}
@@ -139,7 +140,7 @@ export function AIRefurbEstimator({
                       {flag.location} — {flag.recommendation}
                     </p>
                     {flag.estimatedCost > 0 && (
-                      <p className="mt-0.5 text-xs font-medium text-warning">
+                      <p className="mt-0.5 text-xs font-medium text-foreground">
                         Est. cost: {fmtK(flag.estimatedCost)}
                       </p>
                     )}
@@ -260,7 +261,7 @@ export function AIRefurbEstimator({
         </div>
 
         {/* ── Totals + recommendation ───────────────────────────────── */}
-        <div className="border-t border-primary/20 bg-primary/5 px-6 py-5">
+        <div className="border-t border-border/40 bg-muted/20 px-6 py-5">
           <div className="mb-4 grid grid-cols-3 gap-4 text-center">
             {[
               { label: "Conservative", value: totals.low },
@@ -274,7 +275,7 @@ export function AIRefurbEstimator({
                 <p
                   className={
                     t.highlight
-                      ? "text-2xl font-extrabold text-primary"
+                      ? "text-2xl font-bold text-foreground"
                       : "text-lg font-bold text-foreground"
                   }
                 >
@@ -285,13 +286,13 @@ export function AIRefurbEstimator({
           </div>
 
           <div className="rounded-lg border border-border/40 bg-card/60 px-4 py-3">
-            <p className="text-xs font-semibold text-primary">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Strategy recommendation
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {analysis.strategyRecommendation.reasoning}
             </p>
-            <div className="mt-2 flex flex-wrap gap-4 text-xs font-semibold text-success">
+            <div className="mt-2 flex flex-wrap gap-4 text-xs font-semibold text-foreground">
               {analysis.strategyRecommendation.estimatedValueAdd > 0 && (
                 <span>
                   +{fmtK(analysis.strategyRecommendation.estimatedValueAdd)} value add

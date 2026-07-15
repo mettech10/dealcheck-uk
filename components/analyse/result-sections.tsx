@@ -47,10 +47,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { getScoreColor } from "./deal-score"
-import {
-  PropertyListingCard,
-  type ScrapedListing,
-} from "./property-listing-card"
+import { ListingModal, type ScrapedListing } from "./property-listing-card"
 import type {
   CalculationResults,
   PropertyFormData,
@@ -164,7 +161,7 @@ export function DealSummaryHeader({
             {listing && (
               <button
                 type="button"
-                onClick={() => setShowDetails((v) => !v)}
+                onClick={() => setShowDetails(true)}
                 className="mt-1 inline-flex w-fit items-center gap-1.5 text-xs font-medium text-primary hover:underline"
               >
                 {sourceLabel && (
@@ -172,7 +169,7 @@ export function DealSummaryHeader({
                     {sourceLabel}
                   </span>
                 )}
-                {showDetails ? "Hide details ▴" : "View details ▾"}
+                View details
               </button>
             )}
           </div>
@@ -197,9 +194,11 @@ export function DealSummaryHeader({
         </div>
       </div>
 
-      {/* Expanded scraped-listing details — the full existing card,
-          untouched, shown on demand instead of permanently. */}
-      {showDetails && listing && <PropertyListingCard listing={listing} />}
+      {/* Full listing details open directly in a modal — no intermediate
+          card expanding under the header. */}
+      {showDetails && listing && (
+        <ListingModal listing={listing} onClose={() => setShowDetails(false)} />
+      )}
     </div>
   )
 }

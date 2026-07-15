@@ -2455,12 +2455,12 @@ export function AnalysisResults({
           tier table — always the fallback when photos are absent or the
           vision call fails. */}
       {refurbLoading ? (
-        <Card className="border-primary/20">
+        <Card>
           <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
-            <Loader2 className="size-10 animate-spin text-primary" />
+            <Loader2 className="size-10 animate-spin text-muted-foreground" />
             <div>
               <p className="font-semibold text-foreground">
-                AI is analysing property photos
+                Analysing property photos
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Estimating refurb costs from the listing photos…
