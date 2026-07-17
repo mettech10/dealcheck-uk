@@ -1138,32 +1138,10 @@ function AIInsightsCard({
   nextSteps?: string[]
   area?: string
 }) {
+  // Risks lead, then strengths, then next steps — the closing-read order
+  // the user asked for (risk → strength → recommendation).
   return (
     <div className="flex flex-col gap-4">
-      {strengths && strengths.length > 0 && (
-        <Card className="border-success/20">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="size-4 text-success" />
-              <CardTitle className="text-sm text-success">Strengths</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2">
-              {strengths.map((s, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 text-sm text-muted-foreground"
-                >
-                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-success" />
-                  {s.replace(/^[•\-]\s*/, "").trim()}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
       {risks && risks.length > 0 && (
         <Card className="border-warning/20">
           <CardHeader className="pb-3">
@@ -1181,6 +1159,30 @@ function AIInsightsCard({
                 >
                   <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-warning" />
                   {r.replace(/^[•\-]\s*/, "").trim()}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {strengths && strengths.length > 0 && (
+        <Card className="border-success/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 text-success" />
+              <CardTitle className="text-sm text-success">Strengths</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-2">
+              {strengths.map((s, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-sm text-muted-foreground"
+                >
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-success" />
+                  {s.replace(/^[•\-]\s*/, "").trim()}
                 </li>
               ))}
             </ul>
@@ -1749,7 +1751,7 @@ export function AnalysisResults({
         {/* ── Left column — main content ─────────────────────────────── */}
         <div className="flex min-w-0 flex-col gap-6">
 
-      {/* ── Area context — location, valuation, HMO market, AI area ── */}
+      {/* ── Area context — location, valuation, HMO market ─────────── */}
       {/* ── Location & Council ──────────────────────────────────────── */}
       {hasLocation && <LocationCard location={backendData?.location} />}
 
@@ -1782,158 +1784,6 @@ export function AnalysisResults({
       {/* ── HMO Room Rents & Area HMO Analysis ──────────────────────── */}
       {data.investmentType === "hmo" && data.postcode && (
         <HmoComparables postcode={data.postcode} />
-      )}
-
-      {/* ── AI Area Analysis — strategy-aware 5-section card ──────────── */}
-      {/* Threads strategy-specific signals (ARV, room rates, SA nightly,
-          DEV unit mix etc) into the Flask Claude prompt so each strategy
-          gets section titles and analytical lens calibrated to that
-          strategy's investor questions — not a one-size BTL-style report. */}
-      {data.postcode && (
-        <AiAreaAnalysisCard
-          postcode={data.postcode}
-          strategy={data.investmentType}
-          dealData={{
-            purchasePrice: data.purchasePrice,
-            grossYield: results.grossYield,
-            monthlyCashFlow: results.monthlyCashFlow,
-            cashOnCashReturn: results.cashOnCashReturn,
-            bedrooms: data.bedrooms,
-            sqft: data.sqft,
-            propertyType: data.propertyType,
-            propertyTypeDetail: data.propertyTypeDetail,
-            tenureType: data.tenureType,
-            condition: data.condition,
-            refurbishmentBudget: data.refurbishmentBudget,
-            // Strategy-specific extras — Flask uses these to enrich the prompt
-            arv: data.arv,
-            arvBasis: data.arvBasis,
-            // HMO
-            roomCount: data.roomCount,
-            avgRoomRate: data.avgRoomRate,
-            hmoLicenceCost: data.hmoLicenceCost,
-            // BRRRR
-            brrrrCapitalRecycledPct: results.brrrrCapitalRecycledPct,
-            brrrrRefurbUpliftRatio: results.brrrrRefurbUpliftRatio,
-            moneyLeftInDeal: results.moneyLeftInDeal,
-            equityGained: results.equityGained,
-            refinancedMortgageAmount: results.refinancedMortgageAmount,
-            // Flip
-            flipPostTaxProfit: results.flipPostTaxProfit,
-            flipPostTaxROI: results.flipPostTaxROI,
-            flipPassesStrict70: results.flipPassesStrict70,
-            flipHoldingMonths: data.flipHoldingMonths,
-            flipOwnershipStructure: data.flipOwnershipStructure,
-            // SA / R2SA
-            saOwnershipType: data.saOwnershipType,
-            saNightlyRate: data.saNightlyRate,
-            saOccupancyRate: data.saOccupancyRate,
-            saMonthlyLease: data.saMonthlyLease,
-            // Development
-            devSiteType: data.devSiteType,
-            devPlanningStatus: data.devPlanningStatus,
-            devUnitMixSize: Array.isArray(data.devUnitMix) ? data.devUnitMix.length : 0,
-            devTotalUnits: Array.isArray(data.devUnitMix)
-              ? data.devUnitMix.reduce((s, u) => s + (Number(u.numberOfUnits) || 0), 0)
-              : 0,
-            devGdv: results.development?.totalGDV,
-            devTdc: results.development?.totalDevelopmentCost,
-            devProfitOnCostPct: results.development?.profitOnCost,
-            devRlv: results.development?.residualLandValue,
-          }}
-          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
-          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
-          marketContext={{
-            soldComparables: backendData?.sold_comparables ?? null,
-            rentComparables: backendData?.rent_comparables ?? null,
-            avgSoldPrice: backendData?.avg_sold_price ?? null,
-            houseValuation: backendData?.house_valuation ?? null,
-          }}
-          fallbackText={backendData?.ai_area}
-        />
-      )}
-
-      {/* ── AI Analysis narrative — flat section, no card box ─────────── */}
-      {showNarrativeCard && (
-        <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" />
-              <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                AI Analysis
-              </h3>
-            </div>
-            {benchmarkTag && (
-              <span className="rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
-                {benchmarkTag}
-              </span>
-            )}
-          </div>
-          {verdictHeadline && (
-            <p className="text-sm font-medium text-foreground">{verdictHeadline}</p>
-          )}
-          <div>
-            {backendData?.ai_verdict ? (
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                {backendData.ai_verdict}
-              </p>
-            ) : aiLoading && !aiText ? (
-              <div className="flex items-center gap-3 py-6 text-muted-foreground">
-                <Loader2 className="size-5 animate-spin text-primary" />
-                <span className="text-sm">Analysing your deal...</span>
-              </div>
-            ) : !aiText && parsedAI.sections.length === 0 ? (
-              // No insights at all — show an explicit message so the user
-              // knows AI generation failed, instead of seeing a blank card.
-              <div className="flex flex-col items-start gap-3 py-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <AlertTriangle className="size-4 text-warning" />
-                  AI insights couldn&apos;t be generated for this analysis.
-                </div>
-                <p className="text-xs text-muted-foreground/80">
-                  This usually clears on a retry. Re-run the analysis or
-                  reload the saved deal to fetch fresh commentary.
-                </p>
-              </div>
-            ) : (
-              <div className="prose prose-sm prose-invert max-w-none">
-                {parsedAI.sections.length > 0 ? (
-                  parsedAI.sections.map((section, i) => (
-                    <div key={i} className="mb-4">
-                      <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
-                        {section.heading.toLowerCase().includes("strength") ? (
-                          <CheckCircle2 className="size-4 text-success" />
-                        ) : section.heading.toLowerCase().includes("risk") ? (
-                          <AlertTriangle className="size-4 text-warning" />
-                        ) : null}
-                        {section.heading}
-                      </h4>
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                        {section.content}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                    {aiText}
-                    {aiLoading && (
-                      <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary" />
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ── Structured AI insights — strengths / risks / next steps ─── */}
-      {hasStructuredInsights && (
-        <AIInsightsCard
-          strengths={backendData?.ai_strengths}
-          risks={backendData?.ai_risks}
-          nextSteps={backendData?.ai_next_steps}
-        />
       )}
 
       {/* ── Unified Deal Score Panel ────────────────────────────────── */}
@@ -2531,6 +2381,161 @@ export function AnalysisResults({
       {/* ── Strategy Suitability ────────────────────────────────────── */}
       {hasStrategies && (
         <StrategySuitability strategies={backendData?.strategy_recommendations} />
+      )}
+
+      {/* ── AI narrative — deliberately LAST: investors want the numbers
+          first; the area analysis, risks, strengths and recommended next
+          steps close the page in that order. ─────────────────────────── */}
+      {/* ── AI Area Analysis — strategy-aware 5-section card ──────────── */}
+      {/* Threads strategy-specific signals (ARV, room rates, SA nightly,
+          DEV unit mix etc) into the Flask Claude prompt so each strategy
+          gets section titles and analytical lens calibrated to that
+          strategy's investor questions — not a one-size BTL-style report. */}
+      {data.postcode && (
+        <AiAreaAnalysisCard
+          postcode={data.postcode}
+          strategy={data.investmentType}
+          dealData={{
+            purchasePrice: data.purchasePrice,
+            grossYield: results.grossYield,
+            monthlyCashFlow: results.monthlyCashFlow,
+            cashOnCashReturn: results.cashOnCashReturn,
+            bedrooms: data.bedrooms,
+            sqft: data.sqft,
+            propertyType: data.propertyType,
+            propertyTypeDetail: data.propertyTypeDetail,
+            tenureType: data.tenureType,
+            condition: data.condition,
+            refurbishmentBudget: data.refurbishmentBudget,
+            // Strategy-specific extras — Flask uses these to enrich the prompt
+            arv: data.arv,
+            arvBasis: data.arvBasis,
+            // HMO
+            roomCount: data.roomCount,
+            avgRoomRate: data.avgRoomRate,
+            hmoLicenceCost: data.hmoLicenceCost,
+            // BRRRR
+            brrrrCapitalRecycledPct: results.brrrrCapitalRecycledPct,
+            brrrrRefurbUpliftRatio: results.brrrrRefurbUpliftRatio,
+            moneyLeftInDeal: results.moneyLeftInDeal,
+            equityGained: results.equityGained,
+            refinancedMortgageAmount: results.refinancedMortgageAmount,
+            // Flip
+            flipPostTaxProfit: results.flipPostTaxProfit,
+            flipPostTaxROI: results.flipPostTaxROI,
+            flipPassesStrict70: results.flipPassesStrict70,
+            flipHoldingMonths: data.flipHoldingMonths,
+            flipOwnershipStructure: data.flipOwnershipStructure,
+            // SA / R2SA
+            saOwnershipType: data.saOwnershipType,
+            saNightlyRate: data.saNightlyRate,
+            saOccupancyRate: data.saOccupancyRate,
+            saMonthlyLease: data.saMonthlyLease,
+            // Development
+            devSiteType: data.devSiteType,
+            devPlanningStatus: data.devPlanningStatus,
+            devUnitMixSize: Array.isArray(data.devUnitMix) ? data.devUnitMix.length : 0,
+            devTotalUnits: Array.isArray(data.devUnitMix)
+              ? data.devUnitMix.reduce((s, u) => s + (Number(u.numberOfUnits) || 0), 0)
+              : 0,
+            devGdv: results.development?.totalGDV,
+            devTdc: results.development?.totalDevelopmentCost,
+            devProfitOnCostPct: results.development?.profitOnCost,
+            devRlv: results.development?.residualLandValue,
+          }}
+          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
+          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
+          marketContext={{
+            soldComparables: backendData?.sold_comparables ?? null,
+            rentComparables: backendData?.rent_comparables ?? null,
+            avgSoldPrice: backendData?.avg_sold_price ?? null,
+            houseValuation: backendData?.house_valuation ?? null,
+          }}
+          fallbackText={backendData?.ai_area}
+        />
+      )}
+
+      {/* ── AI Analysis narrative — flat section, no card box ─────────── */}
+      {showNarrativeCard && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-primary" />
+              <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                AI Analysis
+              </h3>
+            </div>
+            {benchmarkTag && (
+              <span className="rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
+                {benchmarkTag}
+              </span>
+            )}
+          </div>
+          {verdictHeadline && (
+            <p className="text-sm font-medium text-foreground">{verdictHeadline}</p>
+          )}
+          <div>
+            {backendData?.ai_verdict ? (
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                {backendData.ai_verdict}
+              </p>
+            ) : aiLoading && !aiText ? (
+              <div className="flex items-center gap-3 py-6 text-muted-foreground">
+                <Loader2 className="size-5 animate-spin text-primary" />
+                <span className="text-sm">Analysing your deal...</span>
+              </div>
+            ) : !aiText && parsedAI.sections.length === 0 ? (
+              // No insights at all — show an explicit message so the user
+              // knows AI generation failed, instead of seeing a blank card.
+              <div className="flex flex-col items-start gap-3 py-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <AlertTriangle className="size-4 text-warning" />
+                  AI insights couldn&apos;t be generated for this analysis.
+                </div>
+                <p className="text-xs text-muted-foreground/80">
+                  This usually clears on a retry. Re-run the analysis or
+                  reload the saved deal to fetch fresh commentary.
+                </p>
+              </div>
+            ) : (
+              <div className="prose prose-sm prose-invert max-w-none">
+                {parsedAI.sections.length > 0 ? (
+                  parsedAI.sections.map((section, i) => (
+                    <div key={i} className="mb-4">
+                      <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground">
+                        {section.heading.toLowerCase().includes("strength") ? (
+                          <CheckCircle2 className="size-4 text-success" />
+                        ) : section.heading.toLowerCase().includes("risk") ? (
+                          <AlertTriangle className="size-4 text-warning" />
+                        ) : null}
+                        {section.heading}
+                      </h4>
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                        {section.content}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                    {aiText}
+                    {aiLoading && (
+                      <span className="ml-1 inline-block h-4 w-1 animate-pulse bg-primary" />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Structured AI insights — strengths / risks / next steps ─── */}
+      {hasStructuredInsights && (
+        <AIInsightsCard
+          strengths={backendData?.ai_strengths}
+          risks={backendData?.ai_risks}
+          nextSteps={backendData?.ai_next_steps}
+        />
       )}
 
         </div>
