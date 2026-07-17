@@ -945,7 +945,7 @@ export function FlipResults({ data, results, backendData }: FlipResultsProps) {
             heading="ARV Estimator — Refurbished Comparables"
             subheading="Recent sales supporting your After-Repair Value"
             postcode={data.postcode}
-            propertyType={data.propertyType}
+            propertyType={data.propertyTypeDetail ?? data.propertyType}
             bedrooms={data.bedrooms}
             floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
             isNewBuild

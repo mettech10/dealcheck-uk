@@ -2540,6 +2540,7 @@ export function AnalysisResults({
               propertyTypeDetail={data.propertyTypeDetail}
               tenureType={data.tenureType}
               investmentType={data.investmentType}
+              brrrExitStrategy={data.brrrExitStrategy}
               onDataLoaded={setComparablesData}
             />
           )}

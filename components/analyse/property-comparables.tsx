@@ -79,11 +79,25 @@ interface PropertyComparablesProps {
   propertyTypeDetail?: string
   tenureType?: string
   investmentType?: string
+  /** BRRRR exit strategy — a BRRRR deal exiting to HMO needs room-rate
+   *  comparables, not single-let AST rents. */
+  brrrExitStrategy?: "btl" | "hmo" | "sa"
   onDataLoaded?: (data: ComparablesLoadedData) => void
 }
 
 // Strategies that should show rental comparables
 const RENTAL_STRATEGIES = new Set(["btl", "brr", "r2sa", "development"])
+
+/** Land Registry addresses arrive fully upper-cased ("BROOKBANK, LEIGH") —
+ *  normalise to title case, keeping postcodes in caps. */
+function displayAddress(address: string): string {
+  const letters = address.replace(/[^a-zA-Z]/g, "")
+  if (!letters || letters !== letters.toUpperCase()) return address
+  return address
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase())
+    .replace(/\b([a-z]{1,2}\d[a-z\d]?)\s*(\d[a-z]{2})\b/gi, (m) => m.toUpperCase())
+}
 
 export function PropertyComparables({
   postcode,
@@ -93,6 +107,7 @@ export function PropertyComparables({
   propertyTypeDetail,
   tenureType,
   investmentType,
+  brrrExitStrategy,
   onDataLoaded,
 }: PropertyComparablesProps) {
   // Loading-tracker key for the full-page overlay on /analyse. Both
@@ -108,8 +123,13 @@ export function PropertyComparables({
   const [activeTab, setActiveTab] = useState<"sold" | "rental" | "rooms">("sold")
   const [error, setError] = useState<string | null>(null)
 
+  // BRRRR exiting to HMO is operationally an HMO — its rental evidence is
+  // room rates, so surface the Room Listings tab and open on it.
+  const isHmoDeal =
+    investmentType === "hmo" ||
+    (investmentType === "brr" && brrrExitStrategy === "hmo")
   const showRentals = RENTAL_STRATEGIES.has(investmentType || "btl")
-  const showRoomListings = investmentType === "hmo"
+  const showRoomListings = isHmoDeal
 
   // Fetch sold comparables + rental estimate
   useEffect(() => {
@@ -294,6 +314,21 @@ export function PropertyComparables({
             <Home className="inline size-3 mr-1" />
             Sold Prices
           </button>
+          {/* Room rates lead for HMO deals — they're the strategy-matched
+              rental evidence; AST rents stay available behind them. */}
+          {showRoomListings && (
+            <button
+              onClick={() => setActiveTab("rooms")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                activeTab === "rooms"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <BedDouble className="inline size-3 mr-1" />
+              Room Listings
+            </button>
+          )}
           {showRentals && (
             <button
               onClick={() => setActiveTab("rental")}
@@ -310,19 +345,6 @@ export function PropertyComparables({
                   {rentalListings.count}
                 </span>
               )}
-            </button>
-          )}
-          {showRoomListings && (
-            <button
-              onClick={() => setActiveTab("rooms")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                activeTab === "rooms"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <BedDouble className="inline size-3 mr-1" />
-              Room Listings
             </button>
           )}
         </div>
@@ -394,7 +416,7 @@ export function PropertyComparables({
                       <div className="flex flex-col gap-0.5">
                         <span className="font-medium">{formatCurrency(sale.price)}</span>
                         <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                          {sale.street}
+                          {displayAddress(sale.street)}
                         </span>
                         {(sale.propertyType || sale.tenure) && (
                           <div className="flex gap-1">
@@ -458,6 +480,14 @@ export function PropertyComparables({
               {rentalListings?.searchArea ? ` · ${rentalListings.searchArea}` : ""}
               {rentalListings && ` · ${rentalListings.count} found`}
             </CardDescription>
+
+            {isHmoDeal && (
+              <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                These are single-let (AST) rents — useful for refinance
+                underwriting. For your HMO exit, see the Room Listings tab for
+                room-rate comparables.
+              </p>
+            )}
 
             {rentalLoading && (
               <div className="space-y-3">

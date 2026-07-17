@@ -1,18 +1,16 @@
 /**
- * GDV / ARV comparables — combine three sold-price sources into a single,
- * ranked comparable set with £/m² benchmarks and a three-tier ARV:
+ * GDV / ARV comparables — Rightmove sold listings are the PRIMARY evidence
+ * (photos, deep links, matched property type); HM Land Registry is only the
+ * fallback when the scrape returns too little:
  *
- *   1. HM Land Registry comps already embedded in the analysis payload
- *      (`backend.sold_comparables`).
- *   2. The reliable POST /api/comparables/sold route (PropertyData + Land
- *      Registry) — the SAME source that powers the Market Comparables tab,
- *      so the GDV evidence list populates even when the payload carried no
- *      comps and the Rightmove scrape is unavailable.
- *   3. The Rightmove SOLD scraper (POST /api/scraper/sold) for photos.
+ *   1. The Rightmove SOLD scraper (POST /api/scraper/sold), filtered to the
+ *      subject's property type.
+ *   2. Fallback — HM Land Registry comps already embedded in the analysis
+ *      payload (`backend.sold_comparables`) merged with the reliable
+ *      POST /api/comparables/sold route (PropertyData + Land Registry).
  *
- * Every network source fails gracefully and independently: if one returns
- * nothing the others still drive the estimate, so the Development / BRRRR /
- * Flip GDV/ARV sections never break.
+ * Every network source fails gracefully and independently, so the
+ * Development / BRRRR / Flip GDV/ARV sections never break.
  */
 import type { BackendResults } from "./types"
 
@@ -100,6 +98,7 @@ function buildMethodologyText(
   avgPricePerM2: number | null,
   postcode: string,
   isNewBuild: boolean,
+  rightmovePrimary: boolean,
 ): string {
   const district = (postcode || "").split(" ")[0].toUpperCase()
   if (total === 0) {
@@ -109,9 +108,12 @@ function buildMethodologyText(
     ? "filtered toward refurbished / new-build comparables (top £/m²)"
     : "across all recent sales"
   const ppm2 = avgPricePerM2 ? ` at ~£${Math.round(avgPricePerM2).toLocaleString()}/m²` : ""
+  const sources = rightmovePrimary
+    ? "Source: Rightmove sold listings."
+    : "Source: HM Land Registry (Rightmove sold listings unavailable)."
   return (
     `GDV/ARV derived from ${total} comparable sale${total === 1 ? "" : "s"} in ${district} ` +
-    `${basis}${ppm2}. Sources: HM Land Registry + Rightmove sold listings.`
+    `${basis}${ppm2}. ${sources}`
   )
 }
 
@@ -221,8 +223,14 @@ export async function buildGdvComparables(params: {
     })(),
   ])
 
-  // Land Registry (payload) + reliable sold route + Rightmove, de-duplicated.
-  const allComps = deduplicateComps([...landReg, ...apiSold, ...rightmove])
+  // Rightmove sold listings are the primary evidence (photos, deep links,
+  // type-matched). Land Registry only backfills when the scrape is thin:
+  // with 3+ Rightmove comps it stands alone; below that, pad with LR.
+  const rmComps = deduplicateComps(rightmove)
+  const rightmovePrimary = rmComps.length >= 3
+  const allComps = rightmovePrimary
+    ? rmComps
+    : deduplicateComps([...rmComps, ...landReg, ...apiSold])
 
   // For a development we proxy "refurbished/new-build" comps by keeping the
   // top of the £/m² distribution (or anything explicitly new-build).
@@ -270,14 +278,15 @@ export async function buildGdvComparables(params: {
     avgPricePerM2,
     priceRange,
     comparables: allComps,
-    rightmoveComps: rightmove.length,
-    landRegComps: landReg.length + apiSold.length,
+    rightmoveComps: rmComps.length,
+    landRegComps: rightmovePrimary ? 0 : landReg.length + apiSold.length,
     totalComps: allComps.length,
     methodology: buildMethodologyText(
       allComps.length,
       avgPricePerM2,
       params.postcode,
       params.isNewBuild ?? false,
+      rightmovePrimary,
     ),
   }
 }

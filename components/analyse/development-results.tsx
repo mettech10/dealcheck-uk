@@ -480,7 +480,7 @@ export function DevelopmentResults({
         heading="Comparable Sales"
         subheading="Recent sales supporting your GDV estimate"
         postcode={data.postcode}
-        propertyType={data.propertyType}
+        propertyType={data.propertyTypeDetail ?? data.propertyType}
         bedrooms={data.bedrooms}
         floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
         isNewBuild
