@@ -39,6 +39,7 @@ import type {
 } from "@/lib/types"
 import type { ScoreResult } from "@/lib/dealScoring"
 import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 
 // ── Input ───────────────────────────────────────────────────────────────
 
@@ -48,6 +49,10 @@ export interface DealPackageInput {
   backendData?: BackendResults | null
   scoreResult: ScoreResult
   refurbAnalysis?: RefurbAnalysisResult | null
+  /** Live market evidence lifted from the results page — preferred over the
+   *  backendData equivalents, which are usually empty (the page fetches its
+   *  comparables and Article 4 status client-side after render). */
+  evidence?: DealPdfEvidence | null
   /** Prefetched images as data URIs — never remote URLs (deterministic). */
   coverImage?: string | null
   floorplanImage?: string | null
@@ -1137,12 +1142,82 @@ function CompGrid({
   )
 }
 
-function MarketEvidencePage({ input }: { input: DealPackageInput }) {
-  const { data, backendData, meta } = input
-  const rentComps = (backendData?.rent_comparables ?? []).slice(0, 6)
-  const soldComps = (backendData?.sold_comparables ?? []).slice(0, 6)
+/** Land Registry addresses arrive fully upper-cased — title-case for print. */
+function titleCaseAddress(address: string): string {
+  const letters = address.replace(/[^a-zA-Z]/g, "")
+  if (!letters || letters !== letters.toUpperCase()) return address
+  return address
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase())
+    .replace(/\b([a-z]{1,2}\d[a-z\d]?)\s*(\d[a-z]{2})\b/gi, (m) => m.toUpperCase())
+}
 
-  if (rentComps.length === 0 && soldComps.length === 0) return null
+function MarketEvidencePage({ input }: { input: DealPackageInput }) {
+  const { data, backendData, evidence, meta } = input
+
+  // Live evidence lifted from the results page wins; the backendData
+  // payload comps are the legacy fallback (usually empty).
+  const rentComps =
+    evidence?.rentalComps && evidence.rentalComps.length > 0
+      ? evidence.rentalComps.map((c) => ({
+          line1: pdfSafe(titleCaseAddress(c.address)),
+          line2: `${money(c.monthlyRent)}/mo`,
+          line3: [c.bedrooms ? `${c.bedrooms} bed` : null, pdfSafe(c.propertyType)]
+            .filter(Boolean)
+            .join(" · "),
+        }))
+      : (backendData?.rent_comparables ?? []).slice(0, 6).map((c) => ({
+          line1: pdfSafe(c.address),
+          line2: `${money(c.monthly_rent)}/mo`,
+          line3: [
+            c.bedrooms ? `${c.bedrooms} bed` : null,
+            c.type,
+            c.source ?? "Rightmove",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }))
+
+  const soldComps =
+    evidence?.soldComps && evidence.soldComps.length > 0
+      ? evidence.soldComps.map((c) => ({
+          line1: pdfSafe(titleCaseAddress(c.address)),
+          line2: money(c.price),
+          line3: [c.date, pdfSafe(c.propertyType), pdfSafe(c.tenure), "Land Registry"]
+            .filter(Boolean)
+            .join(" · "),
+        }))
+      : (backendData?.sold_comparables ?? []).slice(0, 6).map((c) => ({
+          line1: pdfSafe(titleCaseAddress(c.address)),
+          line2: money(c.price),
+          line3: [
+            c.date,
+            c.bedrooms ? `${c.bedrooms} bed` : null,
+            c.type,
+            c.source ?? "Land Registry",
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }))
+
+  const arvComps = (evidence?.arvComps ?? []).map((c) => ({
+    line1: pdfSafe(titleCaseAddress(c.address)),
+    line2: money(c.price),
+    line3: [
+      c.dateSold,
+      c.bedrooms ? `${c.bedrooms} bed` : null,
+      pdfSafe(c.propertyType),
+      c.source === "rightmove_sold" ? "Rightmove sold" : "Land Registry",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  }))
+
+  if (rentComps.length === 0 && soldComps.length === 0 && arvComps.length === 0)
+    return null
+
+  const rentalSummary = evidence?.rentalSummary
+  const arvSummary = evidence?.arvSummary
 
   return (
     <Page size="A4" style={s.lightPage}>
@@ -1155,21 +1230,13 @@ function MarketEvidencePage({ input }: { input: DealPackageInput }) {
           </Text>
           <Text style={[s.bodyMuted, { marginBottom: 8 }]}>
             The following comparables support the rental assumption of{" "}
-            {money(data.monthlyRent)}/month:
+            {money(data.monthlyRent)}/month
+            {rentalSummary
+              ? ` (local average ${money(rentalSummary.averageRent)}/mo across ${rentalSummary.count} listings, range ${money(rentalSummary.minRent)}-${money(rentalSummary.maxRent)})`
+              : ""}
+            :
           </Text>
-          <CompGrid
-            items={rentComps.map((c) => ({
-              line1: pdfSafe(c.address),
-              line2: `${money(c.monthly_rent)}/mo`,
-              line3: [
-                c.bedrooms ? `${c.bedrooms} bed` : null,
-                c.type,
-                c.source ?? "Rightmove",
-              ]
-                .filter(Boolean)
-                .join(" · "),
-            }))}
-          />
+          <CompGrid items={rentComps} />
         </>
       ) : null}
 
@@ -1180,22 +1247,34 @@ function MarketEvidencePage({ input }: { input: DealPackageInput }) {
           </Text>
           <Text style={[s.bodyMuted, { marginBottom: 8 }]}>
             The following sold prices support the purchase price assessment of{" "}
-            {money(data.purchasePrice)}:
+            {money(data.purchasePrice)}
+            {evidence?.soldAverage
+              ? ` (local average sold price ${money(evidence.soldAverage)})`
+              : ""}
+            :
           </Text>
-          <CompGrid
-            items={soldComps.map((c) => ({
-              line1: c.address,
-              line2: money(c.price),
-              line3: [
-                c.date,
-                c.bedrooms ? `${c.bedrooms} bed` : null,
-                c.type,
-                c.source ?? "Land Registry",
-              ]
-                .filter(Boolean)
-                .join(" · "),
-            }))}
-          />
+          <CompGrid items={soldComps} />
+        </>
+      ) : null}
+
+      {arvComps.length > 0 ? (
+        <>
+          <Text style={[s.sectionLabel, { marginTop: 12 }]}>
+            ARV comparable sales
+          </Text>
+          <Text style={[s.bodyMuted, { marginBottom: 8 }]}>
+            Recent sales supporting the After-Repair Value
+            {data.arv ? ` of ${money(data.arv)}` : ""}
+            {arvSummary?.avgPrice
+              ? ` (average ${money(arvSummary.avgPrice)} across ${arvSummary.count} comparables${
+                  arvSummary.low && arvSummary.high
+                    ? `, range ${money(arvSummary.low)}-${money(arvSummary.high)}`
+                    : ""
+                })`
+              : ""}
+            :
+          </Text>
+          <CompGrid items={arvComps} />
         </>
       ) : null}
 
@@ -1217,18 +1296,58 @@ const REGULATORY_NOTES: Record<string, string> = {
 }
 
 function RiskPlanningPage({ input }: { input: DealPackageInput }) {
-  const { data, backendData, meta } = input
+  const { data, backendData, evidence, meta } = input
   const a4 = backendData?.article_4
-  const active = a4?.is_article_4 === true
-  const known = a4?.known !== false
   const flags = backendData?.risk_flags ?? []
 
-  const badgeColour = !known ? B.warning : active ? B.negative : B.positive
-  const badgeText = !known
-    ? "ARTICLE 4 — UNKNOWN"
-    : active
-    ? "ARTICLE 4 — ACTIVE"
-    : "ARTICLE 4 — NOT IN FORCE"
+  // Live Article 4 check from the results page wins; the backendData
+  // payload flag is the legacy fallback.
+  const live = evidence?.article4
+  const status: "active" | "proposed" | "none" | "unknown" = live
+    ? live.status
+    : a4?.known === false
+    ? "unknown"
+    : a4?.is_article_4 === true
+    ? "active"
+    : a4
+    ? "none"
+    : "unknown"
+
+  const active = status === "active"
+  const known = status !== "unknown"
+
+  const badgeColour =
+    status === "active"
+      ? B.negative
+      : status === "proposed" || status === "unknown"
+      ? B.warning
+      : B.positive
+  const badgeText =
+    status === "active"
+      ? "ARTICLE 4 — ACTIVE"
+      : status === "proposed"
+      ? "ARTICLE 4 — PROPOSED"
+      : status === "none"
+      ? "ARTICLE 4 — NOT IN FORCE"
+      : "ARTICLE 4 — UNKNOWN"
+
+  const liveNarrative = live
+    ? [
+        pdfSafe(live.summary),
+        live.councils && live.councils.length > 0
+          ? `Council${live.councils.length > 1 ? "s" : ""}: ${pdfSafe(live.councils.join(", "))}.`
+          : null,
+        status === "active"
+          ? "Planning permission is required for HMO conversion (C3 to C4), adding cost, time and uncertainty to HMO strategies."
+          : status === "proposed"
+          ? "An Article 4 Direction has been proposed for this area — if confirmed, HMO conversion (C3 to C4) will need full planning permission. Factor the risk into any HMO exit."
+          : status === "none"
+          ? "Subject to normal planning rules, C3 to C4 HMO conversion falls under permitted development rights."
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : null
 
   return (
     <Page size="A4" style={s.lightPage}>
@@ -1258,7 +1377,8 @@ function RiskPlanningPage({ input }: { input: DealPackageInput }) {
         </Text>
       </View>
       <Text style={s.body}>
-        {pdfSafe(a4?.note) ||
+        {liveNarrative ||
+          pdfSafe(a4?.note) ||
           pdfSafe(a4?.advice) ||
           (active
             ? `An Article 4 Direction is in force in this area${a4?.council ? ` (${a4.council})` : ""}. Planning permission is required for HMO conversion (C3 to C4), adding cost, time and uncertainty to HMO strategies.`

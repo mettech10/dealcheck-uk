@@ -20,6 +20,7 @@ import type {
   PropertyFormData,
 } from "@/lib/types"
 import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 
 /**
  * Deal Packaging Engine — POST /api/generate-pdf
@@ -96,6 +97,9 @@ export async function POST(request: Request) {
     results?: CalculationResults
     backendData?: BackendResults | null
     refurbAnalysis?: RefurbAnalysisResult | null
+    /** Live market evidence lifted from the results page (sold/rental/ARV
+     *  comparables + Article 4) — preferred over backendData equivalents. */
+    evidence?: DealPdfEvidence | null
     images?: string[]
     floorplans?: string[]
     preparedFor?: string | null
@@ -135,6 +139,7 @@ export async function POST(request: Request) {
       backendData: backendData ?? null,
       scoreResult,
       refurbAnalysis: body.refurbAnalysis ?? null,
+      evidence: body.evidence ?? null,
       coverImage,
       floorplanImage,
       logoImage,
