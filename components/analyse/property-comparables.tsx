@@ -18,6 +18,8 @@ interface ComparableSale {
   town?: string
   propertyType?: string
   tenure?: string
+  bedrooms?: number | null
+  listingUrl?: string | null
 }
 
 interface SoldData {
@@ -70,6 +72,9 @@ export interface ComparablesLoadedData {
   rentRange: { low: number; high: number } | null
   grossYield: number | null
   postcode: string
+  /** Where the sold comps (and therefore the average) came from —
+   *  "rightmove_sold" (primary) or "propertydata"/Flask (Land Registry). */
+  soldSource?: string
 }
 
 interface PropertyComparablesProps {
@@ -121,6 +126,7 @@ export function PropertyComparables({
   // fetch — mark both done together so the overlay can lift.
   const { markDone } = useLoadingTracker()
   const [soldData, setSoldData] = useState<SoldData | null>(null)
+  const [soldSource, setSoldSource] = useState<string>("")
   const [rentalEstimate, setRentalEstimate] = useState<RentalEstimate | null>(null)
   const [rentalListings, setRentalListings] = useState<RentalData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -182,6 +188,7 @@ export function PropertyComparables({
             count: soldJson.count || 0,
           }
           setSoldData(d)
+          setSoldSource(soldJson.source || "")
           loadedSold = d
           // Lift the sold list for the Deal Package PDF.
           onEvidence?.({
@@ -193,6 +200,10 @@ export function PropertyComparables({
                 date: sale.date,
                 propertyType: sale.propertyType,
                 tenure: sale.tenure,
+                source:
+                  soldJson.source === "rightmove_sold"
+                    ? "Rightmove sold"
+                    : "Land Registry",
               })),
             soldAverage: d.average ?? null,
           })
@@ -219,6 +230,7 @@ export function PropertyComparables({
             rentRange: loadedRental?.range ?? null,
             grossYield,
             postcode,
+            soldSource: soldJson.source || undefined,
           })
         }
 
@@ -389,7 +401,9 @@ export function PropertyComparables({
         {activeTab === "sold" && (
           <>
             <CardDescription className="text-xs">
-              Recent sales from Land Registry
+              {soldSource === "rightmove_sold"
+                ? "Recent sales from Rightmove sold listings"
+                : "Recent sales from Land Registry"}
               {propertyTypeDetail ? ` · ${propertyTypeDetail.replace(/-/g, " ")}` : ""}
               {tenureType ? ` · ${tenureType}` : ""}
               {soldData && soldData.radiusMiles && soldData.radiusMiles > 0
@@ -467,12 +481,25 @@ export function PropertyComparables({
                           </div>
                         )}
                       </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {new Date(sale.date).toLocaleDateString("en-GB", {
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(sale.date).toLocaleDateString("en-GB", {
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                        {sale.listingUrl && (
+                          <a
+                            href={sale.listingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:text-primary/80"
+                            title="View sold record on Rightmove"
+                          >
+                            <ExternalLink className="size-3" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

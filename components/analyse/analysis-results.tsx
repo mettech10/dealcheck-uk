@@ -901,12 +901,17 @@ function HouseValuationCard({
   const yieldLabel = isHmo ? "Est. HMO Gross Yield" : "Gross Yield (area avg)"
   const soldCount = comparables?.soldCount ?? 0
 
-  // Source label
+  // Source label — the sold average now comes from Rightmove sold listings
+  // when the scrape found enough comps, Land Registry otherwise.
+  const soldSourceName =
+    comparables?.soldSource === "rightmove_sold"
+      ? "Rightmove sold listings"
+      : "HM Land Registry"
   const sourceLabel = backendEstimate
     ? (valuation?.source || "PropertyData API")
     : soldCount > 0
-      ? `HM Land Registry · ${soldCount} sales in last 24 months`
-      : "HM Land Registry"
+      ? `${soldSourceName} · ${soldCount} sales in last 24 months`
+      : soldSourceName
 
   // Loading state — comparables haven't loaded yet
   if (isLoading) {

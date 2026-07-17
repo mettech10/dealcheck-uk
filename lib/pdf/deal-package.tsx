@@ -1183,7 +1183,12 @@ function MarketEvidencePage({ input }: { input: DealPackageInput }) {
       ? evidence.soldComps.map((c) => ({
           line1: pdfSafe(titleCaseAddress(c.address)),
           line2: money(c.price),
-          line3: [c.date, pdfSafe(c.propertyType), pdfSafe(c.tenure), "Land Registry"]
+          line3: [
+            c.date,
+            pdfSafe(c.propertyType),
+            pdfSafe(c.tenure),
+            c.source ?? "Land Registry",
+          ]
             .filter(Boolean)
             .join(" · "),
         }))

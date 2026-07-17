@@ -19,6 +19,8 @@ export interface PdfSoldComp {
   date?: string
   propertyType?: string
   tenure?: string
+  /** Display source, e.g. "Rightmove sold" or "Land Registry". */
+  source?: string
 }
 
 export interface PdfRentalComp {
