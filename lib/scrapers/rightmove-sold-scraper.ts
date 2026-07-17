@@ -18,7 +18,11 @@
  * These rows feed the Development / BRRRR / Flip ARV evidence sections and,
  * unlike Land Registry, carry photos + a deep link to the sold record.
  */
-import { BrightDataClient } from "./brightdata-client"
+import {
+  connectBrightData,
+  newBrightDataContext,
+  closeBrightData,
+} from "./brightdata-browser"
 
 export interface RightmoveSoldListing {
   address: string
@@ -70,15 +74,15 @@ export async function scrapeRightmoveSold(
 
   console.log("[RM-Sold] scrape", { district, searchUrl, params })
 
-  const browser = await BrightDataClient.connect()
+  const browser = await connectBrightData()
   if (!browser) {
     // Not configured / unavailable → graceful no-op.
     return []
   }
 
   try {
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1280, height: 800 })
+    const context = await newBrightDataContext(browser)
+    const page = await context.newPage()
 
     // The data model is in the initial HTML — no need to wait for hydration.
     await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 30000 })
@@ -86,7 +90,7 @@ export async function scrapeRightmoveSold(
     const title = await page.title()
     console.log("[RM-Sold] page title:", title)
 
-    const rawProps = await page.evaluate<RawSoldProperty[]>(() => {
+    const rawProps = await page.evaluate((): RawSoldProperty[] => {
       /* eslint-disable @typescript-eslint/no-explicit-any */
       const out: RawSoldProperty[] = []
 
@@ -182,7 +186,7 @@ export async function scrapeRightmoveSold(
       return out
     })
 
-    await browser.close()
+    await closeBrightData(browser)
 
     const parsed: RightmoveSoldListing[] = rawProps
       .map((l) => ({
@@ -218,11 +222,7 @@ export async function scrapeRightmoveSold(
       "[RM-Sold] scrape error:",
       err instanceof Error ? err.message : String(err),
     )
-    try {
-      await browser.close()
-    } catch {
-      /* ignore */
-    }
+    await closeBrightData(browser)
     return []
   }
 }
