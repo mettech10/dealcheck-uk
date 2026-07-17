@@ -6,8 +6,17 @@
  * config, or empty result returns `[]` so the GDV/ARV flow falls back to
  * HM Land Registry comparables without a broken UI.
  *
+ * Rightmove's house-prices pages are a React Router app that streams its
+ * data model into `window.__reactRouterContext.streamController.enqueue("…")`
+ * inline scripts using the same index-encoding as `__PAGE_MODEL` on listing
+ * pages (numbers inside containers are pointers into a flat array; object
+ * keys are `_<idx>` pointers to their key string). We re-parse those script
+ * tags in-page and decode `loaderData → searchResults.properties`, which
+ * carries address, type, beds, photo, deep link and the full transaction
+ * history per property — no fragile CSS selectors.
+ *
  * These rows feed the Development / BRRRR / Flip ARV evidence sections and,
- * unlike Land Registry, can carry photos + a deep link to the listing.
+ * unlike Land Registry, carry photos + a deep link to the sold record.
  */
 import { BrightDataClient } from "./brightdata-client"
 
@@ -31,14 +40,17 @@ export interface RightmoveSoldListing {
   daysOnMarket?: number
 }
 
-interface RawCard {
+/** Raw shape lifted out of the page model in evaluate(). */
+interface RawSoldProperty {
   address: string
-  priceText: string
-  dateSold: string
   propertyType: string
-  bedsText: string
-  thumbnailUrl: string | null
-  listingPath: string | null
+  bedrooms: number | null
+  imageUrl: string | null
+  detailUrl: string
+  displayPrice: string
+  dateSold: string
+  tenure: string
+  newBuild: boolean
 }
 
 export interface ScrapeRightmoveSoldParams {
@@ -68,99 +80,136 @@ export async function scrapeRightmoveSold(
     const page = await browser.newPage()
     await page.setViewport({ width: 1280, height: 800 })
 
-    await page.goto(searchUrl, { waitUntil: "networkidle0", timeout: 30000 })
-
-    // Wait for any of the (frequently-changing) result containers.
-    await page
-      .waitForSelector(
-        '.sold-prices-res, [data-test="house-prices-result"], .propertyCard',
-        { timeout: 15000 },
-      )
-      .catch(() => null)
+    // The data model is in the initial HTML — no need to wait for hydration.
+    await page.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 30000 })
 
     const title = await page.title()
     console.log("[RM-Sold] page title:", title)
 
-    const cards = await page.evaluate<RawCard[]>(() => {
-      const results: RawCard[] = []
-      // Try multiple selectors — Rightmove rotates their markup.
-      const nodes = document.querySelectorAll(
-        ".soldPropertiesDescription, " +
-          '[data-test="house-prices-result"], ' +
-          ".propertyCard--sold, " +
-          ".sold-house-prices__list-item",
-      )
-      nodes.forEach((card) => {
-        try {
-          const price = card
-            .querySelector('.price, [data-test="price"], .propertyCard-priceValue')
-            ?.textContent?.trim()
-          const address = card
-            .querySelector('.address, [data-test="address"], .propertyCard-address')
-            ?.textContent?.trim()
-          const date = card
-            .querySelector('.dateSold, [data-test="sold-date"], .propertyCard-details')
-            ?.textContent?.trim()
-          const type = card
-            .querySelector('.propertyType, [data-test="type"]')
-            ?.textContent?.trim()
-          const beds = card
-            .querySelector('.beds, [data-test="beds"], .propertyCard-details--type')
-            ?.textContent?.trim()
-          const img = card
-            .querySelector(
-              'img.propertyCard-img, .propertyCard-img img, [data-test="img"] img',
-            )
-            ?.getAttribute("src")
-          const link = card
-            .querySelector(
-              'a[href*="/house-prices/"], a[href*="/property-for-sale/"]',
-            )
-            ?.getAttribute("href")
+    const rawProps = await page.evaluate<RawSoldProperty[]>(() => {
+      /* eslint-disable @typescript-eslint/no-explicit-any */
+      const out: RawSoldProperty[] = []
 
-          if (price && address) {
-            results.push({
-              address,
-              priceText: price,
-              dateSold: date ?? "",
-              propertyType: type ?? "",
-              bedsText: beds ?? "",
-              thumbnailUrl: img ?? null,
-              listingPath: link ?? null,
-            })
+      // Decode Rightmove's index encoding (same family as __PAGE_MODEL):
+      // the payload is a flat JSON array; numbers inside containers point at
+      // other entries; object keys are "_<idx>" pointers to key strings;
+      // negatives are sentinels (undefined/NaN/±Infinity) — mapped to null.
+      const decodeIndexed = (arr: any[]): any => {
+        const cache = new Map<number, any>()
+        const decode = (i: any): any => {
+          if (typeof i !== "number") return i
+          if (i < 0) return null
+          if (cache.has(i)) return cache.get(i)
+          const node = arr[i]
+          if (node === null || typeof node !== "object") {
+            cache.set(i, node)
+            return node
           }
-        } catch {
-          // Skip malformed cards.
+          if (Array.isArray(node)) {
+            const list: any[] = []
+            cache.set(i, list)
+            for (const el of node) list.push(decode(el))
+            return list
+          }
+          const obj: Record<string, any> = {}
+          cache.set(i, obj)
+          for (const [k, v] of Object.entries(node)) {
+            const key = /^_\d+$/.test(k) ? decode(parseInt(k.slice(1), 10)) : k
+            obj[String(key)] = decode(v)
+          }
+          return obj
         }
-      })
-      return results
+        return decode(0)
+      }
+
+      try {
+        // Pull the streamed chunk that carries the search results out of the
+        // inline <script> tags (they persist in the DOM after execution).
+        let payload: string | null = null
+        const scripts = Array.from(
+          document.querySelectorAll("script:not([src])"),
+        )
+        for (const s of scripts) {
+          const text = s.textContent || ""
+          if (!text.includes("streamController.enqueue")) continue
+          const re = /streamController\.enqueue\("((?:[^"\\]|\\.)*)"\)/g
+          let m: RegExpExecArray | null
+          while ((m = re.exec(text))) {
+            let chunk: string
+            try {
+              chunk = JSON.parse('"' + m[1] + '"')
+            } catch {
+              continue
+            }
+            if (chunk.includes('"searchResults"')) {
+              payload = chunk
+              break
+            }
+          }
+          if (payload) break
+        }
+        if (!payload) return out
+
+        const root = decodeIndexed(JSON.parse(payload.split("\n")[0]))
+        const loaderData = root?.loaderData ?? {}
+        const routeKey = Object.keys(loaderData).find((k) =>
+          k.includes("house-prices"),
+        )
+        const properties: any[] =
+          (routeKey && loaderData[routeKey]?.searchResults?.properties) || []
+
+        for (const p of properties) {
+          const tx = p?.latestTransaction ?? p?.transactions?.[0]
+          if (!p?.address || !tx?.displayPrice) continue
+          out.push({
+            address: String(p.address),
+            propertyType: String(p.propertyType ?? ""),
+            bedrooms: typeof p.bedrooms === "number" ? p.bedrooms : null,
+            imageUrl:
+              p.imageInfo?.mediumImageUrl ??
+              p.imageInfo?.imageUrl ??
+              null,
+            detailUrl: String(p.detailUrl ?? ""),
+            displayPrice: String(tx.displayPrice),
+            dateSold: String(tx.dateSold ?? ""),
+            tenure: String(tx.tenure ?? ""),
+            newBuild: Boolean(tx.newBuild),
+          })
+        }
+      } catch {
+        // Malformed model → empty; caller falls back to Land Registry.
+      }
+      return out
     })
 
     await browser.close()
 
-    const parsed: RightmoveSoldListing[] = cards
-      .map((l) => {
-        const price = parsePrice(l.priceText)
-        return {
-          address: l.address,
-          price,
-          dateSold: parseSoldDate(l.dateSold),
-          propertyType: l.propertyType,
-          bedrooms: parseBedrooms(l.bedsText),
-          floorSizeM2: null,
-          floorSizeSqft: null,
-          pricePerM2: null,
-          pricePerSqft: null,
-          tenure: "unknown",
-          isNewBuild: l.propertyType?.toLowerCase().includes("new") ?? false,
-          images: l.thumbnailUrl ? [l.thumbnailUrl] : [],
-          thumbnailUrl: l.thumbnailUrl,
-          listingUrl: l.listingPath
-            ? `https://www.rightmove.co.uk${l.listingPath}`
-            : "",
-        }
-      })
+    const parsed: RightmoveSoldListing[] = rawProps
+      .map((l) => ({
+        address: l.address,
+        price: parsePrice(l.displayPrice),
+        dateSold: l.dateSold,
+        propertyType: prettyType(l.propertyType),
+        bedrooms: l.bedrooms,
+        floorSizeM2: null,
+        floorSizeSqft: null,
+        pricePerM2: null,
+        pricePerSqft: null,
+        tenure: l.tenure ? l.tenure.toLowerCase() : "unknown",
+        isNewBuild: l.newBuild,
+        images: l.imageUrl ? [l.imageUrl] : [],
+        thumbnailUrl: l.imageUrl,
+        listingUrl: l.detailUrl,
+      }))
       .filter((l) => l.price > 0)
+      // Bedrooms aren't a server-side filter on house-prices pages — apply
+      // the band here, keeping unknown-bedroom rows (often still relevant).
+      .filter(
+        (l) =>
+          l.bedrooms == null ||
+          ((params.minBedrooms == null || l.bedrooms >= params.minBedrooms) &&
+            (params.maxBedrooms == null || l.bedrooms <= params.maxBedrooms)),
+      )
 
     console.log("[RM-Sold] results:", { found: parsed.length, sample: parsed[0] })
     return parsed.slice(0, params.maxResults ?? 10)
@@ -185,26 +234,48 @@ function parsePrice(text: string): number {
   return parseInt(text.replace(/[^0-9]/g, ""), 10) || 0
 }
 
-function parseSoldDate(text: string): string {
-  if (!text) return ""
-  // "14 Jan 2024" or "2024-01-14"
-  const match = text.match(/\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2}/)
-  return match?.[0] ?? text
+function prettyType(rmType: string): string {
+  const map: Record<string, string> = {
+    DETACHED: "Detached",
+    SEMI_DETACHED: "Semi-detached",
+    TERRACED: "Terraced",
+    FLAT: "Flat",
+    OTHER: "Other",
+  }
+  return map[rmType] ?? rmType.toLowerCase().replace(/_/g, " ")
 }
 
-function parseBedrooms(text: string): number | null {
-  if (!text) return null
-  const match = text.match(/(\d+)\s*bed/i)
-  return match ? parseInt(match[1], 10) : null
+/**
+ * Map our form property types to Rightmove's house-prices filter values.
+ * Unmappable types (bungalow, other, coarse "house") search all types —
+ * a wrong filter is worse than none.
+ */
+function rmPropertyTypeFilter(type: string | undefined): string | null {
+  switch ((type ?? "").toLowerCase()) {
+    case "detached":
+      return "DETACHED"
+    case "semi-detached":
+      return "SEMI_DETACHED"
+    case "terraced":
+    case "end-of-terrace":
+      return "TERRACED"
+    case "flat":
+    case "flat-apartment":
+    case "maisonette":
+    case "apartment":
+      return "FLAT"
+    default:
+      return null
+  }
 }
 
 function buildSoldSearchUrl(district: string, params: ScrapeRightmoveSoldParams): string {
   const base = `https://www.rightmove.co.uk/house-prices/${district.toLowerCase()}.html`
-  const query = new URLSearchParams({
-    soldIn: String(params.soldInMonths ?? 24),
-    ...(params.propertyType ? { propertyTypes: params.propertyType } : {}),
-    ...(params.minBedrooms ? { minBedrooms: String(params.minBedrooms) } : {}),
-    ...(params.maxBedrooms ? { maxBedrooms: String(params.maxBedrooms) } : {}),
-  })
+  // The page filters by whole years: 1 / 2 / 3 / 5 / 10.
+  const months = params.soldInMonths ?? 24
+  const year = months <= 12 ? 1 : months <= 24 ? 2 : months <= 36 ? 3 : months <= 60 ? 5 : 10
+  const query = new URLSearchParams({ year: String(year), area: "0" })
+  const typeFilter = rmPropertyTypeFilter(params.propertyType)
+  if (typeFilter) query.set("propertyType", typeFilter)
   return `${base}?${query.toString()}`
 }

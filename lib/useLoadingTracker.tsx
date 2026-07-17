@@ -173,17 +173,22 @@ export function LoadingTrackerProvider({ children }: { children: ReactNode }) {
  * returns a no-op so child components remain reusable outside the
  * analyse flow.
  */
+// Module-level so every render returns the SAME object — consumers put
+// `markDone` in effect dep arrays, and a fresh identity per render would
+// re-trigger those effects on every render.
+const NOOP_TRACKER: TrackerContextValue = {
+  status: initialStatus(),
+  isFullyLoaded: true,
+  active: false,
+  markDone: (_: SourceKey) => {},
+  skip: (_: SourceKey[]) => {},
+  start: () => {},
+  stop: () => {},
+}
+
 export function useLoadingTracker() {
   const ctx = useContext(TrackerContext)
   if (ctx) return ctx
   // No-op fallback so components stay rentable outside /analyse.
-  return {
-    status: initialStatus(),
-    isFullyLoaded: true,
-    active: false,
-    markDone: (_: SourceKey) => {},
-    skip: (_: SourceKey[]) => {},
-    start: () => {},
-    stop: () => {},
-  } satisfies TrackerContextValue
+  return NOOP_TRACKER
 }

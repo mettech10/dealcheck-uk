@@ -10,6 +10,7 @@
  * comps show a house-icon placeholder. Always attributes both sources.
  */
 import { useEffect, useState } from "react"
+import { Home } from "lucide-react"
 import type { BackendResults } from "@/lib/types"
 import {
   buildGdvComparables,
@@ -45,6 +46,18 @@ function SourceBadge({ source }: { source: GdvComparable["source"] }) {
   )
 }
 
+/** Land Registry addresses arrive fully upper-cased ("BROOKBANK") —
+ *  normalise to title case so the cards read professionally. */
+function displayAddress(address: string): string {
+  const letters = address.replace(/[^a-zA-Z]/g, "")
+  if (!letters || letters !== letters.toUpperCase()) return address
+  return address
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase())
+    // Postcodes back to caps (e.g. "Wn7 5dd" → "WN7 5DD")
+    .replace(/\b([a-z]{1,2}\d[a-z\d]?)\s*(\d[a-z]{2})\b/gi, (m) => m.toUpperCase())
+}
+
 function CompCard({ comp }: { comp: GdvComparable }) {
   const ppm2 =
     comp.floorSizeM2 && comp.price ? Math.round(comp.price / comp.floorSizeM2) : null
@@ -63,13 +76,15 @@ function CompCard({ comp }: { comp: GdvComparable }) {
           }}
         />
       ) : (
-        <div className="flex size-[60px] shrink-0 items-center justify-center rounded bg-muted text-muted-foreground" style={{ width: 80, height: 60 }}>
-          🏠
+        <div className="flex size-[60px] shrink-0 items-center justify-center rounded bg-muted/60" style={{ width: 80, height: 60 }}>
+          <Home className="size-4 text-muted-foreground/50" />
         </div>
       )}
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm font-medium text-foreground">{comp.address}</span>
+        <span className="truncate text-sm font-medium text-foreground">
+          {displayAddress(comp.address)}
+        </span>
         <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
           <span className="font-semibold text-foreground">{formatCurrency(comp.price)}</span>
           {comp.dateSold && <span>· Sold {comp.dateSold}</span>}
@@ -205,13 +220,13 @@ export function GdvComparables({
             ))}
           </div>
 
-          {/* Source attribution */}
+          {/* Source attribution — Rightmove is primary; LR is the fallback. */}
           <p className="text-[11px] text-muted-foreground/80">
-            Sources: HM Land Registry
-            {result.rightmoveComps > 0 ? " + Rightmove sold listings" : ""}
-            {result.rightmoveComps > 0
-              ? ` · ${result.rightmoveComps} with photos`
-              : ""}
+            {result.landRegComps === 0
+              ? "Source: Rightmove sold listings"
+              : result.rightmoveComps === 0
+              ? "Source: HM Land Registry"
+              : "Sources: Rightmove sold listings + HM Land Registry"}
           </p>
         </>
       ) : null}

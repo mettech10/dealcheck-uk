@@ -101,12 +101,7 @@ export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) 
       : exit === "sa"
       ? "Serviced Accommodation"
       : "Single-Let (BTL)"
-  const exitBadgeClass =
-    exit === "hmo"
-      ? "bg-purple-500/15 text-purple-700 border-purple-500/30 dark:text-purple-300"
-      : exit === "sa"
-      ? "bg-sky-500/15 text-sky-700 border-sky-500/30 dark:text-sky-300"
-      : "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-300"
+  const exitBadgeClass = "border-border/60 bg-muted/40 text-muted-foreground"
 
   // Phase-4 monthly figures (post-refinance rental position)
   const p4Income = results.monthlyIncome
@@ -136,10 +131,10 @@ export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) 
 
   const verdictColor =
     score.total >= 70
-      ? "bg-green-500/15 text-green-700 border-green-500/30 dark:text-green-400"
+      ? "bg-success/10 text-success border-success/30"
       : score.total >= 50
-      ? "bg-amber-500/15 text-amber-700 border-amber-500/30 dark:text-amber-400"
-      : "bg-red-500/15 text-red-700 border-red-500/30 dark:text-red-400"
+      ? "bg-warning/10 text-warning border-warning/30"
+      : "bg-destructive/10 text-destructive border-destructive/30"
 
   // Browser print-to-PDF: toggle body class so @media print CSS hides
   // all non-BRRRR chrome, then call window.print(). Users save as PDF
@@ -525,21 +520,19 @@ export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) 
       </Card>
 
       {/* ── 7. Verdict Card ─────────────────────────────────────────── */}
-      <Card className={`border-2 ${score.total >= 70 ? "border-green-500/40" : score.total >= 50 ? "border-amber-500/40" : "border-red-500/40"}`}>
-        <CardContent className="py-6">
-          <div className="flex items-start gap-4">
-            <div className="shrink-0">
+      <Card>
+        <CardContent className="py-5">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 shrink-0 text-muted-foreground">
               {score.total >= 70 ? (
-                <CheckCircle2 className="size-10 text-green-500" />
-              ) : score.total >= 50 ? (
-                <AlertTriangle className="size-10 text-amber-500" />
+                <CheckCircle2 className="size-5" />
               ) : (
-                <AlertTriangle className="size-10 text-red-500" />
+                <AlertTriangle className="size-5" />
               )}
             </div>
             <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-3 mb-2">
-                <h3 className="text-xl font-semibold">
+              <div className="mb-1.5 flex flex-wrap items-center gap-3">
+                <h3 className="text-base font-semibold">
                   {score.label} BRRRR Deal → {exitShort}
                 </h3>
                 <Badge variant="outline" className={verdictColor}>
@@ -597,7 +590,7 @@ export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) 
         heading="ARV Comparable Sales"
         subheading="Recent sales supporting your After-Repair Value"
         postcode={data.postcode}
-        propertyType={data.propertyType}
+        propertyType={data.propertyTypeDetail ?? data.propertyType}
         bedrooms={data.bedrooms}
         floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
         isNewBuild
@@ -620,20 +613,23 @@ function HeadlineTile({
   sub?: string
   tone: "good" | "ok" | "bad" | "neutral"
 }) {
-  const toneClass =
+  // Values stay neutral for a professional read; a small status dot carries
+  // the good/ok/bad signal instead of colouring the number itself.
+  const dotClass =
     tone === "good"
-      ? "text-green-600 dark:text-green-400"
+      ? "bg-success"
       : tone === "bad"
-      ? "text-red-600 dark:text-red-400"
+      ? "bg-destructive"
       : tone === "ok"
-      ? "text-amber-600 dark:text-amber-400"
-      : "text-foreground"
+      ? "bg-warning"
+      : null
   return (
     <div className="rounded-md border bg-card p-3">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+        {dotClass && <span className={`size-1.5 rounded-full ${dotClass}`} />}
         {label}
       </div>
-      <div className={`mt-1 text-xl font-semibold ${toneClass}`}>{value}</div>
+      <div className="mt-1 text-xl font-semibold text-foreground">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
     </div>
   )
@@ -655,7 +651,7 @@ function JourneyStep({
   return (
     <li className="flex gap-3">
       <div
-        className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full ${positive ? "bg-green-500/15 text-green-600" : "bg-muted text-muted-foreground"}`}
+        className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full ${positive ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"}`}
       >
         {icon}
       </div>
@@ -663,7 +659,7 @@ function JourneyStep({
         <div className="flex items-baseline justify-between gap-2">
           <span className="font-medium text-sm">{phase}</span>
           <span
-            className={`text-sm font-semibold ${positive ? "text-green-600" : ""}`}
+            className={`text-sm font-semibold ${positive ? "text-success" : ""}`}
           >
             {positive ? "+" : ""}
             {formatCurrency(cost)}
@@ -711,7 +707,7 @@ function Row({
         <div className={bold ? "font-medium" : ""}>{label}</div>
         {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
       </td>
-      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${highlight && value >= 0 ? "text-green-600 dark:text-green-400" : ""} ${muteClass}`}>
+      <td className={`px-3 py-2 text-right tabular-nums ${bold ? "font-semibold" : ""} ${highlight && value >= 0 ? "text-success" : ""} ${muteClass}`}>
         {formatCurrency(value)}
       </td>
     </tr>
@@ -767,7 +763,7 @@ function ScoreBar({
 }) {
   const pct = max > 0 ? (score / max) * 100 : 0
   const barColor =
-    pct >= 75 ? "bg-green-500" : pct >= 50 ? "bg-amber-500" : "bg-red-500"
+    pct >= 75 ? "bg-success/80" : pct >= 50 ? "bg-warning/80" : "bg-destructive/80"
   return (
     <div>
       <div className="mb-1 flex items-baseline justify-between text-sm">
@@ -776,9 +772,9 @@ function ScoreBar({
           {score}/{max}
         </span>
       </div>
-      <div className="h-2 rounded-full bg-muted">
+      <div className="h-1.5 rounded-full bg-muted">
         <div
-          className={`h-2 rounded-full ${barColor}`}
+          className={`h-1.5 rounded-full ${barColor}`}
           style={{ width: `${Math.min(100, pct)}%` }}
         />
       </div>
