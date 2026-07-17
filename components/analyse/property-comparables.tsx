@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/calculations"
 import { Home, PoundSterling, TrendingUp, MapPin, ExternalLink, BedDouble } from "lucide-react"
 import { SpareRoomListings } from "./spareroom-listings"
 import { useLoadingTracker } from "@/lib/useLoadingTracker"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 
 // ── Sold Comparables Types ────────────────────────────────────────────────
 interface ComparableSale {
@@ -83,6 +84,9 @@ interface PropertyComparablesProps {
    *  comparables, not single-let AST rents. */
   brrrExitStrategy?: "btl" | "hmo" | "sa"
   onDataLoaded?: (data: ComparablesLoadedData) => void
+  /** Lifts the comparable LISTS (not just summaries) for the Deal Package
+   *  PDF so the report shows the same evidence as this card. */
+  onEvidence?: (partial: Partial<DealPdfEvidence>) => void
 }
 
 // Strategies that should show rental comparables
@@ -109,6 +113,7 @@ export function PropertyComparables({
   investmentType,
   brrrExitStrategy,
   onDataLoaded,
+  onEvidence,
 }: PropertyComparablesProps) {
   // Loading-tracker key for the full-page overlay on /analyse. Both
   // `propertyData` (sold + rental from PropertyData) and `comparables`
@@ -178,6 +183,19 @@ export function PropertyComparables({
           }
           setSoldData(d)
           loadedSold = d
+          // Lift the sold list for the Deal Package PDF.
+          onEvidence?.({
+            soldComps: (d.sales ?? [])
+              .slice(0, 6)
+              .map((sale: ComparableSale) => ({
+                address: sale.street,
+                price: sale.price,
+                date: sale.date,
+                propertyType: sale.propertyType,
+                tenure: sale.tenure,
+              })),
+            soldAverage: d.average ?? null,
+          })
         }
 
         if (rentalJson.success && rentalJson.data) {
@@ -240,6 +258,22 @@ export function PropertyComparables({
         const json = await res.json()
         if (json.success && json.data) {
           setRentalListings(json.data)
+          // Lift the rental list for the Deal Package PDF.
+          const d: RentalData = json.data
+          onEvidence?.({
+            rentalComps: (d.listings ?? []).slice(0, 6).map((l) => ({
+              address: l.address,
+              monthlyRent: l.monthlyRent,
+              bedrooms: l.bedrooms ?? null,
+              propertyType: l.propertyType,
+            })),
+            rentalSummary: {
+              averageRent: d.averageRent,
+              minRent: d.minRent,
+              maxRent: d.maxRent,
+              count: d.count,
+            },
+          })
         }
       } catch {
         // Rental listings fetch failed — not critical

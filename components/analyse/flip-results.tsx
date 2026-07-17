@@ -38,6 +38,7 @@ import {
   calculateFlipDealScore,
 } from "@/lib/calculations"
 import { GdvComparables } from "./gdv-comparables"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 import {
   Hammer,
   Wallet,
@@ -60,9 +61,11 @@ interface FlipResultsProps {
   data: PropertyFormData
   results: CalculationResults
   backendData?: BackendResults | null
+  /** Forwarded to GdvComparables — lifts ARV comps for the Deal Package PDF. */
+  onEvidence?: (partial: Partial<DealPdfEvidence>) => void
 }
 
-export function FlipResults({ data, results, backendData }: FlipResultsProps) {
+export function FlipResults({ data, results, backendData, onEvidence }: FlipResultsProps) {
   const arv = data.arv ?? 0
 
   // ── Sensitivity slider state (centres on user inputs) ───────────
@@ -950,6 +953,7 @@ export function FlipResults({ data, results, backendData }: FlipResultsProps) {
             floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
             isNewBuild
             backendData={backendData}
+            onEvidence={onEvidence}
           />
         </div>
 

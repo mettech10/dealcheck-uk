@@ -34,6 +34,7 @@ import { Slider } from "@/components/ui/slider"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
 import type { DevelopmentResult } from "@/lib/developmentCalculations"
 import { GdvComparables } from "./gdv-comparables"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 import { formatCurrency, calculateAll } from "@/lib/calculations"
 import {
   AlertTriangle,
@@ -59,6 +60,8 @@ interface DevelopmentResultsProps {
   data: PropertyFormData
   results: CalculationResults
   backendData?: BackendResults | null
+  /** Forwarded to GdvComparables — lifts ARV comps for the Deal Package PDF. */
+  onEvidence?: (partial: Partial<DealPdfEvidence>) => void
 }
 
 /** Tailwind colour per cost-stack line (kept explicit for print). */
@@ -106,6 +109,7 @@ export function DevelopmentResults({
   data,
   results,
   backendData,
+  onEvidence,
 }: DevelopmentResultsProps) {
   const dev: DevelopmentResult | undefined = results.development
   // If engine didn't run (shouldn't happen — calculateAll always populates
@@ -485,6 +489,7 @@ export function DevelopmentResults({
         floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
         isNewBuild
         backendData={backendData}
+        onEvidence={onEvidence}
       />
 
       {/* ── 4 · Cost Stack ──────────────────────────────────── */}

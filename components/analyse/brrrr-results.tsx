@@ -24,6 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import type { PropertyFormData, CalculationResults, BackendResults } from "@/lib/types"
 import { GdvComparables } from "./gdv-comparables"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 import {
   formatCurrency,
   formatPercent,
@@ -49,9 +50,11 @@ interface BRRRRResultsProps {
   data: PropertyFormData
   results: CalculationResults
   backendData?: BackendResults | null
+  /** Forwarded to GdvComparables — lifts ARV comps for the Deal Package PDF. */
+  onEvidence?: (partial: Partial<DealPdfEvidence>) => void
 }
 
-export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) {
+export function BRRRRResults({ data, results, backendData, onEvidence }: BRRRRResultsProps) {
   const arv = data.arv ?? 0
   const score = calculateBRRRRDealScore(results, arv, {
     monthlyRent: data.monthlyRent,
@@ -595,6 +598,7 @@ export function BRRRRResults({ data, results, backendData }: BRRRRResultsProps) 
         floorSizeM2={data.sqft ? data.sqft / 10.7639 : null}
         isNewBuild
         backendData={backendData}
+        onEvidence={onEvidence}
       />
     </div>
   )

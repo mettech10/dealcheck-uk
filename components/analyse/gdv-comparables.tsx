@@ -19,6 +19,7 @@ import {
   type GdvComparable,
 } from "@/lib/gdvComparables"
 import { formatCurrency } from "@/lib/calculations"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 
 interface GdvComparablesProps {
   heading: string
@@ -29,6 +30,8 @@ interface GdvComparablesProps {
   floorSizeM2?: number | null
   isNewBuild?: boolean
   backendData?: BackendResults | null
+  /** Lifts the ARV comparable list for the Deal Package PDF. */
+  onEvidence?: (partial: Partial<DealPdfEvidence>) => void
 }
 
 function SourceBadge({ source }: { source: GdvComparable["source"] }) {
@@ -121,6 +124,7 @@ export function GdvComparables({
   floorSizeM2,
   isNewBuild,
   backendData,
+  onEvidence,
 }: GdvComparablesProps) {
   // Seed immediately with the Land Registry comps already in the payload so
   // there's evidence on screen even before the Rightmove scrape resolves.
@@ -139,7 +143,27 @@ export function GdvComparables({
       backend: backendData ?? undefined,
     })
       .then((r) => {
-        if (!cancelled) setResult(r)
+        if (cancelled) return
+        setResult(r)
+        // Lift the ARV comps for the Deal Package PDF.
+        if (r.totalComps > 0) {
+          onEvidence?.({
+            arvComps: r.comparables.slice(0, 6).map((c) => ({
+              address: displayAddress(c.address),
+              price: c.price,
+              dateSold: c.dateSold,
+              propertyType: c.propertyType,
+              bedrooms: c.bedrooms ?? null,
+              source: c.source,
+            })),
+            arvSummary: {
+              avgPrice: r.avgPrice,
+              count: r.totalComps,
+              low: r.priceRange?.low,
+              high: r.priceRange?.high,
+            },
+          })
+        }
       })
       .catch(() => {
         // Last-resort: at least show Land Registry comps.

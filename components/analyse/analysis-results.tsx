@@ -40,6 +40,7 @@ import {
 } from "./result-sections"
 import type { ScrapedListing } from "./property-listing-card"
 import { runRefurbAnalysis, type RefurbAnalysisResult } from "@/lib/refurbAnalysis"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 import { getStrategyLabel } from "@/lib/dealCardMetrics"
 import { AIRefurbEstimator } from "./ai-refurb-estimator"
 import {
@@ -95,6 +96,9 @@ interface AnalysisResultsProps {
   /** Lifts the AI refurb result to the page so the Deal Package PDF can
       include the refurbishment plan exactly as displayed. */
   onRefurbAnalysis?: (result: RefurbAnalysisResult | null) => void
+  /** Lifts live market evidence (sold/rental/ARV comparables + Article 4)
+      to the page so the Deal Package PDF matches the on-screen data. */
+  onPdfEvidence?: (evidence: DealPdfEvidence) => void
 }
 
 // Series colours pull from the themed --chart-* tokens so they stay
@@ -422,11 +426,14 @@ function Article4Card({
   legacy,
   investmentType,
   devConstructionType,
+  onEvidence,
 }: {
   postcode?: string
   legacy?: BackendResults["article_4"]
   investmentType?: string
   devConstructionType?: string
+  /** Lifts the live Article 4 status for the Deal Package PDF. */
+  onEvidence?: (partial: Partial<DealPdfEvidence>) => void
 }) {
   const [result, setResult] = useState<Article4CheckResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -441,7 +448,19 @@ function Article4Card({
       try {
         const supabase = createSupabaseClient()
         const r = await checkArticle4(supabase, postcode)
-        if (!cancelled) setResult(r)
+        if (!cancelled) {
+          setResult(r)
+          onEvidence?.({
+            article4: {
+              status:
+                r.status === "active" || r.status === "proposed" || r.status === "none"
+                  ? r.status
+                  : "unknown",
+              summary: r.summary,
+              councils: [...new Set(r.areas.map((a) => a.councilName))].slice(0, 4),
+            },
+          })
+        }
       } catch {
         // Fail-soft — keep result null, fall through to legacy/unknown.
       } finally {
@@ -451,6 +470,9 @@ function Article4Card({
     return () => {
       cancelled = true
     }
+    // onEvidence is a stable useCallback from the parent — deliberately not
+    // a dep so an unstable caller can't re-trigger the lookup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postcode])
 
   // Derive a 3-state display: active / proposed / clear / unknown.
@@ -1517,8 +1539,26 @@ export function AnalysisResults({
   onUpgrade,
   scrapedListing,
   onRefurbAnalysis,
+  onPdfEvidence,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
+
+  // ── Deal Package PDF evidence — merged from independent sources ──────
+  // Sold/rental comps (PropertyComparables), ARV comps (GdvComparables via
+  // the strategy panels) and the live Article 4 check each resolve at
+  // different times; merge partials and lift the latest snapshot so the
+  // PDF shows exactly what this page displayed. State (not a ref) so the
+  // lift survives re-renders and reaches the page reliably.
+  const [pdfEvidence, setPdfEvidence] = useState<DealPdfEvidence>({})
+  const updatePdfEvidence = useCallback(
+    (partial: Partial<DealPdfEvidence>) => {
+      setPdfEvidence((prev) => ({ ...prev, ...partial }))
+    },
+    [],
+  )
+  useEffect(() => {
+    if (Object.keys(pdfEvidence).length > 0) onPdfEvidence?.(pdfEvidence)
+  }, [pdfEvidence, onPdfEvidence])
 
   // ── AI Refurb Estimator — vision analysis of the scraped photos ──────
   // Runs AFTER the main results render (component mount = results shown),
@@ -1904,17 +1944,17 @@ export function AnalysisResults({
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (
-        <BRRRRResults data={data} results={results} backendData={backendData} />
+        <BRRRRResults data={data} results={results} backendData={backendData} onEvidence={updatePdfEvidence} />
       )}
 
       {/* ── Flip-specific 8-display panel ──────────────────────────── */}
       {data.investmentType === "flip" && (
-        <FlipResults data={data} results={results} backendData={backendData} />
+        <FlipResults data={data} results={results} backendData={backendData} onEvidence={updatePdfEvidence} />
       )}
 
       {/* ── Development-specific feasibility panel ─────────────────── */}
       {data.investmentType === "development" && (
-        <DevelopmentResults data={data} results={results} backendData={backendData} />
+        <DevelopmentResults data={data} results={results} backendData={backendData} onEvidence={updatePdfEvidence} />
       )}
 
       {/* ── 5-Year Projection — toggle chart + year table ───────────── */}
@@ -2516,6 +2556,7 @@ export function AnalysisResults({
         legacy={backendData?.article_4}
         investmentType={data.investmentType}
         devConstructionType={data.devConstructionType}
+        onEvidence={updatePdfEvidence}
       />
 
           {/* Comparables — standalone box, nothing else in it.
@@ -2542,6 +2583,7 @@ export function AnalysisResults({
               investmentType={data.investmentType}
               brrrExitStrategy={data.brrrExitStrategy}
               onDataLoaded={setComparablesData}
+              onEvidence={updatePdfEvidence}
             />
           )}
           {/* Analyse-another CTA with plan/usage note */}

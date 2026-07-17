@@ -45,6 +45,7 @@ import {
 } from "lucide-react"
 import { DealShareModal } from "@/components/analyse/deal-share-modal"
 import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
+import type { DealPdfEvidence } from "@/lib/pdfEvidence"
 
 // ─── Rental vs Sale Detection ────────────────────────────────────────────────
 type RentalDetection = "rental" | "sale" | "uncertain"
@@ -449,7 +450,12 @@ function AnalysePage() {
   // Deal Package PDF — AI refurb result lifted from AnalysisResults so the
   // report includes the refurbishment plan exactly as displayed.
   const [dealRefurbAnalysis, setDealRefurbAnalysis] = useState<RefurbAnalysisResult | null>(null)
+  // Live market evidence (sold/rental/ARV comps + Article 4) lifted from
+  // AnalysisResults so the PDF's Market Evidence and Risk pages match the
+  // on-screen data.
+  const [dealPdfEvidence, setDealPdfEvidence] = useState<DealPdfEvidence | null>(null)
   const [pdfGenerating, setPdfGenerating] = useState(false)
+  const [pdfSharing, setPdfSharing] = useState(false)
   const [referralCode, setReferralCode] = useState<string | null>(null)
 
   // Fetch (or lazily create) the user's referral code for the share card.
@@ -466,6 +472,41 @@ function AnalysePage() {
       cancelled = true
     }
   }, [])
+
+  /**
+   * Generate the Deal Package PDF via /api/generate-pdf. Shared by the
+   * Download and Share buttons. Returns null when gated (opens the upgrade
+   * modal) — throws on other failures so callers surface the error.
+   */
+  const generateDealPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
+    const res = await fetch("/api/generate-pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        data: formData,
+        results,
+        backendData,
+        refurbAnalysis: dealRefurbAnalysis,
+        evidence: dealPdfEvidence,
+        images: scrapedListing?.images ?? [],
+        floorplans: scrapedListing?.floorplans ?? [],
+      }),
+    })
+    if (res.status === 401 || res.status === 403) {
+      setUpgradeReason("pdf_locked")
+      setShowUpgrade(true)
+      return null
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => null)
+      throw new Error(err?.error || "PDF generation failed")
+    }
+    const blob = await res.blob()
+    const pc = (formData?.postcode ?? "UK").replace(/\s/g, "")
+    const filename = `metalyzi-${pc}-${new Date().toISOString().split("T")[0]}.pdf`
+    return { blob, filename }
+  }
+
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason>("free_limit_reached")
   const [upgradeFreeUsed, setUpgradeFreeUsed] = useState(0)
   const [aiLoading, setAiLoading] = useState(false)
@@ -1757,37 +1798,16 @@ function AnalysePage() {
               {results && formData && (
                 <Button
                   size="sm"
-                  disabled={pdfGenerating}
+                  disabled={pdfGenerating || pdfSharing}
                   onClick={async () => {
                     setPdfGenerating(true)
                     try {
-                      const res = await fetch("/api/generate-pdf", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          data: formData,
-                          results,
-                          backendData,
-                          refurbAnalysis: dealRefurbAnalysis,
-                          images: scrapedListing?.images ?? [],
-                          floorplans: scrapedListing?.floorplans ?? [],
-                        }),
-                      })
-                      if (res.status === 401 || res.status === 403) {
-                        setUpgradeReason("pdf_locked")
-                        setShowUpgrade(true)
-                        return
-                      }
-                      if (!res.ok) {
-                        const err = await res.json().catch(() => null)
-                        throw new Error(err?.error || "PDF generation failed")
-                      }
-                      const blob = await res.blob()
-                      const url = URL.createObjectURL(blob)
+                      const pdf = await generateDealPdfBlob()
+                      if (!pdf) return
+                      const url = URL.createObjectURL(pdf.blob)
                       const a = document.createElement("a")
-                      const pc = (formData.postcode ?? "UK").replace(/\s/g, "")
                       a.href = url
-                      a.download = `metalyzi-${pc}-${new Date().toISOString().split("T")[0]}.pdf`
+                      a.download = pdf.filename
                       a.click()
                       URL.revokeObjectURL(url)
                     } catch (err) {
@@ -1811,6 +1831,71 @@ function AnalysePage() {
                     <>
                       <FileDown className="size-3.5" />
                       Download Deal Package
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Share the Deal Package PDF through the system share sheet
+                  (email, WhatsApp, AirDrop…). Falls back to a download when
+                  the browser can't share files. */}
+              {results && formData && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pdfGenerating || pdfSharing}
+                  onClick={async () => {
+                    setPdfSharing(true)
+                    try {
+                      const pdf = await generateDealPdfBlob()
+                      if (!pdf) return
+                      const file = new File([pdf.blob], pdf.filename, {
+                        type: "application/pdf",
+                      })
+                      if (
+                        typeof navigator !== "undefined" &&
+                        navigator.canShare?.({ files: [file] })
+                      ) {
+                        try {
+                          await navigator.share({
+                            files: [file],
+                            title: "Metalyzi Deal Package",
+                            text: `Deal analysis — ${formData.address || formData.postcode || "property"}`,
+                          })
+                          return
+                        } catch (shareErr) {
+                          // User closed the share sheet — done, no fallback.
+                          if ((shareErr as DOMException)?.name === "AbortError") return
+                          // Any other share failure → download fallback below.
+                        }
+                      }
+                      const url = URL.createObjectURL(pdf.blob)
+                      const a = document.createElement("a")
+                      a.href = url
+                      a.download = pdf.filename
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    } catch (err) {
+                      setError(
+                        err instanceof Error
+                          ? err.message
+                          : "PDF share failed — please try again.",
+                      )
+                    } finally {
+                      setPdfSharing(false)
+                    }
+                  }}
+                  className="gap-1.5"
+                >
+                  {pdfSharing ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Preparing PDF…
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="size-3.5" />
+                      Share PDF
                     </>
                   )}
                 </Button>
@@ -1997,6 +2082,7 @@ function AnalysePage() {
                 previousStrategy={previousStrategy}
                 onBack={handleBackStrategy}
                 onRefurbAnalysis={setDealRefurbAnalysis}
+                onPdfEvidence={setDealPdfEvidence}
                 onNewAnalysis={() => {
                   resetAll()
                   window.scrollTo({ top: 0, behavior: "smooth" })
