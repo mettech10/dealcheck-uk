@@ -149,10 +149,14 @@ export async function buildGdvComparables(params: {
     if (!res.ok) return { sales: [] }
     const json = await res.json()
     if (!json?.success) return { sales: [] }
+    // The route is Rightmove-primary now — carry the source (and photos)
+    // through so dedupe prefers these rows and attribution is honest.
+    const isRm = json.source === "rightmove_sold"
     const rows: Record<string, unknown>[] = json.data?.sales ?? json.sales ?? []
     const sales = rows
       .map((s) => {
         const type = String(s.propertyType ?? s.type ?? "")
+        const thumb = (s.imageUrl as string | null) ?? null
         return {
           address: String(s.street ?? s.address ?? ""),
           price: Number(s.price ?? 0),
@@ -162,10 +166,10 @@ export async function buildGdvComparables(params: {
           floorSizeM2: null,
           pricePerM2: null,
           isNewBuild: type.toLowerCase().includes("new"),
-          thumbnailUrl: null,
-          listingUrl: "",
-          source: "land_registry" as const,
-          hasImages: false,
+          thumbnailUrl: thumb,
+          listingUrl: (s.listingUrl as string | null) ?? "",
+          source: isRm ? ("rightmove_sold" as const) : ("land_registry" as const),
+          hasImages: Boolean(thumb),
         }
       })
       .filter((s) => s.price > 1000)

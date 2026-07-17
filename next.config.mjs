@@ -18,6 +18,7 @@ const nextConfig = {
     '/api/scraper/listing': ['./node_modules/playwright-core/**'],
     '/api/scraper/search': ['./node_modules/playwright-core/**'],
     '/api/scraper/sold': ['./node_modules/playwright-core/**'],
+    '/api/comparables/sold': ['./node_modules/playwright-core/**'],
     '/api/comparables/rental-listings': ['./node_modules/playwright-core/**'],
   },
   async rewrites() {
