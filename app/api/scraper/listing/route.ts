@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createHash } from "crypto"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { getSessionUser } from "@/lib/apiAuth"
 import {
   scrapeRightmoveListing,
   type RightmoveListing,
@@ -44,6 +45,13 @@ function tryAdminClient() {
 }
 
 export async function POST(request: Request) {
+  // Session-gated: these scrapes spend Bright Data credits — never expose
+  // them unauthenticated (the only caller, /analyse, requires login).
+  const sessionUser = await getSessionUser()
+  if (!sessionUser) {
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+  }
+
   let url: string
   try {
     const body = await request.json()
