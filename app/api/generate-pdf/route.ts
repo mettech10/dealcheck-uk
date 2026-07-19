@@ -21,6 +21,7 @@ import type {
 } from "@/lib/types"
 import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
 import type { DealPdfEvidence } from "@/lib/pdfEvidence"
+import { checkArticle4 } from "@/lib/article4-service"
 
 /**
  * Deal Packaging Engine — POST /api/generate-pdf
@@ -121,6 +122,125 @@ export async function POST(request: Request) {
   const reportId = randomUUID().slice(0, 8).toUpperCase()
   const generatedAt = new Date().toISOString()
 
+  // ── Server-side evidence backfill ───────────────────────────────────
+  // The client lifts the comparables/Article 4 it displayed, but a user
+  // can click Download before those (scraper-backed, slow) fetches
+  // resolve — the report must never ship without its market evidence.
+  // Anything missing is fetched here through the same internal routes,
+  // forwarding the caller's auth cookie, so PDF numbers still match what
+  // the page would show.
+  const evidence: DealPdfEvidence = { ...(body.evidence ?? {}) }
+  const origin = new URL(request.url).origin
+  const cookie = request.headers.get("cookie") ?? ""
+  const postJson = async (
+    path: string,
+    payload: unknown,
+    timeoutMs: number,
+  ): Promise<Record<string, any> | null> => {
+    try {
+      const r = await fetch(`${origin}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+      if (!r.ok) return null
+      return await r.json()
+    } catch {
+      return null
+    }
+  }
+
+  if (data.postcode) {
+    await Promise.all([
+      // Rental comparables (the sidebar Rental tab data)
+      (async () => {
+        if (evidence.rentalComps?.length) return
+        const json = await postJson(
+          "/api/comparables/rental-listings",
+          {
+            postcode: data.postcode,
+            bedrooms: data.bedrooms,
+            ...(data.propertyType ? { propertyType: data.propertyType } : {}),
+            ...(data.propertyTypeDetail ? { propertyTypeDetail: data.propertyTypeDetail } : {}),
+            strategy: data.investmentType || "btl",
+          },
+          60000,
+        )
+        const d = json?.success ? json.data : null
+        if (d?.listings?.length) {
+          evidence.rentalComps = d.listings
+            .slice(0, 6)
+            .map((l: Record<string, any>) => ({
+              address: String(l.address ?? ""),
+              monthlyRent: Number(l.monthlyRent ?? 0),
+              bedrooms: (l.bedrooms as number | null) ?? null,
+              propertyType: l.propertyType ? String(l.propertyType) : undefined,
+            }))
+            .filter((c: { monthlyRent: number }) => c.monthlyRent > 0)
+          evidence.rentalSummary = {
+            averageRent: Number(d.averageRent ?? 0),
+            minRent: Number(d.minRent ?? 0),
+            maxRent: Number(d.maxRent ?? 0),
+            count: Number(d.count ?? 0),
+          }
+          console.log(`[DEAL-PDF] backfilled ${evidence.rentalComps?.length} rental comps`)
+        }
+      })(),
+      // Sold comparables (Rightmove-first route; drives the valuation avg)
+      (async () => {
+        if (evidence.soldComps?.length) return
+        const json = await postJson(
+          "/api/comparables/sold",
+          {
+            postcode: data.postcode,
+            bedrooms: data.bedrooms,
+            ...(data.propertyTypeDetail ? { propertyTypeDetail: data.propertyTypeDetail } : {}),
+            ...(data.propertyType ? { propertyType: data.propertyType } : {}),
+          },
+          60000,
+        )
+        const d = json?.success ? json.data ?? json : null
+        if (d?.sales?.length) {
+          const label =
+            json?.source === "rightmove_sold" ? "Rightmove sold" : "Land Registry"
+          evidence.soldComps = d.sales
+            .slice(0, 6)
+            .map((s: Record<string, any>) => ({
+              address: String(s.street ?? s.address ?? ""),
+              price: Number(s.price ?? 0),
+              date: s.date ? String(s.date) : undefined,
+              propertyType: s.propertyType ? String(s.propertyType) : undefined,
+              tenure: s.tenure ? String(s.tenure) : undefined,
+              source: label,
+            }))
+            .filter((c: { price: number }) => c.price > 0)
+          evidence.soldAverage = (d.average as number | null) ?? null
+          console.log(`[DEAL-PDF] backfilled ${evidence.soldComps?.length} sold comps (${label})`)
+        }
+      })(),
+      // Live Article 4 status (direct lib call — no HTTP round-trip)
+      (async () => {
+        if (evidence.article4) return
+        try {
+          const admin = createAdminClient()
+          const r = await checkArticle4(admin, data.postcode!)
+          evidence.article4 = {
+            status:
+              r.status === "active" || r.status === "proposed" || r.status === "none"
+                ? r.status
+                : "unknown",
+            summary: r.summary,
+            councils: [...new Set(r.areas.map((a) => a.councilName))].slice(0, 4),
+          }
+          console.log(`[DEAL-PDF] backfilled Article 4: ${evidence.article4.status}`)
+        } catch {
+          // Fail-soft — the PDF keeps its legacy backendData fallback.
+        }
+      })(),
+    ])
+  }
+
   try {
     // Same scoring engine as the results page — identical numbers.
     const scoreResult = scoreDeal(
@@ -139,7 +259,7 @@ export async function POST(request: Request) {
       backendData: backendData ?? null,
       scoreResult,
       refurbAnalysis: body.refurbAnalysis ?? null,
-      evidence: body.evidence ?? null,
+      evidence,
       coverImage,
       floorplanImage,
       logoImage,
