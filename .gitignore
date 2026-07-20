@@ -8,6 +8,8 @@ build/
 develop-eggs/
 dist/
 downloads/
+# ...but the masterclass lead-magnet PDF is a committed static asset
+!public/downloads/
 eggs/
 .eggs/
 lib64/
