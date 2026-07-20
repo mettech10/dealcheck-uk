@@ -3,6 +3,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendWelcomeEmail } from "@/lib/brevo-email"
 import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
+import { markLeadSignedUp } from "@/lib/masterclass-conversion"
 import type { EmailOtpType } from "@supabase/supabase-js"
 
 /**
@@ -161,6 +162,12 @@ export async function GET(request: NextRequest) {
   }
 
   if (sessionUser && !authError) {
+    // Masterclass funnel (Section 6): every successful auth callback —
+    // email verification AND OAuth — marks a matching lead as signed_up,
+    // which also stops the nurture sequence. Idempotent + never throws;
+    // awaited because Vercel freezes the function after the response.
+    await markLeadSignedUp(sessionUser.email)
+
     // Password reset flow — send user to the reset password page
     if (type === "recovery") {
       return redirectTo(`${origin}/reset-password`)

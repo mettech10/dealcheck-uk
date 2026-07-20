@@ -13,6 +13,7 @@ import { PlanningMonitorAgent } from "./PlanningMonitorAgent"
 import { RentalTrendAgent } from "./RentalTrendAgent"
 import { MacroSignalAgent } from "./MacroSignalAgent"
 import { SelfReflectionAgent } from "./SelfReflectionAgent"
+import { NurtureAgent } from "./NurtureAgent"
 
 /** slug → agent. Slugs are the public cron path (/api/agents/<slug>). */
 export const agents = {
@@ -21,6 +22,7 @@ export const agents = {
   "rental-trend": new RentalTrendAgent(),
   "macro-signal": new MacroSignalAgent(),
   "self-reflection": new SelfReflectionAgent(),
+  "nurture": new NurtureAgent(),
 } satisfies Record<string, BaseAgent>
 
 export type AgentSlug = keyof typeof agents
