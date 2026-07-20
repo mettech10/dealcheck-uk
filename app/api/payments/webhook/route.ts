@@ -10,6 +10,7 @@ import {
   sendOwnerPaymentNotification,
 } from "@/lib/paymentEmails"
 import { logAdminActivity } from "@/lib/admin-logs"
+import { markLeadConvertedToPaid } from "@/lib/masterclass-conversion"
 
 /**
  * POST /api/payments/webhook
@@ -127,6 +128,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const email = (session.customer_details?.email
     ?? session.customer_email
     ?? (await getUserEmailFromAuth(userId)))
+
+  // Masterclass funnel (Section 6): any successful checkout marks a
+  // matching lead as converted_to_paid. Idempotent, never throws.
+  await markLeadConvertedToPaid(email)
   const stripeCustomerId =
     typeof session.customer === "string" ? session.customer : session.customer?.id ?? null
   const stripeSubId =
