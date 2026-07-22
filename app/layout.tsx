@@ -7,6 +7,7 @@ import { ConditionalAnalytics } from '@/components/conditional-analytics'
 import CrispChat from '@/components/CrispChat'
 import BetaBanner from '@/components/BetaBanner'
 import { ReferralCapture } from '@/components/referral-capture'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -60,6 +61,7 @@ export default function RootLayout({
           <ReferralCapture />
           <ConditionalAnalytics />
           <CrispChat />
+          <SpeedInsights />
         </ThemeProvider>
       </body>
     </html>
