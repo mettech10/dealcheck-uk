@@ -593,6 +593,16 @@ function InvestmentSummaryPage({ input }: { input: DealPackageInput }) {
           {data.tenureType === "leasehold" && data.leaseYears ? (
             <KV label="Lease remaining" value={`${data.leaseYears} years`} />
           ) : null}
+          {data.epcBand ? (
+            <KV
+              label="EPC band"
+              value={
+                /^[FG]$/i.test(data.epcBand)
+                  ? `${data.epcBand.toUpperCase()} (below MEES minimum E)`
+                  : data.epcBand.toUpperCase()
+              }
+            />
+          ) : null}
           <KV label="Condition (entered)" value={data.condition ?? "—"} />
 
           <Text style={[s.sectionLabel, { marginTop: 16 }]}>

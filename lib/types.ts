@@ -78,6 +78,9 @@ export interface PropertyFormData {
   sqft?: number
   bedrooms: number
   condition: PropertyCondition
+  /** EPC energy band (A–G), auto-fetched from the gov EPC register (or
+   *  scraped from the listing). Undefined = not found / not yet looked up. */
+  epcBand?: string
 
   // Purchase Costs
   buyerType: BuyerType
@@ -512,6 +515,9 @@ export interface BackendResults {
   }
   avg_sold_price?: number
   market_source?: string
+  /** EPC energy band (A–G) from the gov EPC register for the analysed
+   *  property. Auto-fetched server-side during analysis. */
+  epc_band?: string
   risk_flags?: RiskFlag[]
   regional_benchmark?: RegionalBenchmark
   postcode_benchmark?: {

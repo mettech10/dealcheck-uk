@@ -23,6 +23,7 @@ import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
 import { DevelopmentResults } from "./development-results"
 import { StrategySwitcher } from "./strategy-switcher"
+import { EpcBadge } from "./epc-badge"
 import { PropertyComparables, type ComparablesLoadedData } from "./property-comparables"
 import { SAComparables } from "./sa-comparables"
 import { SAAreaIntelligence } from "./sa-area-intelligence"
@@ -821,6 +822,7 @@ function HouseValuationCard({
   roomCount,
   avgRoomRate,
   postcode,
+  epcBand,
 }: {
   valuation?: BackendResults["house_valuation"]
   purchasePrice?: number
@@ -832,6 +834,7 @@ function HouseValuationCard({
   roomCount?: number
   avgRoomRate?: number
   postcode?: string
+  epcBand?: string
 }) {
   // Fetch SpareRoom / PropertyData room listings for HMO to derive avg room rent
   const isHmoCard = investmentType === "hmo"
@@ -967,6 +970,7 @@ function HouseValuationCard({
         <div className="flex items-center gap-2">
           <Home className="size-4 text-primary" />
           <CardTitle className="text-sm">House Valuation</CardTitle>
+          {epcBand && <EpcBadge band={epcBand} className="ml-2" />}
           <span className="ml-auto text-xs text-muted-foreground">
             {sourceLabel}
           </span>
@@ -1783,6 +1787,7 @@ export function AnalysisResults({
           roomCount={data.roomCount}
           avgRoomRate={data.avgRoomRate}
           postcode={data.postcode}
+          epcBand={data.epcBand ?? backendData?.epc_band}
         />
       )}
 
@@ -1796,6 +1801,14 @@ export function AnalysisResults({
           warnings), score dial, colour-coded label, and collapsible
           category breakdown.                                          */}
       <DealScorePanel result={scoreResult} hideScore />
+
+      {/* ── Property facts (EPC band, auto-fetched) ─────────────────── */}
+      {(data.epcBand ?? backendData?.epc_band) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Property:</span>
+          <EpcBadge band={data.epcBand ?? backendData?.epc_band} />
+        </div>
+      )}
 
       {/* ── BRRRR-specific 8-display panel ─────────────────────────── */}
       {data.investmentType === "brr" && (

@@ -668,6 +668,14 @@ function AnalysePage() {
         if (data.structured) {
           setBackendData(data.structured as BackendResults)
           parsedResults = data.structured
+          // Merge the auto-fetched EPC band back onto formData so every
+          // consumer (results chip, valuation card, PDF) reads data.epcBand.
+          const fetchedBand = (data.structured as BackendResults)?.epc_band
+          if (fetchedBand) {
+            setFormData((prev) =>
+              prev ? { ...prev, epcBand: prev.epcBand ?? fetchedBand } : prev,
+            )
+          }
           const userPostcode = (body.propertyData as Record<string, any>)?.postcode as string | undefined
           analysis = formatAnalysisResults(data.structured, userPostcode)
         } else if (analysis && typeof analysis === 'string') {

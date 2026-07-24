@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
+import { getEpcBand } from "@/lib/epc"
 import { checkCanAnalyse, recordAnalysisUsed } from "@/lib/usageGate"
 import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
 import { buildContext } from "@/lib/contextBuilder"
@@ -217,6 +218,17 @@ export async function POST(req: Request) {
       if (rawTenure.includes("freehold")) tenureType = "freehold"
       else if (rawTenure.includes("leasehold")) tenureType = "leasehold"
 
+      // EPC band — prefer the listing's rating; otherwise fetch it from the
+      // government EPC register by postcode + address. Fail-soft (null).
+      const scrapedBand = String(
+        raw.epc_rating || raw.epcRating || raw.epc || "",
+      )
+        .trim()
+        .toUpperCase()
+      const epcBand = /^[A-G]$/.test(scrapedBand)
+        ? scrapedBand
+        : (await getEpcBand(raw.postcode || "", raw.address || "")).band
+
       return NextResponse.json({
         success: true,
         propertyData: {
@@ -244,6 +256,7 @@ export async function POST(req: Request) {
           listingUrl: raw.listing_url || raw.listingUrl || url,
           source: raw.source || undefined,
           councilTaxBand: raw.council_tax_band || raw.councilTaxBand || undefined,
+          ...(epcBand ? { epcBand } : {}),
         },
       })
     }
@@ -351,6 +364,25 @@ export async function POST(req: Request) {
         }
       } catch (err) {
         console.warn("[api/analyse] article4 engine lookup failed:", err)
+      }
+
+      // ── EPC band — reuse a band carried from the listing, else fetch it
+      //    from the gov EPC register by postcode + address. Fail-soft. ──
+      let epcBand: string | null =
+        typeof propertyData?.epcBand === "string" && /^[A-G]$/i.test(propertyData.epcBand)
+          ? propertyData.epcBand.toUpperCase()
+          : null
+      if (!epcBand && propertyData?.postcode) {
+        try {
+          epcBand = (
+            await getEpcBand(
+              String(propertyData.postcode),
+              String(propertyData.address ?? ""),
+            )
+          ).band
+        } catch (err) {
+          console.warn("[api/analyse] EPC band lookup failed:", err)
+        }
       }
 
       // ── Metalyzi intelligence layer (Section 5) ──────────────────────
@@ -591,7 +623,7 @@ export async function POST(req: Request) {
       const pdfUnlocked = accessLevel === "pro" || accessLevel === "credit"
       const saveUnlocked = pdfUnlocked
       return NextResponse.json({
-        structured: data.results,
+        structured: { ...(data.results ?? {}), ...(epcBand ? { epc_band: epcBand } : {}) },
         accessLevel,
         pdfUnlocked,
         saveUnlocked,
