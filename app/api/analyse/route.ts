@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
 import { getEpcBand } from "@/lib/epc"
+import { extractCouncilTaxBand } from "@/lib/councilTax"
 import { checkCanAnalyse, recordAnalysisUsed } from "@/lib/usageGate"
 import { logAdminActivity, ipFromRequest } from "@/lib/admin-logs"
 import { buildContext } from "@/lib/contextBuilder"
@@ -255,7 +256,15 @@ export async function POST(req: Request) {
           agentAddress: raw.agent_address || raw.agentAddress || undefined,
           listingUrl: raw.listing_url || raw.listingUrl || url,
           source: raw.source || undefined,
-          councilTaxBand: raw.council_tax_band || raw.councilTaxBand || undefined,
+          // Prefer a structured band from the scraper, else pull it out of the
+          // key features / description (many listings only state it there —
+          // it was showing as raw text instead of a property fact).
+          councilTaxBand:
+            extractCouncilTaxBand(
+              raw.council_tax_band || raw.councilTaxBand,
+              raw.key_features || raw.keyFeatures,
+              raw.description,
+            ) ?? undefined,
           ...(epcBand ? { epcBand } : {}),
         },
       })

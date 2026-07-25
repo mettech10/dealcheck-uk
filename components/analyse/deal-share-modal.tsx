@@ -65,6 +65,8 @@ export function DealShareModal({
   const [cardUrl, setCardUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  // Fallback share-target list, shown when the device has no native sheet.
+  const [showTargets, setShowTargets] = useState(false)
   const runRef = useRef(0)
 
   const scoreResult = useMemo(
@@ -143,26 +145,77 @@ export function DealShareModal({
     }
   }
 
-  const handleNativeShare = async () => {
+  // Link + copy that accompany every share target.
+  const shareUrl = `https://metalyzi.co.uk${referralCode ? `?ref=${referralCode}` : ""}`
+  const shareText = `I just analysed a property deal on Metalyzi — scored ${scoreResult.total}/100. Analyse yours at ${shareUrl}`
+  const shareTitle = `${strategyLabel} Deal Analysis — ${scoreResult.total}/100`
+
+  /**
+   * Share targets used when the device has no usable Web Share sheet
+   * (i.e. most desktops). These open the real network composer in a new tab,
+   * so the button always leads somewhere instead of silently "succeeding".
+   * Note: these carry the text + link — the image itself goes via
+   * Download / Copy, which we spell out in the panel.
+   */
+  const webTargets = [
+    {
+      name: "WhatsApp",
+      href: `https://wa.me/?text=${encodeURIComponent(shareText)}`,
+    },
+    {
+      name: "X / Twitter",
+      href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`,
+    },
+    {
+      name: "Facebook",
+      href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`,
+    },
+    {
+      name: "LinkedIn",
+      href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
+    },
+    {
+      name: "Email",
+      href: `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareText)}`,
+    },
+  ]
+
+  const handleShare = async () => {
     if (!cardBlob) return
-    if (!navigator.share) {
-      flash("Native sharing not available here — use Download or Copy")
+
+    const file = new File([cardBlob], "metalyzi-deal.png", { type: "image/png" })
+    const payload = { title: shareTitle, text: shareText, files: [file] }
+
+    // Only use the native sheet when this device can genuinely share FILES.
+    // navigator.share exists on desktop Chrome but often can't take files,
+    // which previously resolved instantly with no picker — the "flat button".
+    const canShareFiles =
+      typeof navigator !== "undefined" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare(payload)
+
+    if (navigator.share && canShareFiles) {
+      try {
+        await navigator.share(payload)
+        flash("Shared ✓")
+      } catch (err) {
+        // User dismissed the sheet — not an error, say nothing.
+        if ((err as Error).name === "AbortError") return
+        setShowTargets(true)
+      }
       return
     }
+
+    // No usable native sheet → show real share options instead.
+    setShowTargets(true)
+  }
+
+  const handleCopyLink = async () => {
     try {
-      const file = new File([cardBlob], "metalyzi-deal.png", {
-        type: "image/png",
-      })
-      await navigator.share({
-        title: `${strategyLabel} Deal Analysis — ${scoreResult.total}/100`,
-        text: `I just analysed a property deal on Metalyzi — scored ${scoreResult.total}/100. Analyse yours at metalyzi.co.uk${referralCode ? `?ref=${referralCode}` : ""}`,
-        files: [file],
-      })
-      flash("Shared ✓")
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        flash("Sharing failed — use Download or Copy")
-      }
+      await navigator.clipboard.writeText(shareText)
+      flash("Link copied ✓")
+    } catch {
+      flash("Couldn't copy the link — use Download or Copy image")
     }
   }
 
@@ -213,13 +266,47 @@ export function DealShareModal({
         {/* Actions */}
         <div className="flex flex-col gap-2.5">
           <Button
-            onClick={handleNativeShare}
+            onClick={handleShare}
             disabled={!cardBlob || generating}
             className="w-full gap-2"
           >
             <Share2 className="size-4" />
-            Share to WhatsApp / social media
+            Share
           </Button>
+
+          {/* Real share options — shown when the device has no native sheet
+              (most desktops), so the Share button always leads somewhere. */}
+          {showTargets && (
+            <div className="flex flex-col gap-2 rounded-lg border border-border/50 bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">
+                Choose where to share. These post the text + link — to include
+                the card image, use <span className="font-medium">Download PNG</span> or{" "}
+                <span className="font-medium">Copy image</span> and attach it.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {webTargets.map((t) => (
+                  <a
+                    key={t.name}
+                    href={t.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowTargets(false)}
+                    className="rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                  >
+                    {t.name}
+                  </a>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                >
+                  Copy link
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-2.5">
             <Button
               variant="outline"

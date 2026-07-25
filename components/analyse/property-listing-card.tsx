@@ -14,6 +14,10 @@ export interface ScrapedListing {
   sqm?: number
   tenureType?: string
   leaseYears?: number
+  /** Council tax band (A–H) — shown as a property fact, not buried in text. */
+  councilTaxBand?: string
+  /** EPC energy band (A–G), from the listing or the gov EPC register. */
+  epcBand?: string
   keyFeatures?: string[]
   description?: string
   images?: string[]
@@ -175,6 +179,27 @@ export function ListingModal({ listing, onClose }: { listing: ScrapedListing; on
                   {listing.sqft ? `${listing.sqft} sqft` : ""}
                   {listing.sqft && listing.sqm ? " / " : ""}
                   {listing.sqm ? `${listing.sqm} sqm` : ""}
+                </p>
+              </div>
+            )}
+            {listing.councilTaxBand && (
+              <div>
+                <p className="text-xs text-muted-foreground">Council Tax Band</p>
+                <p className="text-sm font-medium text-foreground">
+                  {listing.councilTaxBand.toUpperCase()}
+                </p>
+              </div>
+            )}
+            {listing.epcBand && (
+              <div>
+                <p className="text-xs text-muted-foreground">EPC Band</p>
+                <p className="text-sm font-medium text-foreground">
+                  {listing.epcBand.toUpperCase()}
+                  {/^[FG]$/i.test(listing.epcBand) && (
+                    <span className="ml-1 text-xs font-normal text-amber-600 dark:text-amber-400">
+                      · below MEES
+                    </span>
+                  )}
                 </p>
               </div>
             )}

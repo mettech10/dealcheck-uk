@@ -21,6 +21,7 @@ import {
   closeBrightData,
   newBrightDataContext,
 } from "./brightdata-browser"
+import { extractCouncilTaxBand } from "@/lib/councilTax"
 
 export interface RightmoveListing {
   // Core fields
@@ -448,12 +449,14 @@ function normaliseListing(url: string, raw: RawExtract): RightmoveListing {
     raw.description.match(/EPC\s*(?:rating)?\s*[:-]?\s*([A-G])\b/i)
   const epcRating = epcMatch ? epcMatch[1].toUpperCase() : null
 
-  // Council tax band
-  const ctMatch =
-    (raw.councilTaxBand || "").match(/\b([A-H])\b/) ??
-    raw.keyFeatures.join(" ").match(/council\s*tax\s*[:-]?\s*band\s*([A-H])/i) ??
-    raw.description.match(/council\s*tax\s*[:-]?\s*band\s*([A-H])/i)
-  const councilTaxBand = ctMatch ? ctMatch[1].toUpperCase() : null
+  // Council tax band — shared extractor (handles "Band A", "Band - A",
+  // "Band: A", "Council Tax: Band A"), checked structured-field first then
+  // key features / description, since many listings only state it in text.
+  const councilTaxBand = extractCouncilTaxBand(
+    raw.councilTaxBand,
+    raw.keyFeatures,
+    raw.description,
+  )
 
   // Listing id
   const idMatch = url.match(/properties\/(\d+)/)

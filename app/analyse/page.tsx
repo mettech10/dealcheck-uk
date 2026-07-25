@@ -985,6 +985,8 @@ function AnalysePage() {
           sqm:          scraped.sqm != null ? Number(scraped.sqm) : undefined,
           tenureType:   scraped.tenureType,
           leaseYears:   scraped.leaseYears != null ? Number(scraped.leaseYears) : undefined,
+          councilTaxBand: scraped.councilTaxBand,
+          epcBand:      scraped.epcBand,
           keyFeatures:  scraped.keyFeatures,
           description:  scraped.description,
           images:       scraped.images,
