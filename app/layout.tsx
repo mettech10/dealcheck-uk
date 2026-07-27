@@ -10,15 +10,43 @@ import { ReferralCapture } from '@/components/referral-capture'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import './globals.css'
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://metalyzi.co.uk'
+const SITE_NAME = 'Metalyzi'
+const TITLE = 'Metalyzi — AI-Powered Property Investment Analysis'
+const DESCRIPTION =
+  'Analyse any UK property deal in seconds. Instant SDLT, rental yield, cash flow and AI-powered insights across BTL, HMO, BRRRR, SA, Flip and Development.'
+
 export const metadata: Metadata = {
-  title: 'Metalyzi - AI-Powered Property Investment Analysis',
-  description: 'Analyse any UK property deal in seconds. Get instant SDLT calculations, mortgage costs, rental yield, cash flow projections, and AI-powered investment insights.',
+  // metadataBase makes every relative OG/Twitter image resolve to an absolute
+  // URL — social crawlers (X, WhatsApp, LinkedIn) reject relative paths.
+  metadataBase: new URL(SITE_URL),
+  title: TITLE,
+  description: DESCRIPTION,
   keywords: ['property investment', 'UK property', 'SDLT calculator', 'rental yield', 'buy to let', 'property analysis'],
+  applicationName: SITE_NAME,
   icons: {
     icon: '/logo.png',
     shortcut: '/logo.png',
     apple: '/apple-icon.png',
   },
+  alternates: { canonical: '/' },
+  // Open Graph — used by X, WhatsApp, LinkedIn, Slack, iMessage, Facebook.
+  // The image itself is generated at /opengraph-image (app/opengraph-image.tsx).
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    url: SITE_URL,
+    title: TITLE,
+    description: DESCRIPTION,
+    locale: 'en_GB',
+  },
+  // X reads these; summary_large_image gives the full-width preview card.
+  twitter: {
+    card: 'summary_large_image',
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  robots: { index: true, follow: true },
 }
 
 export default function RootLayout({
