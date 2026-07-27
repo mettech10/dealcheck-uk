@@ -2,18 +2,29 @@
  * Social preview card (1200×630) — the image X, WhatsApp, LinkedIn, Slack and
  * iMessage show when a metalyzi.co.uk link is posted.
  *
- * Generated at build/request time with next/og rather than shipping a static
- * PNG, so the copy stays in sync with the site and there's no design asset to
- * maintain. Next wires this file up as og:image automatically; twitter-image
- * re-exports it so X gets an explicit twitter:image too.
+ * Mirrors the landing-page hero (real logo mark, AI-Powered badge, the
+ * "Know Your Numbers / Before You Invest" headline, sub-copy and the two
+ * CTAs) so the preview looks like the page people land on. Generated with
+ * next/og rather than shipping a static PNG, so the copy stays in sync.
+ *
+ * The logo is read off disk and passed as an ArrayBuffer — the documented
+ * way to use a local image inside ImageResponse (a relative <img src> can't
+ * be resolved during rasterisation).
  */
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { ImageResponse } from 'next/og'
 
 export const alt = 'Metalyzi — AI-powered UK property investment analysis'
 export const size = { width: 1200, height: 630 }
 export const contentType = 'image/png'
 
-export default function OpengraphImage() {
+export default async function OpengraphImage() {
+  // Real brand mark (public/logo.png — the teal M-in-circle).
+  const logoSrc = Uint8Array.from(
+    await readFile(join(process.cwd(), 'public', 'logo.png')),
+  ).buffer as ArrayBuffer
+
   return new ImageResponse(
     (
       <div
@@ -22,69 +33,110 @@ export default function OpengraphImage() {
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
+          alignItems: 'center',
+          justifyContent: 'center',
           background:
             'linear-gradient(135deg, #0a1628 0%, #0d1f33 55%, #0a2420 100%)',
-          padding: '64px 72px',
+          padding: '56px 72px',
           fontFamily: 'sans-serif',
+          position: 'relative',
         }}
       >
-        {/* Brand row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: '#2dd4bf',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 34,
-              fontWeight: 700,
-              color: '#0a1628',
-            }}
-          >
-            M
-          </div>
-          <div style={{ fontSize: 38, fontWeight: 700, color: '#ffffff' }}>
+        {/* Brand lockup — real logo + wordmark, as in the navbar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            position: 'absolute',
+            top: 44,
+            left: 72,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoSrc as unknown as string} width={52} height={52} alt="" />
+          <div style={{ fontSize: 34, fontWeight: 700, color: '#ffffff' }}>
             Metalyzi
-          </div>
-          <div
-            style={{
-              marginLeft: 12,
-              padding: '6px 14px',
-              borderRadius: 999,
-              border: '1px solid rgba(45,212,191,0.4)',
-              background: 'rgba(45,212,191,0.1)',
-              color: '#2dd4bf',
-              fontSize: 20,
-              display: 'flex',
-            }}
-          >
-            AI-Powered
           </div>
         </div>
 
-        {/* Headline */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* AI-Powered badge */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '8px 20px',
+            borderRadius: 999,
+            border: '1px solid rgba(45,212,191,0.35)',
+            background: 'rgba(45,212,191,0.10)',
+            color: '#2dd4bf',
+            fontSize: 22,
+            marginBottom: 26,
+          }}
+        >
+          AI-Powered Property Analysis
+        </div>
+
+        {/* Hero headline */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            fontSize: 76,
+            fontWeight: 700,
+            lineHeight: 1.08,
+            letterSpacing: '-2px',
+            color: '#ffffff',
+            textAlign: 'center',
+          }}
+        >
+          <span>Know Your Numbers</span>
+          <span style={{ color: '#2dd4bf' }}>Before You Invest</span>
+        </div>
+
+        {/* Sub-copy */}
+        <div
+          style={{
+            display: 'flex',
+            maxWidth: 860,
+            marginTop: 22,
+            fontSize: 26,
+            lineHeight: 1.4,
+            color: '#9ca3af',
+            textAlign: 'center',
+          }}
+        >
+          Analyse any UK property deal in seconds — yield, cashflow, SDLT, risk
+          score and market comparables.
+        </div>
+
+        {/* CTAs, mirroring the hero buttons */}
+        <div style={{ display: 'flex', gap: 16, marginTop: 34 }}>
           <div
             style={{
-              fontSize: 68,
-              fontWeight: 700,
-              color: '#ffffff',
-              lineHeight: 1.1,
-              letterSpacing: '-1.5px',
               display: 'flex',
-              flexDirection: 'column',
+              padding: '15px 34px',
+              borderRadius: 12,
+              background: '#2dd4bf',
+              color: '#0a1628',
+              fontSize: 24,
+              fontWeight: 700,
             }}
           >
-            <span>Know Your Numbers</span>
-            <span style={{ color: '#2dd4bf' }}>Before You Invest</span>
+            Analyse a Deal →
           </div>
-          <div style={{ fontSize: 28, color: '#9ca3af', lineHeight: 1.4, display: 'flex' }}>
-            Analyse any UK property deal in seconds — yield, cashflow, SDLT,
-            risk score and comparables.
+          <div
+            style={{
+              display: 'flex',
+              padding: '15px 34px',
+              borderRadius: 12,
+              border: '1px solid rgba(255,255,255,0.22)',
+              color: '#e5e7eb',
+              fontSize: 24,
+            }}
+          >
+            See How It Works
           </div>
         </div>
 
@@ -93,30 +145,41 @@ export default function OpengraphImage() {
           style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            gap: 10,
+            position: 'absolute',
+            bottom: 40,
           }}
         >
-          <div style={{ display: 'flex', gap: 12 }}>
-            {['BTL', 'HMO', 'BRRRR', 'SA', 'Flip', 'Development'].map((s) => (
-              <div
-                key={s}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 10,
-                  border: '1px solid rgba(255,255,255,0.14)',
-                  background: 'rgba(255,255,255,0.05)',
-                  color: '#e5e7eb',
-                  fontSize: 22,
-                  display: 'flex',
-                }}
-              >
-                {s}
-              </div>
-            ))}
-          </div>
-          <div style={{ fontSize: 24, color: '#2dd4bf', fontWeight: 600, display: 'flex' }}>
-            metalyzi.co.uk
-          </div>
+          {['BTL', 'HMO', 'BRRRR', 'SA', 'Flip', 'Development'].map((s) => (
+            <div
+              key={s}
+              style={{
+                display: 'flex',
+                padding: '7px 15px',
+                borderRadius: 9,
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(255,255,255,0.05)',
+                color: '#cbd5e1',
+                fontSize: 19,
+              }}
+            >
+              {s}
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            position: 'absolute',
+            top: 52,
+            right: 72,
+            fontSize: 22,
+            fontWeight: 600,
+            color: '#2dd4bf',
+          }}
+        >
+          metalyzi.co.uk
         </div>
       </div>
     ),
