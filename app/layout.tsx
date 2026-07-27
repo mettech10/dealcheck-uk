@@ -10,7 +10,25 @@ import { ReferralCapture } from '@/components/referral-capture'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import './globals.css'
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://metalyzi.co.uk'
+/**
+ * Canonical origin for metadata. MUST be the host that serves a direct 200 —
+ * the apex (metalyzi.co.uk) 307-redirects to www, and social crawlers (X in
+ * particular) don't follow redirects when fetching og:image / twitter:image,
+ * so they silently drop the card. Normalise the apex up to www so preview
+ * images are always fetched directly.
+ */
+function canonicalOrigin(): string {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.metalyzi.co.uk'
+  try {
+    const u = new URL(raw)
+    if (u.hostname === 'metalyzi.co.uk') u.hostname = 'www.metalyzi.co.uk'
+    return u.origin
+  } catch {
+    return 'https://www.metalyzi.co.uk'
+  }
+}
+
+const SITE_URL = canonicalOrigin()
 const SITE_NAME = 'Metalyzi'
 const TITLE = 'Metalyzi — AI-Powered Property Investment Analysis'
 const DESCRIPTION =
