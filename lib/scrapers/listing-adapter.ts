@@ -1,10 +1,35 @@
 /**
- * Adapter: RightmoveListing (Bright Data scraper) → the camelCase
- * `propertyData` shape that /api/analyse scrape-only has always returned.
- * Keeping the output identical means the analyse form's pre-fill mapping
- * and PropertyListingCard display need no changes.
+ * Adapter: a scraped listing (Rightmove or Zoopla, both via Bright Data) →
+ * the camelCase `propertyData` shape that /api/analyse scrape-only has
+ * always returned. Keeping the output identical means the analyse form's
+ * pre-fill mapping and PropertyListingCard display need no changes.
  */
 import type { RightmoveListing } from "./rightmove-listing-scraper"
+import type { ZooplaListing } from "./zoopla-listing-scraper"
+
+/** Fields both portals' listings share — all the adapter actually reads. */
+interface CommonListing {
+  address: string
+  postcode: string
+  price: number
+  bedrooms: number | null
+  bathrooms: number | null
+  propertyType: string | null
+  tenure: string | null
+  leaseYearsRemaining: number | null
+  floorSizeSqft: number | null
+  floorSizeM2: number | null
+  description: string | null
+  keyFeatures: string[]
+  images: string[]
+  floorplans: string[]
+  agent: string | null
+  agentPhone: string | null
+  agentAddress?: string | null
+  listingUrl: string
+  councilTaxBand: string | null
+  epcRating?: string | null
+}
 
 /** Same detail buckets the Flask/analyse pipeline mapped to form enums. */
 const DETAIL_MAP: Record<string, string> = {
@@ -31,7 +56,17 @@ const SQFT_ESTIMATES: Record<
   6: { flat: 1500, semi: 1700, detached: 2200, house: 2000 },
 }
 
+/** Rightmove listing → propertyData (source: "rightmove"). */
 export function listingToPropertyData(listing: RightmoveListing) {
+  return toPropertyData(listing, "rightmove")
+}
+
+/** Zoopla listing → the same propertyData shape (source: "zoopla"). */
+export function zooplaListingToPropertyData(listing: ZooplaListing) {
+  return toPropertyData(listing, "zoopla")
+}
+
+function toPropertyData(listing: CommonListing, source: "rightmove" | "zoopla") {
   const detail = listing.propertyType
     ? DETAIL_MAP[listing.propertyType]
     : undefined
@@ -84,9 +119,11 @@ export function listingToPropertyData(listing: RightmoveListing) {
     agentPhone: listing.agentPhone ?? undefined,
     agentAddress: listing.agentAddress ?? undefined,
     listingUrl: listing.listingUrl,
-    // "rightmove" (not brightdata_rightmove) — PropertyListingCard and the
-    // strategy detection in page.tsx key off this exact value.
-    source: "rightmove",
+    // "rightmove" / "zoopla" (not the brightdata_* internal value) —
+    // PropertyListingCard and the strategy detection in page.tsx key off
+    // these exact values.
+    source,
     councilTaxBand: listing.councilTaxBand ?? undefined,
+    ...(listing.epcRating ? { epcBand: listing.epcRating } : {}),
   }
 }

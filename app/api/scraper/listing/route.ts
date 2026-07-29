@@ -6,7 +6,15 @@ import {
   scrapeRightmoveListing,
   type RightmoveListing,
 } from "@/lib/scrapers/rightmove-listing-scraper"
-import { listingToPropertyData } from "@/lib/scrapers/listing-adapter"
+import {
+  scrapeZooplaListing,
+  isZooplaListingUrl,
+  type ZooplaListing,
+} from "@/lib/scrapers/zoopla-listing-scraper"
+import {
+  listingToPropertyData,
+  zooplaListingToPropertyData,
+} from "@/lib/scrapers/listing-adapter"
 
 /**
  * POST /api/scraper/listing — Bright Data Rightmove listing scrape.
@@ -27,11 +35,19 @@ export const runtime = "nodejs"
 
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000
 
-function cacheKeyForUrl(url: string): string {
+/** Which portal a URL belongs to, or null when it isn't a listing we scrape. */
+function portalFor(url: string): "rightmove" | "zoopla" | null {
+  if (url.includes("rightmove.co.uk") && /properties\/\d+/.test(url)) return "rightmove"
+  if (isZooplaListingUrl(url)) return "zoopla"
+  return null
+}
+
+function cacheKeyForUrl(url: string, portal: "rightmove" | "zoopla"): string {
   // Stable, collision-safe key: listing id when present, else URL hash.
-  const idMatch = url.match(/properties\/(\d+)/)
-  if (idMatch) return `rm_listing_${idMatch[1]}`
-  return `rm_listing_${createHash("sha256").update(url).digest("hex").slice(0, 32)}`
+  const prefix = portal === "zoopla" ? "zp_listing" : "rm_listing"
+  const idMatch = url.match(portal === "zoopla" ? /details\/(\d+)/ : /properties\/(\d+)/)
+  if (idMatch) return `${prefix}_${idMatch[1]}`
+  return `${prefix}_${createHash("sha256").update(url).digest("hex").slice(0, 32)}`
 }
 
 /** Service-role client, or null when env is missing — cache becomes a no-op. */
@@ -60,17 +76,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  // Must be a Rightmove listing URL (/properties/<id>) — a bare domain or
-  // search page can't be scraped as a listing and shouldn't burn a browser
-  // session finding that out.
-  if (!url.includes("rightmove.co.uk") || !/properties\/\d+/.test(url)) {
+  // Must be a supported LISTING url (Rightmove /properties/<id> or Zoopla
+  // /details/<id>) — a bare domain or search page can't be scraped as a
+  // listing and shouldn't burn a browser session finding that out.
+  const portal = portalFor(url)
+  if (!portal) {
     return NextResponse.json(
-      { error: "Invalid Rightmove listing URL" },
+      { error: "Invalid listing URL — expected a Rightmove or Zoopla property page" },
       { status: 400 },
     )
   }
 
-  const cacheKey = cacheKeyForUrl(url)
+  const cacheKey = cacheKeyForUrl(url, portal)
   const supabase = tryAdminClient()
 
   // ── Cache lookup ──────────────────────────────────────────────────────
@@ -84,20 +101,26 @@ export async function POST(request: Request) {
     if (cached?.data) {
       const age = Date.now() - new Date(cached.created_at).getTime()
       if (age < CACHE_TTL_MS) {
-        console.log(`[RM-Listing API] cache hit (${Math.round(age / 60000)}min old)`, { cacheKey })
-        const listing = cached.data as RightmoveListing
+        console.log(`[Listing API] cache hit (${Math.round(age / 60000)}min old)`, { cacheKey, portal })
+        const listing = cached.data as RightmoveListing | ZooplaListing
         return NextResponse.json({
           success: true,
           fromCache: true,
           listing,
-          propertyData: listingToPropertyData(listing),
+          propertyData:
+            portal === "zoopla"
+              ? zooplaListingToPropertyData(listing as ZooplaListing)
+              : listingToPropertyData(listing as RightmoveListing),
         })
       }
     }
   }
 
   // ── Fresh scrape ──────────────────────────────────────────────────────
-  const listing = await scrapeRightmoveListing(url)
+  const listing =
+    portal === "zoopla"
+      ? await scrapeZooplaListing(url)
+      : await scrapeRightmoveListing(url)
 
   if (!listing) {
     return NextResponse.json(
@@ -114,13 +137,13 @@ export async function POST(request: Request) {
       {
         cache_key: cacheKey,
         data: listing,
-        source: "rightmove",
+        source: portal,
         created_at: new Date().toISOString(),
       },
       { onConflict: "cache_key" },
     )
     if (cacheErr) {
-      console.warn("[RM-Listing API] cache write failed:", cacheErr.message)
+      console.warn("[Listing API] cache write failed:", cacheErr.message)
     }
   }
 
@@ -128,6 +151,9 @@ export async function POST(request: Request) {
     success: true,
     fromCache: false,
     listing,
-    propertyData: listingToPropertyData(listing),
+    propertyData:
+      portal === "zoopla"
+        ? zooplaListingToPropertyData(listing as ZooplaListing)
+        : listingToPropertyData(listing as RightmoveListing),
   })
 }

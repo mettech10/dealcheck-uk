@@ -893,7 +893,7 @@ function AnalysePage() {
         new URL(listingUrl)
       } catch {
         setError(
-          "Please enter a valid URL (e.g. https://www.rightmove.co.uk/...)"
+          "Please enter a valid URL (e.g. https://www.rightmove.co.uk/... or https://www.zoopla.co.uk/...)"
         )
         return
       }
@@ -915,7 +915,15 @@ function AnalysePage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let data: { success?: boolean; propertyData?: any } | null = null
 
-        if (listingUrl.includes("rightmove.co.uk")) {
+        // Rightmove AND Zoopla go through the Bright Data listing scraper.
+        // Zoopla in particular is behind a Cloudflare managed challenge, so
+        // the plain-HTTP Flask path can't read it at all — the browser
+        // session is the only route that works.
+        const isBrightDataPortal =
+          listingUrl.includes("rightmove.co.uk") ||
+          listingUrl.includes("zoopla.co.uk")
+
+        if (isBrightDataPortal) {
           try {
             const bdRes = await fetch("/api/scraper/listing", {
               method: "POST",
@@ -1577,7 +1585,7 @@ function AnalysePage() {
                     <Input
                       id="listing-url"
                       type="url"
-                      placeholder="https://www.rightmove.co.uk/properties/..."
+                      placeholder="https://www.rightmove.co.uk/properties/... or zoopla.co.uk/for-sale/details/..."
                       value={listingUrl}
                       onChange={(e) => {
                         setListingUrl(e.target.value)
@@ -2071,7 +2079,7 @@ function AnalysePage() {
             {/* Property listing card — standalone only in the AI-text-only
                 view; with full results it lives inside the deal-summary
                 header (compact photo + address + View-details expander). */}
-            {scrapedListing && (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket") && !(results && formData) && (
+            {scrapedListing && (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket" || scrapedListing.source === "zoopla") && !(results && formData) && (
               <PropertyListingCard listing={scrapedListing} />
             )}
 
@@ -2084,7 +2092,7 @@ function AnalysePage() {
                 backendData={backendData}
                 scrapedListing={
                   scrapedListing &&
-                  (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket")
+                  (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket" || scrapedListing.source === "zoopla")
                     ? scrapedListing
                     : null
                 }
@@ -2167,7 +2175,7 @@ function AnalysePage() {
           backendData={backendData}
           scrapedListing={
             scrapedListing &&
-            (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket")
+            (scrapedListing.source === "rightmove" || scrapedListing.source === "onthemarket" || scrapedListing.source === "zoopla")
               ? scrapedListing
               : null
           }

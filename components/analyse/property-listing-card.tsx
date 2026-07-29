@@ -36,7 +36,7 @@ function formatPrice(price?: number) {
 
 function SourceLabel({ source }: { source?: string }) {
   if (!source) return null
-  const label = source === "rightmove" ? "Rightmove" : source === "onthemarket" ? "OnTheMarket" : source
+  const label = source === "rightmove" ? "Rightmove" : source === "onthemarket" ? "OnTheMarket" : source === "zoopla" ? "Zoopla" : source
   return (
     <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
       {label}
@@ -116,7 +116,7 @@ function ImageGallery({ images, floorplans }: { images?: string[]; floorplans?: 
 }
 
 export function ListingModal({ listing, onClose }: { listing: ScrapedListing; onClose: () => void }) {
-  const sourceLabel = listing.source === "rightmove" ? "Rightmove" : listing.source === "onthemarket" ? "OnTheMarket" : "Listing"
+  const sourceLabel = listing.source === "rightmove" ? "Rightmove" : listing.source === "onthemarket" ? "OnTheMarket" : listing.source === "zoopla" ? "Zoopla" : "Listing"
 
   return (
     <div
