@@ -14,6 +14,7 @@ import { RentalTrendAgent } from "./RentalTrendAgent"
 import { MacroSignalAgent } from "./MacroSignalAgent"
 import { SelfReflectionAgent } from "./SelfReflectionAgent"
 import { NurtureAgent } from "./NurtureAgent"
+import { DiscoveryAgent } from "./DiscoveryAgent"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 /** slug → agent. Slugs are the public cron path (/api/agents/<slug>). */
@@ -24,6 +25,9 @@ export const agents = {
   "macro-signal": new MacroSignalAgent(),
   "self-reflection": new SelfReflectionAgent(),
   "nurture": new NurtureAgent(),
+  // Runs recurring discovery searches that are due. Ad-hoc searches are
+  // triggered directly via /api/discovery/search, not through this slug.
+  "discovery": new DiscoveryAgent(),
 } satisfies Record<string, BaseAgent>
 
 export type AgentSlug = keyof typeof agents
