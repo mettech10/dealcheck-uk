@@ -384,6 +384,34 @@ function AnalysePage() {
   >(null)
   const verifyRanRef = useRef<string | null>(null)
 
+  // ── Deep link from Deal Discovery: /analyse?url=…&strategy=… ──────────
+  // Pre-populates the URL field and target strategy so the user lands on the
+  // normal flow with everything filled in. We deliberately do NOT auto-run:
+  // scraping + analysis spend real credits, so the user presses the button.
+  useEffect(() => {
+    const deepUrl = searchParams.get("url")
+    if (!deepUrl) return
+    setInputMode("url")
+    setListingUrl(deepUrl)
+    const strat = (searchParams.get("strategy") ?? "").toUpperCase()
+    const map: Record<string, string> = {
+      BTL: "btl",
+      HMO: "hmo",
+      BRRRR: "brr",
+      BRR: "brr",
+      FLIP: "flip",
+      SA: "r2sa",
+      R2SA: "r2sa",
+    }
+    if (map[strat]) {
+      setPrefillData((prev) => ({
+        ...(prev ?? {}),
+        investmentType: map[strat] as PropertyFormData["investmentType"],
+      }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const paymentFlag = searchParams.get("payment")
     const sessionId = searchParams.get("session_id") || ""
