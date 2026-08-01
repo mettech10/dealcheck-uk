@@ -42,6 +42,7 @@ import {
   AlertTriangle,
   X,
   Share2,
+  Search,
 } from "lucide-react"
 import { DealShareModal } from "@/components/analyse/deal-share-modal"
 import type { RefurbAnalysisResult } from "@/lib/refurbAnalysis"
@@ -1465,6 +1466,13 @@ function AnalysePage() {
           {/* Top-bar Quick Tools strip removed — the global navbar
               dropdown now covers all tool entry points. */}
           <div className="flex items-center gap-2">
+            {/* Deal Discovery — scan a whole area instead of one listing. */}
+            <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+              <Link href="/discovery">
+                <Search className="size-3.5" />
+                Discovery
+              </Link>
+            </Button>
             <ThemeToggle />
             <CreditsPill />
             <Button asChild variant="ghost" size="sm">

@@ -28,6 +28,7 @@ interface ToolItem {
 
 // Plain-text only — no icons, no descriptions, no badges.
 const TOOLS: ToolItem[] = [
+  { href: "/discovery",             name: "Deal Discovery" },
   { href: "/tools/sdlt-calculator", name: "SDLT Calculator" },
   { href: "/tools/portfolio",       name: "Portfolio Tracker" },
   { href: "/tools/compare",         name: "Deal Comparison" },
@@ -46,7 +47,10 @@ function tierMeta(tier: string | null): { label: string; tone: "teal" | "muted" 
 
 export function Navbar({ user }: NavbarProps) {
   const pathname = usePathname()
-  const isToolsActive = pathname?.startsWith("/tools") ?? false
+  // Deal Discovery lives at /discovery but sits in the Tools menu, so it
+  // must light the Tools tab too.
+  const isToolsActive =
+    (pathname?.startsWith("/tools") || pathname?.startsWith("/discovery")) ?? false
 
   // ── Mobile main menu ──
   const [mobileOpen, setMobileOpen] = useState(false)

@@ -7,11 +7,18 @@ import {
   Wallet,
   PieChart,
   Sparkles,
+  Search,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { ScrollReveal, StaggerContainer, StaggerItem, HoverCard } from "@/components/animations"
 
 const features = [
+  {
+    icon: Search,
+    title: "Deal Discovery",
+    description:
+      "Scan a whole postcode area at once. Every listing is screened against area data, and the strongest candidates get a full analysis and a ranked shortlist.",
+  },
   {
     icon: Calculator,
     title: "SDLT Calculator",
