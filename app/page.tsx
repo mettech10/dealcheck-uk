@@ -9,17 +9,23 @@ import { Testimonials } from "@/components/landing/testimonials"
 import { CTA } from "@/components/landing/cta"
 
 export default async function HomePage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let navUser: { email?: string; name?: string } | null = null
 
-  const navUser = user
-    ? {
-        email: user.email ?? undefined,
-        name: (user.user_metadata?.full_name as string) ?? undefined,
-      }
-    : null
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    navUser = user
+      ? {
+          email: user.email ?? undefined,
+          name: (user.user_metadata?.full_name as string) ?? undefined,
+        }
+      : null
+  } catch {
+    // Supabase auth failed - continue with null user
+  }
 
   return (
     <div className="flex flex-col">

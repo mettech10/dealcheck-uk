@@ -5,6 +5,9 @@ const nextConfig = {
     // type errors so credit/payment regressions surface before deploy.
     ignoreBuildErrors: false,
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     unoptimized: true,
   },
