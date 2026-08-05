@@ -11,7 +11,7 @@
  * intelligence above is independent of whichever AI model is configured.
  */
 import { createAdminClient } from "@/lib/supabase/admin"
-import { listAgents } from "@/lib/agents/orchestrator"
+import { listAgents } from "@/lib/agents/registry"
 import { agentLabel, describeSchedule } from "@/lib/agents/display"
 
 export const dynamic = "force-dynamic"
@@ -41,7 +41,6 @@ function timeAgo(iso: string): string {
 }
 
 async function loadIntelligence() {
-  const admin = createAdminClient()
   const empty = {
     areas: [] as Row[],
     patterns: [] as Row[],
@@ -51,6 +50,7 @@ async function loadIntelligence() {
     profileCount: 0,
   }
   try {
+    const admin = createAdminClient()
     const [areasRes, allDealRes, patternsRes, patternCountRes, profileCountRes] = await Promise.all([
       admin
         .from("area_intelligence")
@@ -91,7 +91,6 @@ interface AgentStatus {
 }
 
 async function loadAgentActivity() {
-  const admin = createAdminClient()
   const registered = listAgents() // every agent, even those never run yet
 
   const empty = {
@@ -108,6 +107,7 @@ async function loadAgentActivity() {
   }
 
   try {
+    const admin = createAdminClient()
     const [logRes, benchRes] = await Promise.all([
       admin
         .from("agent_run_log")

@@ -11,7 +11,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { isAdminEmail } from "@/lib/admin"
-import { listAgents } from "@/lib/agents/orchestrator"
+import { listAgents } from "@/lib/agents/registry"
 import { agentLabel, describeSchedule, agentHealth, type AgentHealth } from "@/lib/agents/display"
 
 export const dynamic = "force-dynamic"
