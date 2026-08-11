@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
-import { Footer } from '@/components/landing/footer'
+import { ConditionalFooter } from '@/components/conditional-footer'
 import { CookieConsent } from '@/components/cookie-consent'
 import { ConditionalAnalytics } from '@/components/conditional-analytics'
 import CrispChat from '@/components/CrispChat'
@@ -102,7 +102,7 @@ export default function RootLayout({
           <div className="flex-1">
             {children}
           </div>
-          <Footer />
+          <ConditionalFooter />
           <CookieConsent />
           <ReferralCapture />
           <ConditionalAnalytics />

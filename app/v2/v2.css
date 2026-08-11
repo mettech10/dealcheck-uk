@@ -1,0 +1,334 @@
+/* ============================================================================
+   Metalyzi v2 — neo-gradient dark design system
+   ----------------------------------------------------------------------------
+   Every token and class here is scoped under .v2-root so this experiment can
+   never leak into the live app. Brand hues are unchanged (teal #2DD4BF and the
+   logo cyan #32D3D9); the "purple-blue" of the reference boards appears only as
+   ambient LIGHT — low-saturation indigo washes behind the content — so the
+   palette reads premium and cool without drifting off-brand.
+   ============================================================================ */
+
+.v2-root {
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+  --v2-bg: #06070a;
+  --v2-bg-soft: #0a0c11;
+  --v2-panel: rgba(255, 255, 255, 0.024);
+  --v2-panel-hover: rgba(255, 255, 255, 0.042);
+  --v2-panel-strong: rgba(255, 255, 255, 0.055);
+  --v2-hairline: rgba(255, 255, 255, 0.08);
+  --v2-hairline-strong: rgba(255, 255, 255, 0.14);
+
+  /* ── Type ─────────────────────────────────────────────────────────────── */
+  --v2-text: #f2f6f9;
+  --v2-text-muted: #97a2b1;
+  --v2-text-dim: #6a7484;
+
+  /* ── Brand (unchanged) ────────────────────────────────────────────────── */
+  --v2-brand: #2dd4bf;
+  --v2-brand-bright: #32d3d9;
+  --v2-brand-deep: #0d9488;
+
+  /* ── Ambient light (mood only, never on components) ───────────────────── */
+  --v2-ambient-teal: rgba(45, 212, 191, 0.18);
+  --v2-ambient-indigo: rgba(99, 102, 241, 0.14);
+
+  --v2-radius: 16px;
+
+  position: relative;
+  background: var(--v2-bg);
+  color: var(--v2-text);
+  font-family: Inter, "Inter Tight", Manrope, ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
+  overflow-x: clip;
+}
+
+/* ── Ambient lighting layer ──────────────────────────────────────────────
+   Soft layered depth instead of heavy shadows: three wide, low-opacity
+   radials that bleed into each other behind all content. */
+.v2-ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(1100px 620px at 50% -180px, var(--v2-ambient-teal), transparent 68%),
+    radial-gradient(900px 520px at 12% 4%, var(--v2-ambient-indigo), transparent 62%),
+    radial-gradient(760px 460px at 92% 16%, rgba(50, 211, 217, 0.1), transparent 60%);
+}
+
+/* Fine grid, masked so it fades out rather than tiling to the edges. */
+.v2-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 100% 62% at 50% 0%, #000 30%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 100% 62% at 50% 0%, #000 30%, transparent 78%);
+}
+
+/* ── Frosted glass ───────────────────────────────────────────────────────
+   Transparency + blur + a 1px hairline + an inset top highlight. The inset
+   highlight is what makes glass read as a lit surface rather than a flat fill. */
+.v2-glass {
+  background: var(--v2-panel);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--v2-hairline);
+  border-radius: var(--v2-radius);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.v2-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+  border: 1px solid var(--v2-hairline);
+  border-radius: var(--v2-radius);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  transition: border-color 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.v2-card:hover {
+  border-color: rgba(45, 212, 191, 0.28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018));
+  transform: translateY(-2px);
+}
+
+/* Hairline that glows brand-teal at its centre — used to cap feature cards. */
+.v2-topline::before {
+  content: "";
+  position: absolute;
+  inset-inline: 12%;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(45, 212, 191, 0.55), transparent);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.v2-card:hover .v2-topline::before,
+.v2-topline:hover::before {
+  opacity: 1;
+}
+
+/* ── Responsive visibility ───────────────────────────────────────────────
+   v2.css loads after Tailwind, so `.v2-btn { display: inline-flex }` would
+   otherwise beat Tailwind's `md:hidden` at equal specificity. These explicit
+   utilities win regardless of order. */
+@media (min-width: 768px) {
+  .v2-hide-desktop {
+    display: none !important;
+  }
+}
+@media (max-width: 767.98px) {
+  .v2-hide-mobile {
+    display: none !important;
+  }
+}
+
+/* ── Type scale ──────────────────────────────────────────────────────────
+   High contrast, tight tracking — the Linear/Vercel register. */
+.v2-display {
+  font-size: clamp(2.5rem, 5.6vw, 4.25rem);
+  line-height: 0.98;
+  letter-spacing: -0.038em;
+  font-weight: 600;
+  color: var(--v2-text);
+}
+
+.v2-h2 {
+  font-size: clamp(1.9rem, 3.4vw, 2.85rem);
+  line-height: 1.06;
+  letter-spacing: -0.032em;
+  font-weight: 600;
+}
+
+.v2-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v2-text-dim);
+  font-weight: 500;
+}
+
+/* Gradient text — brand teal → logo cyan, never purple. */
+.v2-gradient-text {
+  background: linear-gradient(115deg, #ffffff 12%, var(--v2-brand-bright) 58%, var(--v2-brand) 92%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Pills, buttons ──────────────────────────────────────────────────────── */
+.v2-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--v2-text-muted);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--v2-hairline);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.v2-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.85rem;
+  padding: 0 1.35rem;
+  border-radius: 10px;
+  font-size: 0.925rem;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
+}
+
+/* Primary = brand teal, with a soft brand glow rather than a drop shadow. */
+.v2-btn-primary {
+  background: linear-gradient(180deg, var(--v2-brand-bright), var(--v2-brand-deep));
+  color: #04231f;
+  border: 1px solid rgba(50, 211, 217, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.12),
+    0 8px 30px -8px rgba(45, 212, 191, 0.45),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28);
+}
+.v2-btn-primary:hover {
+  filter: brightness(1.08);
+  box-shadow:
+    0 0 0 1px rgba(45, 212, 191, 0.2),
+    0 12px 38px -8px rgba(45, 212, 191, 0.6),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.34);
+  transform: translateY(-1px);
+}
+
+.v2-btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--v2-text);
+  border: 1px solid var(--v2-hairline);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.v2-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--v2-hairline-strong);
+  transform: translateY(-1px);
+}
+
+/* ── Icon tile — thin outline icons on a lit square ──────────────────────── */
+.v2-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 10px;
+  color: var(--v2-brand);
+  background: linear-gradient(180deg, rgba(45, 212, 191, 0.16), rgba(45, 212, 191, 0.05));
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ── Sticky nav ─────────────────────────────────────────────────────────── */
+.v2-nav {
+  background: rgba(6, 7, 10, 0.6);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-bottom: 1px solid var(--v2-hairline);
+}
+
+.v2-navlink {
+  color: var(--v2-text-muted);
+  font-size: 0.9rem;
+  transition: color 0.2s ease;
+}
+.v2-navlink:hover {
+  color: var(--v2-text);
+}
+
+/* ── Section rhythm + 12-col grid ───────────────────────────────────────── */
+.v2-section {
+  position: relative;
+  z-index: 1;
+  padding-block: clamp(4.5rem, 9vw, 8rem);
+}
+
+.v2-container {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+.v2-grid12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+/* Hairline section divider that fades at both ends. */
+.v2-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--v2-hairline-strong), transparent);
+  border: 0;
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@keyframes v2-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.v2-rise {
+  animation: v2-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes v2-sweep {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
+/* Slow light sweep across the product preview's top edge. */
+.v2-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 1px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--v2-brand-bright), transparent);
+  animation: v2-sweep 6s ease-in-out infinite;
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-rise,
+  .v2-sweep {
+    animation: none;
+  }
+  .v2-card:hover {
+    transform: none;
+  }
+}
