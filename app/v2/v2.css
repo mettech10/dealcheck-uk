@@ -60,7 +60,8 @@
     radial-gradient(760px 460px at 92% 16%, rgba(50, 211, 217, 0.1), transparent 60%);
 }
 
-/* Fine grid, masked so it fades out rather than tiling to the edges. */
+/* Fine grid, masked so it fades out rather than tiling to the edges.
+   Pans by exactly one tile so the loop is seamless. */
 .v2-grid {
   position: absolute;
   inset: 0;
@@ -72,6 +73,84 @@
   background-size: 64px 64px;
   mask-image: radial-gradient(ellipse 100% 62% at 50% 0%, #000 30%, transparent 78%);
   -webkit-mask-image: radial-gradient(ellipse 100% 62% at 50% 0%, #000 30%, transparent 78%);
+  animation: v2-grid-pan 48s linear infinite;
+}
+
+@keyframes v2-grid-pan {
+  from { background-position: 0 0; }
+  to { background-position: 64px 64px; }
+}
+
+/* ── Aurora ──────────────────────────────────────────────────────────────
+   Three oversized, very soft colour fields that drift and breathe behind the
+   hero. Only transform/opacity animate, so it stays on the compositor and
+   costs nothing on scroll. Sizes are in vmax and the container is inset well
+   past the viewport, so no edge is ever visible. */
+.v2-aurora {
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.v2-aurora i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  will-change: transform, opacity;
+}
+
+.v2-aurora .a1 {
+  width: 62vmax;
+  height: 62vmax;
+  left: 4%;
+  top: -14%;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.16), transparent 62%);
+  animation: v2-drift-a 26s ease-in-out infinite alternate,
+    v2-breathe 14s ease-in-out infinite;
+}
+
+.v2-aurora .a2 {
+  width: 54vmax;
+  height: 54vmax;
+  right: 0%;
+  top: -6%;
+  background: radial-gradient(circle, rgba(50, 211, 217, 0.13), transparent 62%);
+  animation: v2-drift-b 32s ease-in-out infinite alternate,
+    v2-breathe 18s ease-in-out infinite reverse;
+}
+
+/* The indigo field — ambient light only, keeps the palette cool without
+   putting a non-brand colour on any component. */
+.v2-aurora .a3 {
+  width: 48vmax;
+  height: 48vmax;
+  left: 22%;
+  top: 10%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.12), transparent 64%);
+  animation: v2-drift-c 38s ease-in-out infinite alternate,
+    v2-breathe 22s ease-in-out infinite;
+}
+
+@keyframes v2-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(6vw, 4vh, 0) scale(1.12); }
+}
+
+@keyframes v2-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to { transform: translate3d(-7vw, 3vh, 0) scale(0.94); }
+}
+
+@keyframes v2-drift-c {
+  from { transform: translate3d(0, 0, 0) scale(0.96); }
+  to { transform: translate3d(5vw, -4vh, 0) scale(1.14); }
+}
+
+@keyframes v2-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.95; }
 }
 
 /* ── Frosted glass ───────────────────────────────────────────────────────
@@ -323,10 +402,14 @@
   opacity: 0.7;
 }
 
+/* Anyone who asks for less motion gets the static composition: the ambient
+   wash and aurora fields still render, they just stop moving. */
 @media (prefers-reduced-motion: reduce) {
   .v2-rise,
-  .v2-sweep {
-    animation: none;
+  .v2-sweep,
+  .v2-grid,
+  .v2-aurora i {
+    animation: none !important;
   }
   .v2-card:hover {
     transform: none;

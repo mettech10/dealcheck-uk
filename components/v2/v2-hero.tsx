@@ -6,6 +6,13 @@ export function V2Hero() {
   return (
     <section className="relative">
       <div className="v2-ambient" />
+      {/* Slow-drifting colour fields — the page feels alive without anything
+          moving fast enough to distract from the copy. */}
+      <div className="v2-aurora" aria-hidden>
+        <i className="a1" />
+        <i className="a2" />
+        <i className="a3" />
+      </div>
       <div className="v2-grid" />
 
       <div className="v2-container relative z-[1] pb-16 pt-16 md:pb-24 md:pt-24">
