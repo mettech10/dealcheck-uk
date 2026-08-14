@@ -12,7 +12,7 @@ export function V2CTA() {
             className="pointer-events-none absolute inset-0"
             style={{
               background:
-                "radial-gradient(680px 300px at 50% 0%, rgba(45,212,191,0.16), transparent 66%), radial-gradient(520px 260px at 12% 100%, rgba(99,102,241,0.12), transparent 64%)",
+                "radial-gradient(680px 300px at 50% 0%, rgba(0,203,195,0.16), transparent 66%), radial-gradient(520px 260px at 12% 100%, rgba(13, 148, 136, 0.14), transparent 64%)",
             }}
           />
           <div className="relative">

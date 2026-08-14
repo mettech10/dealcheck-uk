@@ -97,7 +97,7 @@ export function V2Bento() {
             <div
               aria-hidden
               className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full blur-3xl"
-              style={{ background: "radial-gradient(circle, rgba(45,212,191,0.16), transparent 70%)" }}
+              style={{ background: "radial-gradient(circle, rgba(0,203,195,0.16), transparent 70%)" }}
             />
             <span className="v2-icon">
               <Sparkles size={17} strokeWidth={1.5} />

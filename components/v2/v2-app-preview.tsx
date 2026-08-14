@@ -28,12 +28,12 @@ function Sparkline() {
     <svg viewBox={`0 0 ${w} ${h}`} className="h-[132px] w-full" preserveAspectRatio="none">
       <defs>
         <linearGradient id="v2fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0.32" />
-          <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0" />
+          <stop offset="0%" stopColor="#00cbc3" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="#00cbc3" stopOpacity="0" />
         </linearGradient>
         <linearGradient id="v2stroke" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#32d3d9" />
-          <stop offset="100%" stopColor="#2dd4bf" />
+          <stop offset="100%" stopColor="#00cbc3" />
         </linearGradient>
       </defs>
       <path d={area} fill="url(#v2fill)" />
@@ -87,7 +87,7 @@ export function V2AppPreview() {
         className="pointer-events-none absolute -inset-x-10 -bottom-10 top-10 -z-10 blur-3xl"
         style={{
           background:
-            "radial-gradient(60% 60% at 50% 40%, rgba(45,212,191,0.16), transparent 70%), radial-gradient(50% 50% at 20% 60%, rgba(99,102,241,0.12), transparent 70%)",
+            "radial-gradient(60% 60% at 50% 40%, rgba(0,203,195,0.16), transparent 70%), radial-gradient(50% 50% at 20% 60%, rgba(13, 148, 136, 0.14), transparent 70%)",
         }}
       />
 
@@ -133,8 +133,8 @@ export function V2AppPreview() {
               className="v2-pill"
               style={{
                 color: "var(--v2-brand)",
-                borderColor: "rgba(45,212,191,0.28)",
-                background: "rgba(45,212,191,0.08)",
+                borderColor: "rgba(0,203,195,0.28)",
+                background: "rgba(0,203,195,0.08)",
               }}
             >
               Strong buy
@@ -187,8 +187,8 @@ export function V2AppPreview() {
             className="mt-4 flex items-start gap-3 rounded-xl p-4"
             style={{
               background:
-                "linear-gradient(90deg, rgba(45,212,191,0.09), rgba(99,102,241,0.05) 60%, transparent)",
-              border: "1px solid rgba(45,212,191,0.18)",
+                "linear-gradient(90deg, rgba(0,203,195,0.09), rgba(13, 148, 136, 0.06) 60%, transparent)",
+              border: "1px solid rgba(0,203,195,0.18)",
             }}
           >
             <span className="v2-icon !size-8 shrink-0">

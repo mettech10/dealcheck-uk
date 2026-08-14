@@ -84,7 +84,7 @@ export function V2Pricing() {
         className="pointer-events-none absolute inset-x-0 top-0 h-[460px]"
         style={{
           background:
-            "radial-gradient(700px 320px at 50% 0%, rgba(45,212,191,0.08), transparent 70%)",
+            "radial-gradient(700px 320px at 50% 0%, rgba(0,203,195,0.08), transparent 70%)",
         }}
       />
       <div className="v2-container relative">
@@ -104,13 +104,13 @@ export function V2Pricing() {
             <article
               key={t.id}
               className={`v2-card col-span-12 flex h-full flex-col p-6 md:col-span-6 lg:col-span-3 ${
-                t.popular ? "!border-[rgba(45,212,191,0.35)]" : ""
+                t.popular ? "!border-[rgba(0,203,195,0.35)]" : ""
               }`}
               style={
                 t.popular
                   ? {
                       background:
-                        "linear-gradient(180deg, rgba(45,212,191,0.09), rgba(255,255,255,0.014))",
+                        "linear-gradient(180deg, rgba(0,203,195,0.09), rgba(255,255,255,0.014))",
                     }
                   : undefined
               }
@@ -121,9 +121,9 @@ export function V2Pricing() {
                   <span
                     className="rounded-full px-2 py-0.5 text-[0.6875rem] font-medium"
                     style={{
-                      background: "rgba(45,212,191,0.14)",
+                      background: "rgba(0,203,195,0.14)",
                       color: "var(--v2-brand)",
-                      border: "1px solid rgba(45,212,191,0.3)",
+                      border: "1px solid rgba(0,203,195,0.3)",
                     }}
                   >
                     Most popular
