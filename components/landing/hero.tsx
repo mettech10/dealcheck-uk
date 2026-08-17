@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { motion } from "framer-motion"
 import { HeroText, PulseElement } from "@/components/animations"
+import { AnalysisPreview } from "@/components/landing/analysis-preview"
 import { useEffect, useState } from "react"
 
 /** Format a deal count for display — floor to nearest 10 with "+" suffix */
@@ -118,6 +119,16 @@ export function Hero() {
               <a href="#features">See How It Works</a>
             </Button>
           </motion.div>
+        </motion.div>
+
+        {/* Product preview — sample analysis result */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, delay: 2.2, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-16 w-full"
+        >
+          <AnalysisPreview />
         </motion.div>
 
         {/* Animated Stats Bar */}
