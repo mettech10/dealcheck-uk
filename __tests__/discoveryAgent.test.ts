@@ -43,6 +43,35 @@ vi.mock("@/lib/discovery/tier2Analyse", () => ({
 }))
 
 vi.mock("@/lib/discovery/areaIntel", () => ({ resetDistrictIntelCache: vi.fn() }))
+
+// The ingestion layer (raw → normalise → canonical) has its own suite in
+// discoveryIngest.test.ts. Here it is stubbed to pass the scraped cards
+// straight through, so this file keeps asserting orchestration only.
+vi.mock("@/lib/discovery/ingest", () => ({
+  ingestListings: vi.fn(async ({ cards }: { cards: Array<Record<string, any>> }) => ({
+    runId: "test-run",
+    rawWritten: cards.length,
+    quarantined: 0,
+    propertiesUpserted: cards.length,
+    listings: cards.map((c, i) => ({
+      propertyId: `prop-${i}`,
+      propertyKey: `key-${i}`,
+      listingUrl: c.listingUrl,
+      listingId: c.listingId ?? null,
+      address: c.address,
+      postcode: c.postcode ?? "",
+      district: "M14",
+      price: c.price,
+      bedrooms: c.bedrooms ?? null,
+      bathrooms: c.bathrooms ?? null,
+      propertyType: c.propertyType ?? null,
+      thumbnailUrl: c.thumbnailUrl ?? null,
+      description: c.description ?? null,
+      latitude: null,
+      longitude: null,
+    })),
+  })),
+}))
 vi.mock("@/lib/brevo-email", () => ({
   sendBrevoEmail: vi.fn(async () => true),
   baseTemplate: (s: string) => s,

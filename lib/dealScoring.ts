@@ -205,7 +205,9 @@ function tierScore(
   return 0
 }
 
-function bandFromTotal(total: number): { label: string; colour: ScoreColour } {
+/** Exported so post-scoring modifiers (e.g. the comps adjustment) re-band a
+ *  changed total through exactly this logic rather than a copy that can drift. */
+export function bandFromTotal(total: number): { label: string; colour: ScoreColour } {
   if (total >= 85) return { label: "Exceptional", colour: "teal" }
   if (total >= 70) return { label: "Good Deal", colour: "green" }
   if (total >= 55) return { label: "Fair Deal", colour: "amber" }

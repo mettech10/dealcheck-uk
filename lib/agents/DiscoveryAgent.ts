@@ -23,7 +23,9 @@ import {
 } from "@/lib/discovery/tier1Screen"
 import { runDeepAnalysis } from "@/lib/discovery/tier2Analyse"
 import { resetDistrictIntelCache } from "@/lib/discovery/areaIntel"
+import { ingestListings, type CanonicalListing } from "@/lib/discovery/ingest"
 import { sendBrevoEmail, baseTemplate } from "@/lib/brevo-email"
+import { randomUUID } from "crypto"
 
 /** Hard cap on Tier 2 analyses per run — non-negotiable cost control. */
 export const TIER2_CAP = 15
@@ -83,9 +85,16 @@ export class DiscoveryAgent extends BaseAgent {
       }
     }
 
-    // ── STEP 1: scrape listings per area ────────────────────────────────
+    // ── STEP 1: scrape → raw landing zone → normalise → canonical store ──
+    // Nothing is screened that wasn't first written to discovery_raw_listings,
+    // so any run can be replayed and any rejected record explains itself in
+    // discovery_quarantine.
+    const runId = randomUUID()
     const found: ListingCandidate[] = []
+    const canonicalByUrl = new Map<string, CanonicalListing>()
     const seenUrls = new Set<string>()
+    let totalRaw = 0
+    let totalQuarantined = 0
 
     for (let i = 0; i < areas.length; i++) {
       const area = areas[i]
@@ -99,29 +108,50 @@ export class DiscoveryAgent extends BaseAgent {
           maxResults: PER_AREA_LIMIT,
           sortType: "newest",
         })
-        for (const r of rows) {
-          if (!r.listingUrl || seenUrls.has(r.listingUrl)) continue
-          seenUrls.add(r.listingUrl)
+
+        const ingest = await ingestListings({
+          supabase: this.supabase,
+          runId,
+          searchId,
+          source: "rightmove_search",
+          // Search cards are partial (often only an outcode), so they carry
+          // lower confidence than a full listing-page fetch.
+          confidence: 0.7,
+          cards: rows as unknown as Record<string, unknown>[],
+          fallbackArea: area,
+        })
+        totalRaw += ingest.rawWritten
+        totalQuarantined += ingest.quarantined
+
+        for (const c of ingest.listings) {
+          if (seenUrls.has(c.listingUrl)) continue
+          seenUrls.add(c.listingUrl)
+          canonicalByUrl.set(c.listingUrl, c)
           found.push({
-            listingUrl: r.listingUrl,
-            listingId: r.listingId,
-            address: r.address,
-            // Search cards often carry only an outcode — fall back to the
-            // requested area so district lookups still resolve.
-            postcode: r.postcode || area,
-            price: r.price,
-            bedrooms: r.bedrooms,
-            propertyType: r.propertyType,
-            thumbnailUrl: r.thumbnailUrl,
-            description: r.description,
+            listingUrl: c.listingUrl,
+            listingId: c.listingId ?? "",
+            address: c.address,
+            postcode: c.postcode || area,
+            price: c.price,
+            bedrooms: c.bedrooms,
+            propertyType: c.propertyType,
+            thumbnailUrl: c.thumbnailUrl,
+            description: c.description,
           })
         }
-        console.log(`[Discovery] ${area}: ${rows.length} listings`)
+        console.log(
+          `[Discovery] ${area}: ${rows.length} scraped → ${ingest.rawWritten} raw, ` +
+            `${ingest.quarantined} quarantined, ${ingest.listings.length} canonical`,
+        )
       } catch (err) {
         console.warn(`[Discovery] scrape failed for ${area}:`, err)
         insights.push(`Could not scan ${area}`)
       }
       if (i < areas.length - 1) await sleep(AREA_DELAY_MS)
+    }
+
+    if (totalQuarantined > 0) {
+      insights.push(`${totalQuarantined} listing(s) quarantined — see discovery_quarantine`)
     }
 
     const totalFound = found.length
@@ -163,6 +193,9 @@ export class DiscoveryAgent extends BaseAgent {
     for (const { listing, tier1 } of screened) {
       const row: Record<string, unknown> = {
         search_id: searchId,
+        // Link this per-search result back to the canonical property so the
+        // same house found by two searches resolves to one entity.
+        property_id: canonicalByUrl.get(listing.listingUrl)?.propertyId ?? null,
         listing_url: listing.listingUrl,
         listing_id: listing.listingId,
         address: listing.address,
@@ -227,7 +260,8 @@ export class DiscoveryAgent extends BaseAgent {
     return {
       itemsProcessed: totalFound,
       insights: [
-        `${totalFound} listings scanned across ${areas.length} area(s)`,
+        `${totalRaw} raw payload(s) landed across ${areas.length} area(s)`,
+        `${totalFound} canonical listings after normalisation and dedup`,
         `${passers.length} passed the Tier 1 screen`,
         `${totalAnalysed} fully analysed (cap ${TIER2_CAP})`,
         ...insights,
