@@ -13,6 +13,9 @@ export const metadata: Metadata = {
   title: "Metalyzi — Know your numbers before you invest",
   description:
     "Analyse any UK property deal in seconds. SDLT, mortgage costs, rental yield, cash flow and AI-powered insights in one place.",
+  // Work in progress: keep it out of search results so it can't be indexed or
+  // compete with the real homepage for the same terms, even once it ships.
+  robots: { index: false, follow: false },
 }
 
 export default function V2Layout({ children }: { children: React.ReactNode }) {
