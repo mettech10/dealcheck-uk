@@ -4,6 +4,7 @@
  * take part in a geo radius query without geocoding 29M rows individually.
  *
  *   node scripts/import-postcode-geo.mjs --outcodes M,B,LS,S,L,NE,CV,LE
+ *   node scripts/import-postcode-geo.mjs --file ./ONSPD.csv --areas M,B,LS
  *   node scripts/import-postcode-geo.mjs --file ./ONSPD.csv
  *
  * Two sources:
@@ -13,8 +14,11 @@
  *               — start here, it's minutes not hours.
  *
  *   --file      the ONS Postcode Directory CSV (all ~1.8M UK postcodes).
- *               Download from geoportal.statistics.gov.uk. Use when you want
- *               national coverage. Expects columns named pcds, lat, long.
+ *               Download from geoportal.statistics.gov.uk. True per-postcode
+ *               precision. Expects columns named pcds, lat, long.
+ *               Add --areas to load only the areas you serve — all 1.8M rows
+ *               cost ~430MB (239 bytes/row measured), which on its own would
+ *               fill a 500MB free plan.
  *
  * Needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
  */
@@ -39,6 +43,19 @@ if (!url || !key) {
 const supabase = createClient(url, key, { auth: { persistSession: false } })
 const BATCH = Number(arg("batch", 1000))
 
+// Same scoping rule as the Land Registry importer: letters-only takes the
+// whole area, a token with digits takes one outcode, empty means no filter.
+const AREAS = typeof arg("areas") === "string"
+  ? arg("areas").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
+  : []
+
+function inScope(outcode) {
+  if (AREAS.length === 0) return true
+  const oc = outcode.toUpperCase()
+  const area = (oc.match(/^[A-Z]{1,2}/)?.[0] ?? "")
+  return AREAS.some((t) => (/\d/.test(t) ? oc === t : area === t))
+}
+
 function split(pc) {
   if (!pc) return null
   const m = pc.toUpperCase().replace(/\s+/g, "").match(/^([A-Z]{1,2}[0-9][0-9A-Z]?)([0-9][A-Z]{2})$/)
@@ -58,7 +75,7 @@ async function fromFile(path) {
   console.log(`Reading ${path}`)
   const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity })
   let header = null, iPc = -1, iLat = -1, iLng = -1
-  let batch = [], written = 0, skipped = 0
+  let batch = [], written = 0, skipped = 0, outOfArea = 0
 
   for await (const line of rl) {
     const cells = line.split(",").map((s) => s.replace(/^"|"$/g, "").trim())
@@ -76,6 +93,7 @@ async function fromFile(path) {
     const lat = Number(cells[iLat]), lng = Number(cells[iLng])
     // ONS uses 99.999999 for "no grid reference"
     if (!p || !Number.isFinite(lat) || !Number.isFinite(lng) || lat > 62 || lat < 49) { skipped++; continue }
+    if (!inScope(p.outcode)) { outOfArea++; continue }
 
     batch.push({ postcode: p.postcode, outcode: p.outcode, sector: p.sector, latitude: lat, longitude: lng })
     if (batch.length >= BATCH) {
@@ -84,7 +102,10 @@ async function fromFile(path) {
     }
   }
   written += await writeBatch(batch)
-  console.log(`\nDone: ${written.toLocaleString()} postcodes, ${skipped.toLocaleString()} skipped`)
+  console.log(
+    `\nDone: ${written.toLocaleString()} postcodes, ${skipped.toLocaleString()} skipped` +
+    (AREAS.length ? `, ${outOfArea.toLocaleString()} outside ${AREAS.join("/")}` : ""),
+  )
 }
 
 /** postcodes.io — seed just the outcodes we serve */

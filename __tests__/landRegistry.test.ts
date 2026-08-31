@@ -9,6 +9,8 @@ import { describe, it, expect } from "vitest"
 import {
   parseCsvLine,
   splitPostcode,
+  postcodeArea,
+  matchesAreas,
   parseLandRegistryLine,
   lrTypeToFamily,
   familyToLrType,
@@ -152,5 +154,44 @@ describe("type mapping", () => {
     }
     // 'other' has no single LR code — must not guess one
     expect(familyToLrType("other")).toBeNull()
+  })
+})
+
+describe("area scoping", () => {
+  it("reads the letters off an outcode", () => {
+    expect(postcodeArea("M13")).toBe("M")
+    expect(postcodeArea("LS6")).toBe("LS")
+    expect(postcodeArea("EC1A")).toBe("EC")
+    expect(postcodeArea("b7")).toBe("B")
+  })
+
+  it("takes the whole area for a letters-only token", () => {
+    expect(matchesAreas("M13", ["M"])).toBe(true)
+    expect(matchesAreas("M1", ["M"])).toBe(true)
+    // 'M' must not swallow Milton Keynes or Medway
+    expect(matchesAreas("MK9", ["M"])).toBe(false)
+    expect(matchesAreas("ME7", ["M"])).toBe(false)
+  })
+
+  it("takes one outcode when the token carries digits", () => {
+    expect(matchesAreas("M13", ["M13"])).toBe(true)
+    expect(matchesAreas("M14", ["M13"])).toBe(false)
+  })
+
+  it("mixes area and outcode tokens", () => {
+    const scope = ["LS", "M13"]
+    expect(matchesAreas("LS6", scope)).toBe(true)
+    expect(matchesAreas("M13", scope)).toBe(true)
+    expect(matchesAreas("M14", scope)).toBe(false)
+    expect(matchesAreas("B7", scope)).toBe(false)
+  })
+
+  it("treats an empty scope as no filter, not as match-nothing", () => {
+    expect(matchesAreas("M13", [])).toBe(true)
+  })
+
+  it("ignores case and stray whitespace in the scope", () => {
+    expect(matchesAreas("M13", [" m13 "])).toBe(true)
+    expect(matchesAreas("LS6", ["ls"])).toBe(true)
   })
 })

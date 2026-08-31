@@ -5,6 +5,7 @@
  *   node scripts/import-land-registry.mjs --year 2025
  *   node scripts/import-land-registry.mjs --monthly            # ongoing top-up
  *   node scripts/import-land-registry.mjs --complete --from 2015
+ *   node scripts/import-land-registry.mjs --complete --from 2015 --areas M,B,LS
  *   node scripts/import-land-registry.mjs --file ./pp-2025.csv
  *
  * Streams the CSV line by line — a 4.5GB file is never held in memory — and
@@ -14,13 +15,20 @@
  *
  * Needs NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
  *
- * SIZE: the full 1995→now file is ~29M rows (roughly 8-12GB in Postgres once
- * indexed). --from 2015 takes about 11-12M of those — call it 3.5-5GB indexed,
- * a bit over a third of the full file. That is deliberately deeper than the
- * comps engine's default 24-month window needs: find_land_registry_comps takes
- * p_months, so a thin sector can widen to 48 or 60 and still find real sales,
- * and the depth supports price-trend work without a second import later.
- * Check the Postgres disk allowance before running it.
+ * SIZE — measured at 402 bytes/row on Supabase Postgres 17, table + indexes:
+ *
+ *   national, from 2015   ~11.5M rows   ~4.6GB   needs a paid plan
+ *   national, all history ~29M rows     ~11GB
+ *   --areas M,B,LS        ~0.6M rows    ~230MB   fits a 500MB free plan
+ *
+ * Scope with --areas unless the plan has room for the national set: a
+ * letters-only token ('M') takes the whole postcode area, a token with digits
+ * ('M13') takes one outcode. 'M' does not swallow MK or ME.
+ *
+ * 2015 is deeper than the comps engine's default 24-month window needs, and
+ * deliberately so: find_land_registry_comps takes p_months, so a thin sector
+ * can widen to 48 or 60 and still find real sales, and price-trend work stays
+ * possible without a second import.
  */
 import { createClient } from "@supabase/supabase-js"
 import { createInterface } from "node:readline"
@@ -41,6 +49,20 @@ const BASE = "http://prod.publicdata.landregistry.gov.uk.s3-website-eu-west-1.am
 const BATCH = Number(arg("batch", 2000))
 const FROM_YEAR = arg("from") ? Number(arg("from")) : null
 const DRY = has("dry-run")
+
+// Postcode-area scope. A letters-only token ('M') takes the whole area, a
+// token with digits ('M13') takes just that outcode. Empty = no filter.
+const AREAS = typeof arg("areas") === "string"
+  ? arg("areas").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
+  : []
+
+function inScope(outcode) {
+  if (AREAS.length === 0) return true
+  const oc = outcode.toUpperCase()
+  // 'MK' and 'ME' must not be swallowed by a scope of 'M'.
+  const area = (oc.match(/^[A-Z]{1,2}/)?.[0] ?? "")
+  return AREAS.some((t) => (/\d/.test(t) ? oc === t : area === t))
+}
 
 // ── Supabase ────────────────────────────────────────────────────────────────
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -129,7 +151,7 @@ async function main() {
 
   const rl = createInterface({ input: await openStream(), crlfDelay: Infinity })
 
-  let seen = 0, parsed = 0, written = 0, deleted = 0, skippedYear = 0, skippedBad = 0
+  let seen = 0, parsed = 0, written = 0, deleted = 0, skippedYear = 0, skippedBad = 0, skippedArea = 0
   let batch = []
   let seeking = Boolean(resumeAfter)
   let lastTxn = null
@@ -172,6 +194,7 @@ async function main() {
     }
 
     if (FROM_YEAR && Number(row.sold_date.slice(0, 4)) < FROM_YEAR) { skippedYear++; continue }
+    if (!inScope(row.outcode)) { skippedArea++; continue }
 
     parsed++
     lastTxn = row.txn_id
@@ -189,7 +212,7 @@ async function main() {
   if (supabase) {
     await supabase.from("import_progress").upsert({
       job, cursor_value: lastTxn, rows_done: written, status: "done",
-      notes: `read ${seen}, parsed ${parsed}, skipped ${skippedBad} bad / ${skippedYear} out-of-range`,
+      notes: `read ${seen}, parsed ${parsed}, skipped ${skippedBad} bad / ${skippedYear} out-of-range / ${skippedArea} out-of-area${AREAS.length ? ` (scope ${AREAS.join(",")})` : ""}`,
       updated_at: new Date().toISOString(),
     }, { onConflict: "job" })
   }
@@ -199,7 +222,7 @@ async function main() {
   console.log(`  usable      ${parsed.toLocaleString()}`)
   console.log(`  written     ${written.toLocaleString()}`)
   console.log(`  deleted     ${deleted.toLocaleString()}`)
-  console.log(`  skipped     ${skippedBad.toLocaleString()} unusable, ${skippedYear.toLocaleString()} before ${FROM_YEAR}`)
+  console.log(`  skipped     ${skippedBad.toLocaleString()} unusable, ${skippedYear.toLocaleString()} before ${FROM_YEAR}, ${skippedArea.toLocaleString()} outside ${AREAS.join("/") || "(no area filter)"}`)
   console.log(`  took        ${((Date.now() - t0) / 60000).toFixed(1)} min`)
 }
 

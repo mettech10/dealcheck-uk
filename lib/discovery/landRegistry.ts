@@ -156,6 +156,32 @@ export function parseLandRegistryLine(line: string): LandRegistryRow | null {
   }
 }
 
+/**
+ * Postcode area — the letters at the front of an outcode. 'M13' → 'M',
+ * 'LS6' → 'LS'. The natural unit for "the cities we serve".
+ */
+export function postcodeArea(outcode: string): string {
+  return (outcode.match(/^[A-Z]{1,2}/i)?.[0] ?? "").toUpperCase()
+}
+
+/**
+ * Does this outcode fall inside the requested scope? Tokens are matched
+ * loosely on purpose: a letters-only token ('M') takes the whole area, a
+ * token with digits ('M13') takes just that outcode. Mixing both is fine.
+ *
+ * An empty scope means "no filter" — everything matches.
+ */
+export function matchesAreas(outcode: string, scope: string[]): boolean {
+  if (scope.length === 0) return true
+  const oc = outcode.toUpperCase()
+  const area = postcodeArea(oc)
+  return scope.some((t) => {
+    const token = t.trim().toUpperCase()
+    if (!token) return false
+    return /\d/.test(token) ? oc === token : area === token
+  })
+}
+
 /** Map an LR type code to the family the comps engine reasons about. */
 export function lrTypeToFamily(code: string | null): string {
   switch ((code ?? "").toUpperCase()) {
