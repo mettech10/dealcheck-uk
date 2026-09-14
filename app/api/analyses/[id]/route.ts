@@ -18,18 +18,37 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
   }
 
-  const { data, error } = await supabase
+  const full = await supabase
+    .from("saved_analyses")
+    .select("id, address, form_data, results, ai_text, backend_data, ltd_co_compare, ltd_co_compare_at")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single()
+
+  if (!full.error && full.data) {
+    return NextResponse.json(full.data)
+  }
+
+  // Column may not exist until the ltd_co_compare migration is applied.
+  const legacy = await supabase
     .from("saved_analyses")
     .select("id, address, form_data, results, ai_text, backend_data")
     .eq("id", id)
     .eq("user_id", user.id)
     .single()
 
-  if (error || !data) {
-    return NextResponse.json({ error: error?.message || "Not found" }, { status: 404 })
+  if (legacy.error || !legacy.data) {
+    return NextResponse.json(
+      { error: full.error?.message || legacy.error?.message || "Not found" },
+      { status: 404 },
+    )
   }
 
-  return NextResponse.json(data)
+  return NextResponse.json({
+    ...legacy.data,
+    ltd_co_compare: null,
+    ltd_co_compare_at: null,
+  })
 }
 
 // DELETE /api/analyses/[id] — delete a saved analysis owned by the logged-in user
