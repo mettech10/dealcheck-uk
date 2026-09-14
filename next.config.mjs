@@ -23,8 +23,8 @@ const nextConfig = {
   },
   async rewrites() {
     return [
+      // Thin Bearer/session proxy → Flask POST /v1/deals (canonical SoT).
       { source: '/v1/deals', destination: '/api/v1/deals' },
-      { source: '/v1/deals/:id', destination: '/api/v1/deals/:id' },
     ]
   },
   // Old static admin HTML used to live at /admin/admin_dashboard.html

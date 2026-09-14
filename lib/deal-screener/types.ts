@@ -1,36 +1,45 @@
 /**
- * Deal Screener — shared types (Chrome extension + /v1/deals handoff).
+ * Deal Screener types — wire contract matches Flask
+ * `POST /v1/deals` (metusa-deal-analyzer PR #92).
  *
- * schemaVersion 1 is the contract between the MV3 extension and the
- * Metalyzi app. Keep this file free of Chrome / Next imports so both
- * sides can depend on it.
+ * Next.js is not the source of truth for deals. The extension (and a
+ * thin Next proxy) POST to Flask. Photos stay off.
  */
 
 /** Listing portals the screener can capture. MVP: Rightmove detail only. */
 export type ScreenerListingSource = "rightmove"
 
 /**
- * Strategy hint on the wire. Lowercase, with BRRRR spelled `brrrr`
- * (not `BRR` / `brr` — those are analyser form values).
+ * strategyHint on the Flask wire: lowercase enums.
+ * `r2sa` maps to `sa`. Omitted / empty / OTHER → `btl` on the server.
  */
-export type StrategyHint = "btl" | "brrrr" | "hmo" | "flip" | "r2sa"
+export type StrategyHint = "btl" | "hmo" | "brrrr" | "flip" | "sa" | "development"
 
 export const STRATEGY_HINTS: readonly StrategyHint[] = [
   "btl",
-  "brrrr",
   "hmo",
+  "brrrr",
   "flip",
-  "r2sa",
+  "sa",
+  "development",
 ] as const
 
-/** Analyser `investmentType` equivalent of a screener strategy hint. */
-export type AnalyserInvestmentType = "btl" | "brr" | "hmo" | "flip" | "r2sa"
+/** Analyser `investmentType` equivalent of a Flask strategy hint. */
+export type AnalyserInvestmentType =
+  | "btl"
+  | "brr"
+  | "hmo"
+  | "flip"
+  | "r2sa"
+  | "development"
 
 export const SCHEMA_VERSION = 1 as const
 
 /**
- * Normalised listing posted to POST /v1/deals.
- * Photos / image URLs are deliberately absent — MVP default is photos off.
+ * SchemaVersion 1 listing posted to Flask POST /v1/deals.
+ * Canonical field names: listingUrl, priceGbp, rentPcmGbp, bedrooms.
+ * Aliases (sourceUrl, price, monthlyRent, beds) are accepted on ingest
+ * but not emitted on the wire. Photos / image URLs are absent.
  */
 export interface NormalisedListingV1 {
   source: ScreenerListingSource
@@ -38,8 +47,8 @@ export interface NormalisedListingV1 {
   listingUrl: string
   address: string
   postcode: string
-  price: number
-  priceText: string
+  priceGbp: number
+  rentPcmGbp: number | null
   bedrooms: number | null
   bathrooms: number | null
   propertyType: string | null
@@ -57,22 +66,20 @@ export interface NormalisedListingV1 {
   isUnderOffer: boolean
   isReduced: boolean
   capturedAt: string
-  /**
-   * User-entered monthly rent. Never scraped from the portal — the
-   * screener does not guess rents.
-   */
-  monthlyRent: number | null
 }
 
 export interface HandoffRequestV1 {
   source: "screener"
   schemaVersion: typeof SCHEMA_VERSION
-  strategyHint: StrategyHint
+  /** Omitted when btl so Flask defaults. */
+  strategyHint?: StrategyHint
   listing: NormalisedListingV1
 }
 
 export interface HandoffResponseV1 {
   dealId: string
+  propertyId?: string
+  status: "created" | "existing"
   deepLinkPath: string
 }
 

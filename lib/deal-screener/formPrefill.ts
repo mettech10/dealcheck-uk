@@ -29,7 +29,7 @@ export function listingToFormPrefill(
   const mapped: Partial<PropertyFormData> = {
     address: listing.address || "",
     postcode: listing.postcode || "",
-    purchasePrice: listing.price || 0,
+    purchasePrice: listing.priceGbp || 0,
     propertyType: broadType,
     bedrooms: listing.bedrooms ?? 0,
     investmentType: strategyHintToInvestmentType(strategyHint),
@@ -43,8 +43,8 @@ export function listingToFormPrefill(
   if (listing.tenure === "leasehold" && listing.leaseYearsRemaining) {
     mapped.leaseYears = listing.leaseYearsRemaining
   }
-  if (listing.monthlyRent && listing.monthlyRent > 0) {
-    mapped.monthlyRent = listing.monthlyRent
+  if (listing.rentPcmGbp && listing.rentPcmGbp > 0) {
+    mapped.monthlyRent = listing.rentPcmGbp
   }
   if (listing.epcRating) mapped.epcBand = listing.epcRating
 

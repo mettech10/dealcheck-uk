@@ -1,7 +1,9 @@
 import { DEFAULT_RULES_PRESET, evaluateRules } from "../../../lib/deal-screener/rules"
 import {
   buildHandoffRequest,
-  idempotencyKey,
+  parseHandoffResponse,
+  resolveDeepLinkUrl,
+  resolveIdempotencyKey,
 } from "../../../lib/deal-screener/handoff"
 import { normaliseCollectedListing } from "../../../lib/deal-screener/normalize"
 import { normaliseStrategyHint } from "../../../lib/deal-screener/strategy"
@@ -15,8 +17,10 @@ import {
   clearSession,
   connectAccount,
   getAppOrigin,
+  getBackendOrigin,
   getSession,
   saveAppOrigin,
+  saveBackendOrigin,
   STORAGE_KEYS,
 } from "./auth"
 import type { CaptureResult } from "./messages"
@@ -92,7 +96,7 @@ function render() {
     ]
       .filter(Boolean)
       .join(" · ")
-    $("fact-price").textContent = listing.price ? money(listing.price) : "—"
+    $("fact-price").textContent = listing.priceGbp ? money(listing.priceGbp) : "—"
     $("fact-beds").textContent =
       listing.bedrooms != null ? String(listing.bedrooms) : "—"
     $("fact-type").textContent = listing.propertyType || "—"
@@ -101,7 +105,7 @@ function render() {
   const verdict = listing
     ? evaluateRules(
         {
-          price: listing.price,
+          price: listing.priceGbp,
           bedrooms: listing.bedrooms,
           monthlyRent: rent,
           strategyHint: strategyHint(),
@@ -132,7 +136,12 @@ function render() {
     list.appendChild(li)
   }
 
-  const canOpen = Boolean(listing?.sourceListingId && listing.address)
+  const canOpen = Boolean(
+    listing &&
+      (listing.sourceListingId || listing.listingUrl) &&
+      listing.address &&
+      rent,
+  )
   $<HTMLButtonElement>("open").disabled = !canOpen
 }
 
@@ -191,8 +200,12 @@ async function onConnect() {
 
 async function openInMetalyzi() {
   render()
-  if (!listing?.sourceListingId) {
+  if (!listing?.sourceListingId && !listing?.listingUrl) {
     showStatus("Capture a Rightmove listing first.", "error")
+    return
+  }
+  if (monthlyRent() == null) {
+    showStatus("Enter monthly rent before opening in Metalyzi.", "error")
     return
   }
   const session = await getSession()
@@ -209,12 +222,17 @@ async function openInMetalyzi() {
     return
   }
 
-  const origin = await getAppOrigin()
-  const key = idempotencyKey(body.listing.source, body.listing.sourceListingId)
-  showStatus("Handing off to Metalyzi…", "info")
+  const appOrigin = await getAppOrigin()
+  const backendOrigin = await getBackendOrigin()
+  const key = resolveIdempotencyKey(
+    null,
+    body.listing.source,
+    body.listing.sourceListingId,
+  )
+  showStatus("Handing off to Metalyzi (Flask /v1/deals)…", "info")
 
   try {
-    const res = await fetch(`${origin}/v1/deals`, {
+    const res = await fetch(`${backendOrigin}/v1/deals`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -224,17 +242,19 @@ async function openInMetalyzi() {
       body: JSON.stringify(body),
     })
     const json = (await res.json().catch(() => ({}))) as {
-      dealId?: string
-      deepLinkPath?: string
       error?: string
+      message?: string
     }
     if (!res.ok) {
-      throw new Error(json.error || `Handoff failed (${res.status})`)
+      throw new Error(json.message || json.error || `Handoff failed (${res.status})`)
     }
-    if (!json.deepLinkPath) throw new Error("No deepLinkPath in response")
-    const url = `${origin}${json.deepLinkPath}`
+    const parsed = parseHandoffResponse(json)
+    const url = resolveDeepLinkUrl(appOrigin, parsed.deepLinkPath)
     await chrome.tabs.create({ url })
-    showStatus("Opened in Metalyzi. Listing discarded from the popup.", "info")
+    showStatus(
+      `Opened ${parsed.status} deal in Metalyzi. Listing discarded from the popup.`,
+      "info",
+    )
   } catch (err) {
     showStatus(err instanceof Error ? err.message : String(err), "error")
   }
@@ -250,6 +270,7 @@ async function boot() {
   )
 
   $<HTMLInputElement>("app-origin").value = await getAppOrigin()
+  $<HTMLInputElement>("backend-origin").value = await getBackendOrigin()
   await refreshAuthPill()
 
   $("rent").addEventListener("input", render)
@@ -275,10 +296,11 @@ async function boot() {
   $("connect").addEventListener("click", () => void onConnect())
   $("open").addEventListener("click", () => void openInMetalyzi())
   $("save-origin").addEventListener("click", async () => {
-    const value = $<HTMLInputElement>("app-origin").value.trim()
-    if (!value) return
-    await saveAppOrigin(value)
-    showStatus(`Saved origin ${value.replace(/\/$/, "")}`, "info")
+    const app = $<HTMLInputElement>("app-origin").value.trim()
+    const backend = $<HTMLInputElement>("backend-origin").value.trim()
+    if (app) await saveAppOrigin(app)
+    if (backend) await saveBackendOrigin(backend)
+    showStatus("Saved app + Flask origins.", "info")
   })
 
   render()

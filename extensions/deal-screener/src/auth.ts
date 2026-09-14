@@ -1,4 +1,7 @@
 export const DEFAULT_APP_ORIGIN = "https://www.metalyzi.co.uk"
+/** Canonical deals API — Flask BE, not Next screener_deals. */
+export const DEFAULT_BACKEND_ORIGIN =
+  "https://metusa-deal-analyzer.onrender.com"
 
 export const STORAGE_KEYS = {
   accessToken: "screener.accessToken",
@@ -6,6 +9,7 @@ export const STORAGE_KEYS = {
   expiresAt: "screener.expiresAt",
   email: "screener.email",
   appOrigin: "screener.appOrigin",
+  backendOrigin: "screener.backendOrigin",
   rules: "screener.rules",
 } as const
 
@@ -28,6 +32,21 @@ export async function getAppOrigin(): Promise<string> {
 export async function saveAppOrigin(origin: string): Promise<void> {
   await chrome.storage.local.set({
     [STORAGE_KEYS.appOrigin]: origin.replace(/\/$/, ""),
+  })
+}
+
+export async function getBackendOrigin(): Promise<string> {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS.backendOrigin)
+  const origin = stored[STORAGE_KEYS.backendOrigin]
+  if (typeof origin === "string" && origin.startsWith("http")) {
+    return origin.replace(/\/$/, "")
+  }
+  return DEFAULT_BACKEND_ORIGIN
+}
+
+export async function saveBackendOrigin(origin: string): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.backendOrigin]: origin.replace(/\/$/, ""),
   })
 }
 

@@ -403,98 +403,14 @@ function AnalysePage() {
       FLIP: "flip",
       SA: "r2sa",
       R2SA: "r2sa",
+      DEVELOPMENT: "development",
+      DEV: "development",
     }
     if (map[strat]) {
       setPrefillData((prev) => ({
         ...(prev ?? {}),
         investmentType: map[strat] as PropertyFormData["investmentType"],
       }))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // ── Deep link from Deal Screener: /analyse?dealId=…&source=screener ──
-  // Loads the schemaVersion 1 listing the extension handed off. Form is
-  // prefilled; analysis is still user-initiated (credits).
-  useEffect(() => {
-    const dealId = searchParams.get("dealId")
-    const fromScreener = searchParams.get("source") === "screener"
-    if (!dealId || !fromScreener) return
-
-    let cancelled = false
-    fetch(`/api/v1/deals/${encodeURIComponent(dealId)}`)
-      .then(async (r) => {
-        if (!r.ok) {
-          const err = (await r.json().catch(() => ({}))) as { error?: string }
-          throw new Error(err.error || `Failed to load screener deal (${r.status})`)
-        }
-        return r.json() as Promise<{
-          listing?: {
-            listingUrl?: string
-            address?: string
-            postcode?: string
-            price?: number
-            bedrooms?: number | null
-            bathrooms?: number | null
-            propertyType?: string | null
-            tenure?: string | null
-            leaseYearsRemaining?: number | null
-            floorSizeSqft?: number | null
-            floorSizeM2?: number | null
-            description?: string | null
-            keyFeatures?: string[]
-            epcRating?: string | null
-            councilTaxBand?: string | null
-            agentName?: string | null
-            agentPhone?: string | null
-          }
-          formPrefill?: Partial<PropertyFormData>
-        }>
-      })
-      .then((data) => {
-        if (cancelled) return
-        const listing = data.listing
-        if (listing?.listingUrl) {
-          setListingUrl(listing.listingUrl)
-          setInputMode("url")
-        } else {
-          setInputMode("manual")
-        }
-        if (data.formPrefill) {
-          setPrefillData((prev) => ({ ...(prev ?? {}), ...data.formPrefill }))
-          setScrapedFromUrl(true)
-        }
-        if (listing) {
-          setScrapedListing({
-            address: listing.address || "",
-            postcode: listing.postcode,
-            price: listing.price,
-            propertyType: listing.propertyType ?? undefined,
-            bedrooms: listing.bedrooms ?? undefined,
-            bathrooms: listing.bathrooms ?? undefined,
-            sqft: listing.floorSizeSqft ?? undefined,
-            sqm: listing.floorSizeM2 ?? undefined,
-            tenureType: listing.tenure === "freehold" || listing.tenure === "leasehold" ? listing.tenure : undefined,
-            leaseYears: listing.leaseYearsRemaining ?? undefined,
-            councilTaxBand: listing.councilTaxBand ?? undefined,
-            epcBand: listing.epcRating ?? undefined,
-            keyFeatures: listing.keyFeatures,
-            description: listing.description ?? undefined,
-            agentName: listing.agentName ?? undefined,
-            agentPhone: listing.agentPhone ?? undefined,
-            listingUrl: listing.listingUrl,
-            source: "rightmove",
-          })
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load screener deal")
-        }
-      })
-
-    return () => {
-      cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

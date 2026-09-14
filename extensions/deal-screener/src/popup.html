@@ -42,7 +42,8 @@
             <option value="brrrr">BRRRR</option>
             <option value="hmo">HMO</option>
             <option value="flip">Flip</option>
-            <option value="r2sa">R2SA</option>
+            <option value="sa">SA</option>
+            <option value="development">Development</option>
           </select>
         </label>
       </section>
@@ -73,7 +74,8 @@
           <label><input type="checkbox" value="brrrr" data-strategy /> BRRRR</label>
           <label><input type="checkbox" value="hmo" data-strategy /> HMO</label>
           <label><input type="checkbox" value="flip" data-strategy /> Flip</label>
-          <label><input type="checkbox" value="r2sa" data-strategy /> R2SA</label>
+          <label><input type="checkbox" value="sa" data-strategy /> SA</label>
+          <label><input type="checkbox" value="development" data-strategy /> Dev</label>
         </fieldset>
         <ul id="outcomes" class="outcomes"></ul>
         <p class="hint">Simple cashflow = rent − 75% LTV interest-only at 5%. This is a screen, not the analyser.</p>
@@ -86,12 +88,16 @@
       </div>
 
       <details class="advanced">
-        <summary>App origin</summary>
+        <summary>Origins</summary>
         <label class="field">
-          <span>Used for connect + POST /v1/deals</span>
+          <span>App origin (connect + open deepLinkPath)</span>
           <input id="app-origin" type="url" />
         </label>
-        <button id="save-origin" type="button" class="btn btn-ghost">Save origin</button>
+        <label class="field">
+          <span>Flask origin (POST /v1/deals — canonical)</span>
+          <input id="backend-origin" type="url" />
+        </label>
+        <button id="save-origin" type="button" class="btn btn-ghost">Save origins</button>
       </details>
     </div>
     <script type="module" src="popup.js"></script>

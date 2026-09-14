@@ -199,8 +199,8 @@ export function normaliseCollectedListing(
     listingUrl,
     address: raw.address.trim(),
     postcode: parsePostcode(raw.address, raw.outcode, raw.incode),
-    price: parsePrice(raw.priceText),
-    priceText: raw.priceText.trim(),
+    priceGbp: parsePrice(raw.priceText),
+    rentPcmGbp: monthlyRent != null && monthlyRent > 0 ? monthlyRent : null,
     bedrooms: raw.bedrooms,
     bathrooms: raw.bathrooms,
     propertyType: parsePropertyType(raw.propertySubType, raw.keyFeatures),
@@ -225,8 +225,6 @@ export function normaliseCollectedListing(
     isUnderOffer: statusPool.includes("under offer"),
     isReduced: /reduced/i.test(updateReason) || statusPool.includes("reduced"),
     capturedAt,
-    monthlyRent:
-      monthlyRent != null && monthlyRent > 0 ? monthlyRent : null,
   }
 
   return stripPhotos(listing as unknown as Record<string, unknown>) as unknown as NormalisedListingV1
