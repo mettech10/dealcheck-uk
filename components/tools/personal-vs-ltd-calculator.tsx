@@ -38,7 +38,8 @@ import {
   YAxis,
 } from "recharts"
 import { ToolsTopBar } from "@/components/tools/tools-top-bar"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -137,6 +138,12 @@ export function PersonalVsLtdCalculator() {
     )
       ? dealIdParam
       : null
+  const understoodParam = searchParams.get("understood") === "1"
+  const continueHref = (() => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.set("understood", "1")
+    return `/tools/personal-vs-ltd?${next.toString()}`
+  })()
 
   const [fields, setFields] = useState<FormFields>(() => {
     const base = fromDefaults()
@@ -159,8 +166,7 @@ export function PersonalVsLtdCalculator() {
   const [attachedToDealId, setAttachedToDealId] = useState<string | null>(null)
   const [dealLabel, setDealLabel] = useState<string | null>(null)
   const [prefillReady, setPrefillReady] = useState(!dealId)
-  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false)
-  const [disclaimerChecked, setDisclaimerChecked] = useState(false)
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(understoodParam)
 
   const setField = <K extends keyof FormFields>(key: K, value: FormFields[K]) => {
     setFields((prev) => ({ ...prev, [key]: value }))
@@ -263,13 +269,26 @@ export function PersonalVsLtdCalculator() {
 
   useEffect(() => {
     try {
+      if (understoodParam) {
+        sessionStorage.setItem(DISCLAIMER_STORAGE_KEY, "1")
+        setDisclaimerAccepted(true)
+        const next = new URLSearchParams(searchParams.toString())
+        next.delete("understood")
+        const qs = next.toString()
+        window.history.replaceState(
+          null,
+          "",
+          qs ? `/tools/personal-vs-ltd?${qs}` : "/tools/personal-vs-ltd",
+        )
+        return
+      }
       if (sessionStorage.getItem(DISCLAIMER_STORAGE_KEY) === "1") {
         setDisclaimerAccepted(true)
       }
     } catch {
-      /* sessionStorage blocked */
+      if (understoodParam) setDisclaimerAccepted(true)
     }
-  }, [])
+  }, [understoodParam, searchParams])
 
   useEffect(() => {
     if (!prefillReady || !disclaimerAccepted) return
@@ -348,8 +367,7 @@ export function PersonalVsLtdCalculator() {
 
       {!disclaimerAccepted ? (
         <DisclaimerWall
-          checked={disclaimerChecked}
-          onChecked={setDisclaimerChecked}
+          continueHref={continueHref}
           onAccept={() => {
             try {
               sessionStorage.setItem(DISCLAIMER_STORAGE_KEY, "1")
@@ -751,52 +769,59 @@ export function PersonalVsLtdCalculator() {
         </>
       )}
 
-      <StickyDisclaimer />
+      {disclaimerAccepted && <StickyDisclaimer />}
     </div>
   )
 }
 
 function DisclaimerWall({
-  checked,
-  onChecked,
+  continueHref,
   onAccept,
 }: {
-  checked: boolean
-  onChecked: (v: boolean) => void
+  continueHref: string
   onAccept: () => void
 }) {
+  useEffect(() => {
+    document.body.setAttribute("data-ltd-co-disclaimer-wall", "1")
+    return () => {
+      document.body.removeAttribute("data-ltd-co-disclaimer-wall")
+    }
+  }, [])
+
   return (
-    <Card className="border-primary/40">
-      <CardHeader>
-        <CardTitle className="text-lg">Before you use this calculator</CardTitle>
-        <CardDescription>
-          Educational illustration only — not advice. Please read and confirm.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
-          {LTD_CO_DISCLAIMER_WALL.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-        <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border/40 p-3 text-sm">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 accent-primary"
-            checked={checked}
-            onChange={(e) => onChecked(e.target.checked)}
-          />
-          <span>
-            I understand this is an educational illustration, not tax, legal or
-            financial advice, and not a recommendation to change how a property
-            is owned.
-          </span>
-        </label>
-        <Button className="w-fit" disabled={!checked} onClick={onAccept}>
-          Continue to calculator
-        </Button>
-      </CardContent>
-    </Card>
+    <div
+      className="fixed inset-0 z-[10050] flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-10 backdrop-blur-sm"
+      data-testid="ltd-co-disclaimer-wall"
+      role="dialog"
+      aria-labelledby="ltd-co-disclaimer-title"
+      aria-modal="true"
+    >
+      <Card className="relative z-[10051] w-full max-w-2xl border-primary/40 shadow-xl">
+        <CardHeader>
+          <CardTitle id="ltd-co-disclaimer-title" className="text-lg">
+            Before you use this calculator
+          </CardTitle>
+          <CardDescription>
+            Educational illustration only — not advice. Please read and confirm.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <a
+            id="ltd-co-disclaimer-continue"
+            href={continueHref}
+            className={cn(buttonVariants(), "relative z-[10052] w-fit")}
+            onClick={onAccept}
+          >
+            I understand — continue to the calculator
+          </a>
+          <ul className="list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            {LTD_CO_DISCLAIMER_WALL.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 

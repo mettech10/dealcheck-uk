@@ -1,13 +1,8 @@
+"use client"
+
 import { Suspense } from "react"
-import type { Metadata } from "next"
 import { Loader2 } from "lucide-react"
 import { PersonalVsLtdCalculator } from "@/components/tools/personal-vs-ltd-calculator"
-
-export const metadata: Metadata = {
-  title: "Personal vs Ltd Co Calculator — Metalyzi",
-  description:
-    "Compare holding a UK rental personally versus in a limited company. Year-1 after-tax, cumulative, NPV and break-even — educational illustration only, not advice.",
-}
 
 export default function PersonalVsLtdPage() {
   return (

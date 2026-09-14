@@ -537,3 +537,12 @@ code:not([class*="language-"]):not(pre code) {
   font-size: 0.9em;
 }
 
+/* Ltd Co disclaimer wall sits above the cookie banner / Crisp bubble so
+   "Continue" is never covered. Hide those chrome pieces while the wall
+   is up — they return after the user continues. */
+body[data-ltd-co-disclaimer-wall] [data-cookie-consent],
+body[data-ltd-co-disclaimer-wall] #crisp-chatbox,
+body[data-ltd-co-disclaimer-wall] .crisp-client {
+  display: none !important;
+}
+

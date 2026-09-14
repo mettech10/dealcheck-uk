@@ -46,7 +46,10 @@ export function CookieConsent() {
   if (!visible) return null
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[9999] border-t border-border/50 bg-background/95 backdrop-blur-sm">
+    <div
+      data-cookie-consent
+      className="fixed inset-x-0 bottom-0 z-[9999] border-t border-border/50 bg-background/95 backdrop-blur-sm"
+    >
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
           We use essential cookies to keep the site working and optional analytics cookies
