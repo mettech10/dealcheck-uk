@@ -38,6 +38,7 @@ const TOOLS: ToolItem[] = [
   ...(isLicensingCheckerEnabled()
     ? [{ href: "/tools/licensing-checker", name: "Licensing Checker" }]
     : []),
+  { href: "/mtd",                    name: "MTD Pack" },
 ]
 
 /** Map raw tier id from /api/usage to a friendly label + badge tone. */
@@ -56,7 +57,9 @@ export function Navbar({ user }: NavbarProps) {
   // Deal Discovery lives at /discovery but sits in the Tools menu, so it
   // must light the Tools tab too.
   const isToolsActive =
-    (pathname?.startsWith("/tools") || pathname?.startsWith("/discovery")) ?? false
+    (pathname?.startsWith("/tools") ||
+      pathname?.startsWith("/discovery") ||
+      pathname?.startsWith("/mtd")) ?? false
 
   // ── Mobile main menu ──
   const [mobileOpen, setMobileOpen] = useState(false)
