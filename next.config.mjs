@@ -23,7 +23,9 @@ const nextConfig = {
   },
   async rewrites() {
     return [
-      // GET hydrate for /analyse?dealId= (Flask POST /v1/deals remains SoT).
+      // Retired create path → 410 (Flask POST /v1/deals is SoT).
+      { source: '/v1/deals', destination: '/api/v1/deals' },
+      // GET hydrate for /analyse?dealId= (shared deals + properties under RLS).
       { source: '/v1/deals/:id', destination: '/api/v1/deals/:id' },
     ]
   },
