@@ -57,6 +57,17 @@ Test 3 — /tools/compare
   8. Free tier: third slot locked with "Pro feature · Upgrade" pill
   9. Pro tier: third slot is a real dropdown + "Save as PDF" button
 
+Test 4 — /tools/compliance (England, 1–20 units)
+  1. Sign in
+  2. Navbar Tools → Compliance Cockpit
+  3. Unauthenticated users see the sign-in gate
+  4. With portfolio properties, dashboard shows traffic lights keyed by propertyId
+  5. Open a property file → seven rows (GAS, EICR, EPC, DEP, HTR, LIC_HMO, LIC_SEL)
+  6. Log a GAS expiry in the future → light turns green/amber
+  7. Calendar tab lists the expiry + reminder offsets from Settings
+  8. Disclaimer “not legal advice” is visible on dashboard and property file
+  9. Catalogue tab lists the seven codes and explicitly excludes MTD / Screener / Ltd Co / full licensing
+
 Cap reached (Free → 4th property):
   1. With 3 properties already added on Free, click "+ Add Property"
   2. Modal opens, fill in, click Save
