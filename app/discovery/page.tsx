@@ -26,6 +26,8 @@ import {
   Home,
 } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { LicensingBadge } from "@/components/licensing/licensing-badge"
+import type { LicensingBadgeModel } from "@/lib/licensing/types"
 
 const STRATEGIES = ["BTL", "HMO", "BRRRR", "SA", "FLIP"] as const
 const MAX_AREAS = 3
@@ -40,6 +42,11 @@ interface Tier1Signals {
   roomPotential: number | null
   missingData?: string[]
   strategySignals?: Array<{ strategy: string; signal: string; reason: string }>
+  /**
+   * Badge-ready licensing summary. The screener does not populate or
+   * hard-filter on this — callers may attach it later for display only.
+   */
+  licensing?: LicensingBadgeModel
 }
 
 interface DiscoveryResult {
@@ -166,6 +173,7 @@ function ResultCard({
 
       <div className="flex flex-wrap items-center gap-2">
         {s?.article4Status && <Article4Chip status={s.article4Status} />}
+        {s?.licensing && <LicensingBadge model={s.licensing} />}
         {s?.estimatedGrossYield != null && (
           <span className="text-[11px] text-muted-foreground">
             Est. yield {s.estimatedGrossYield}%

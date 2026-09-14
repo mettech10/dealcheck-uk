@@ -14,6 +14,8 @@
  *   • Article 4 "unknown" is never reported as "none"; an ACTIVE direction
  *     always downgrades the HMO signal, it can never be hidden to make a
  *     listing look better
+ *   • licensing_checker_v1 is badge-ready in the Discovery UI only — this
+ *     screener must never hard-filter (or hide) a listing on licensing
  */
 import { getDistrictIntel, toDistrict, type DistrictIntel } from "./areaIntel"
 

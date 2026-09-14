@@ -25,6 +25,8 @@ const nextConfig = {
     return [
       // GET hydrate only — Flask POST {be}/v1/deals is the create SoT.
       { source: '/v1/deals/:id', destination: '/api/v1/deals/:id' },
+      // Versioned public API alias used by the licensing checker UI.
+      { source: '/v1/licensing/check', destination: '/api/v1/licensing/check' },
     ]
   },
   // Old static admin HTML used to live at /admin/admin_dashboard.html

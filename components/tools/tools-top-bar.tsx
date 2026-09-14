@@ -15,7 +15,8 @@ import { ArrowLeft } from "lucide-react"
  * calculator, which would loop the user back to a tool page).
  *
  * Used by: app/tools/sdlt-calculator/page.tsx, app/tools/portfolio/page.tsx,
- *          app/tools/compare/page.tsx, app/tools/compliance/page.tsx.
+ *          app/tools/compare/page.tsx, app/tools/compliance/page.tsx,
+ *          app/tools/licensing-checker/page.tsx.
  */
 export function ToolsTopBar() {
   return (
