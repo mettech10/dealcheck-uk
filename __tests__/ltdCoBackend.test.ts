@@ -6,6 +6,7 @@ import {
   backendLtdCoUrl,
   fetchLtdCoCompare,
   isLtdCoCompareResult,
+  LTD_CO_BACKEND_UNAVAILABLE,
   mapBackendCompareToUi,
   toBackendComparePayload,
   unwrapLtdCoComparePayload,
@@ -51,21 +52,38 @@ describe("fetchLtdCoCompare", () => {
       json: async () => ({ success: true, ltdCoCompare: native }),
     })
     const r = await fetchLtdCoCompare(DEFAULT_LTD_CO_INPUT, { fetchImpl })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
     expect(r.source).toBe("backend")
     expect(r.ltdCoCompare.personal.year1AfterTax).toBe(native.personal.year1AfterTax)
     expect(String(fetchImpl.mock.calls[0][0])).toContain("/v1/ltd-co/compare")
   })
 
-  test("falls back to the local engine when the BE route is missing", async () => {
+  test("does not silently lean from a local engine when the BE is down", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: false,
       status: 404,
       json: async () => ({ error: "not found" }),
     })
     const r = await fetchLtdCoCompare(DEFAULT_LTD_CO_INPUT, { fetchImpl })
-    expect(r.source).toBe("local-fallback")
-    expect(r.ltdCoCompare.flags.educationalOnly).toBe(true)
-    expect(r.ltdCoCompare.years.length).toBeGreaterThan(0)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.source).toBeNull()
+    expect(r.ltdCoCompare).toBeNull()
+    expect(r.error).toBe(LTD_CO_BACKEND_UNAVAILABLE)
+    expect(JSON.stringify(r).toLowerCase()).not.toContain("lean")
+  })
+
+  test("timeouts do not fall back to local tax figures", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new DOMException("aborted", "TimeoutError"))
+    const r = await fetchLtdCoCompare(DEFAULT_LTD_CO_INPUT, {
+      fetchImpl,
+      timeoutMs: 10,
+    })
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.ltdCoCompare).toBeNull()
+    expect(r.error).toMatch(/not estimated locally/i)
   })
 
   test("backend URL is Flask /v1/ltd-co/compare", () => {
@@ -125,6 +143,8 @@ describe("fetchLtdCoCompare", () => {
       json: async () => be,
     })
     const r = await fetchLtdCoCompare(DEFAULT_LTD_CO_INPUT, { fetchImpl })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
     expect(r.source).toBe("backend")
     expect(r.ltdCoCompare.personal.year1AfterTax).toBe(450)
     expect(r.ltdCoCompare.extracted.year1AfterTax).toBe(200)

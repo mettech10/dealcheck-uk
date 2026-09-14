@@ -9,8 +9,8 @@ import type { LtdCoCompareInput, LtdCoCompareResult } from "@/lib/ltdCoCompare"
  * POST /api/tools/ltd-co-compare
  * Also served at /api/v1/ltd-co/compare and rewritten from /v1/ltd-co/compare.
  *
- * Proxies to Flask POST /v1/ltd-co/compare on BACKEND_API_URL. Falls back
- * to the local engine when the BE route is not deployed yet.
+ * Proxies to Flask POST /v1/ltd-co/compare on BACKEND_API_URL.
+ * Flask is the only live calc source of truth — no local-tax fallback.
  *
  * Public (no auth) so it can lead-generate like SDLT. When `dealId` is
  * present AND the caller owns that saved analysis, the result is attached
@@ -78,7 +78,15 @@ export async function POST(req: Request) {
     dealId: parsed.data.dealId ?? null,
   }
 
-  const { ltdCoCompare, source } = await fetchLtdCoCompare(input)
+  const fetched = await fetchLtdCoCompare(input)
+  if (!fetched.ok) {
+    return NextResponse.json(
+      { success: false, error: fetched.error, source: null },
+      { status: 503 },
+    )
+  }
+
+  const { ltdCoCompare, source } = fetched
 
   let attachedToDealId: string | null = null
   const dealId = parsed.data.dealId ?? null

@@ -101,6 +101,8 @@ export type LtdCoCalculatorProps = {
   continueHref: string
   initialUnderstood: boolean
   initialResult: LtdCoCompareResult | null
+  initialError?: string | null
+  initialSource?: LtdCoCalcSource | null
   initialMode?: CalculatorMode
   initialLens?: Lens
   initialFields?: Partial<FormFields>
@@ -141,6 +143,8 @@ export function PersonalVsLtdCalculator({
   continueHref,
   initialUnderstood,
   initialResult,
+  initialError = null,
+  initialSource = null,
   initialMode = "landlord",
   initialLens = "retained",
   initialFields,
@@ -152,11 +156,9 @@ export function PersonalVsLtdCalculator({
   const [mode, setMode] = useState<CalculatorMode>(initialMode)
   const [lens, setLens] = useState<Lens>(initialLens)
   const [result, setResult] = useState<LtdCoCompareResult | null>(initialResult)
-  const [calcSource, setCalcSource] = useState<LtdCoCalcSource | null>(
-    initialResult ? "local-fallback" : null,
-  )
+  const [calcSource, setCalcSource] = useState<LtdCoCalcSource | null>(initialSource)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialError)
   const [attachedToDealId, setAttachedToDealId] = useState<string | null>(null)
   const [dealLabel, setDealLabel] = useState<string | null>(null)
   const [prefillReady, setPrefillReady] = useState(!dealId)
@@ -183,15 +185,24 @@ export function PersonalVsLtdCalculator({
           source?: LtdCoCalcSource
           error?: string
         } | null
-        if (!res.ok || !json?.ltdCoCompare) {
-          setError(json?.error || "Could not run the comparison.")
+        if (!res.ok || !json?.ltdCoCompare || json.source !== "backend") {
+          setResult(null)
+          setCalcSource(null)
+          setError(
+            json?.error ||
+              "The calc API is unavailable. Figures are not estimated locally — retry when the service is back.",
+          )
           return
         }
         setResult(json.ltdCoCompare)
         setAttachedToDealId(json.attachedToDealId ?? null)
         setCalcSource(json.source ?? null)
       } catch {
-        setError("Could not reach the calculator. Try again.")
+        setResult(null)
+        setCalcSource(null)
+        setError(
+          "The calc API is unavailable. Figures are not estimated locally — retry when the service is back.",
+        )
       } finally {
         setLoading(false)
       }
@@ -220,7 +231,6 @@ export function PersonalVsLtdCalculator({
             annualRunningCosts?: number
             annualMortgageCost?: number
           }
-          ltd_co_compare?: LtdCoCompareResult | null
         }
         if (cancelled) return
         if (data.address) setDealLabel(data.address)
@@ -246,9 +256,6 @@ export function PersonalVsLtdCalculator({
           }
           return next
         })
-        if (data.ltd_co_compare?.years?.length) {
-          setResult(data.ltd_co_compare)
-        }
       } catch {
         /* prefill is best-effort */
       } finally {
@@ -278,8 +285,9 @@ export function PersonalVsLtdCalculator({
 
   useEffect(() => {
     if (!prefillReady || !disclaimerAccepted) return
+    if (initialResult || initialError) return
     void runCompare(fields, mode)
-    // Initial run only — later runs are explicit via Compare.
+    // Initial run only — later runs are explicit via Compare / Retry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillReady, disclaimerAccepted])
 
@@ -339,11 +347,6 @@ export function PersonalVsLtdCalculator({
               {calcSource === "backend" && (
                 <Badge variant="outline" className="w-fit text-xs">
                   Backend calc API
-                </Badge>
-              )}
-              {calcSource === "local-fallback" && (
-                <Badge variant="outline" className="w-fit text-xs">
-                  Local engine (backend calc API unavailable)
                 </Badge>
               )}
             </div>
@@ -553,9 +556,10 @@ export function PersonalVsLtdCalculator({
               </div>
               <Button
                 id="ltd-co-compare"
-                type="submit"
+                type="button"
                 className="w-full gap-2"
                 disabled={loading}
+                onClick={() => void runCompare(fields, mode)}
               >
                 {loading ? (
                   <>
@@ -570,13 +574,38 @@ export function PersonalVsLtdCalculator({
                 )}
               </Button>
               {error && (
-                <p className="text-sm text-destructive">{error}</p>
+                <p id="ltd-co-backend-error" className="text-sm text-destructive">
+                  {error}
+                </p>
               )}
             </CardContent>
           </Card>
         </div>
 
         <div className="flex flex-col gap-4 lg:col-span-3">
+          {error && (
+            <Alert id="ltd-co-backend-error-banner" variant="destructive">
+              <AlertTriangle />
+              <AlertTitle>Calc API unavailable</AlertTitle>
+              <AlertDescription className="flex flex-col gap-3">
+                <span>
+                  Flask is the only source for this comparison. Local tax
+                  figures are not shown, so a down backend cannot silently
+                  mis-lean.
+                </span>
+                <Button
+                  id="ltd-co-retry"
+                  type="button"
+                  variant="outline"
+                  className="w-fit"
+                  disabled={loading}
+                  onClick={() => void runCompare(fields, mode)}
+                >
+                  {loading ? "Retrying…" : "Retry"}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
           {result?.flags.devolvedNation && result.flags.devolvedNationNote && (
             <Alert>
               <AlertTriangle />

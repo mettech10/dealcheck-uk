@@ -55,8 +55,9 @@ export const BASIC_RATE = 0.2
 export const HIGHER_RATE = 0.4
 export const ADDITIONAL_RATE = 0.45
 export const DIVIDEND_ALLOWANCE = 500
-export const DIVIDEND_ORDINARY_RATE = 0.0875
-export const DIVIDEND_UPPER_RATE = 0.3375
+/** 2026/27 ordinary / upper / additional — matches Flask BE rate pack. */
+export const DIVIDEND_ORDINARY_RATE = 0.1075
+export const DIVIDEND_UPPER_RATE = 0.3575
 export const DIVIDEND_ADDITIONAL_RATE = 0.3935
 export const S24_REDUCTION_RATE = 0.2
 export const CT_SMALL_PROFITS_RATE = 0.19
@@ -314,6 +315,120 @@ export function incrementalDividendTax(
   return Math.max(0, withDiv.dividendTax - without.dividendTax)
 }
 
+export type Section24BindingLimb =
+  | "finance_costs"
+  | "property_profits"
+  | "adjusted_total_income"
+
+export interface Section24Result {
+  propertyProfit: number
+  propertyLossCarriedForward: number
+  relievableAmount: number
+  limbFinanceCosts: number
+  limbPropertyProfits: number
+  limbAdjustedTotalIncome: number
+  bindingLimb: Section24BindingLimb
+  actualAmount: number
+  taxReducer: number
+  financeCostsCarriedForward: number
+}
+
+/** ITTOIA 2005 s274AA(6): net income, exclude savings/dividends, deduct PA. */
+export function adjustedTotalIncome(opts: {
+  netIncome: number
+  savingsIncome?: number
+  dividendIncome?: number
+  personalAllowance: number
+}): number {
+  const afterExclude = Math.max(
+    0,
+    opts.netIncome -
+      clampNonNeg(opts.savingsIncome ?? 0) -
+      clampNonNeg(opts.dividendIncome ?? 0),
+  )
+  return Math.max(0, afterExclude - clampNonNeg(opts.personalAllowance))
+}
+
+function section24BindingLimb(
+  finance: number,
+  profits: number,
+  ati: number,
+): Section24BindingLimb {
+  const lowest = Math.min(finance, profits, ati)
+  if (finance === lowest) return "finance_costs"
+  if (profits === lowest) return "property_profits"
+  return "adjusted_total_income"
+}
+
+/**
+ * ITTOIA 2005 ss272A / 274A / 274AA. Test-only mirror of Flask BE #96.
+ * Reducer = 20% × lower of (relievable finance incl. b/f, property profits
+ * after s118 losses, adjusted total income after PA). Unused finance carries
+ * forward. Reducer cannot create a refund.
+ */
+export function computeSection24(opts: {
+  rentalIncome: number
+  allowableNonFinanceExpenses: number
+  financeCosts: number
+  otherNonSavingsIncome?: number
+  financeCostsBroughtForward?: number
+  propertyLossesBroughtForward?: number
+}): Section24Result {
+  const rent = clampNonNeg(opts.rentalIncome)
+  const opex = clampNonNeg(opts.allowableNonFinanceExpenses)
+  const interest = clampNonNeg(opts.financeCosts)
+  const bfFin = clampNonNeg(opts.financeCostsBroughtForward ?? 0)
+  const bfLoss = clampNonNeg(opts.propertyLossesBroughtForward ?? 0)
+
+  const profitBeforeLosses = rent - opex
+  let lossCf = 0
+  let profitAfterCurrent = 0
+  if (profitBeforeLosses < 0) {
+    lossCf = -profitBeforeLosses
+    profitAfterCurrent = 0
+  } else {
+    profitAfterCurrent = profitBeforeLosses
+  }
+
+  let propertyProfit = 0
+  if (bfLoss > profitAfterCurrent) {
+    propertyProfit = 0
+    lossCf += bfLoss - profitAfterCurrent
+  } else {
+    propertyProfit = profitAfterCurrent - bfLoss
+  }
+
+  const relievable = interest + bfFin
+  const limbFinance = relievable
+  const limbProfits = propertyProfit
+  const L = Math.min(limbFinance, limbProfits)
+
+  const otherNs = clampNonNeg(opts.otherNonSavingsIncome ?? 0)
+  const netIncome = otherNs + propertyProfit
+  const pa = personalAllowanceFor(netIncome)
+  const ati = adjustedTotalIncome({
+    netIncome,
+    personalAllowance: pa,
+  })
+
+  const actual = L > ati ? ati : L
+  const taxReducer = gbp(actual * S24_REDUCTION_RATE)
+  const carried = Math.max(0, relievable - actual)
+
+  return {
+    propertyProfit,
+    propertyLossCarriedForward: lossCf,
+    relievableAmount: relievable,
+    limbFinanceCosts: limbFinance,
+    limbPropertyProfits: limbProfits,
+    limbAdjustedTotalIncome: ati,
+    bindingLimb: section24BindingLimb(limbFinance, limbProfits, ati),
+    actualAmount: actual,
+    taxReducer,
+    financeCostsCarriedForward: carried,
+  }
+}
+
 export function corporationTaxOn(profits: number, associatedCompanies = 0): number {
   const p = Math.max(0, profits)
   if (p === 0) return 0
@@ -441,24 +556,21 @@ export function comparePersonalVsLtd(
     const financeCosts = gbp(grow(fin0, finG, i))
     const ltdAdmin = gbp(accountancy + (i === 0 ? setup : 0))
 
-    // Personal — s.24: finance is not deducted; 20% tax reducer instead.
-    const personalProfitBeforeLoss = rent - operatingCosts
-    const personalProfitAfterLoss = personalProfitBeforeLoss - personalLossCarry
-    let taxablePersonalProfit = 0
-    if (personalProfitAfterLoss >= 0) {
-      taxablePersonalProfit = personalProfitAfterLoss
-      personalLossCarry = 0
-    } else {
-      taxablePersonalProfit = 0
-      personalLossCarry = -personalProfitAfterLoss
-    }
-
-    const financePool = financeCosts + s24Carry
-    const s24Base = Math.min(financePool, taxablePersonalProfit)
+    // Personal — s.24: finance is not deducted; 20% tax reducer on the
+    // statutory lower of finance costs (incl. b/f), property profits, ATI.
+    const s24 = computeSection24({
+      rentalIncome: rent,
+      allowableNonFinanceExpenses: operatingCosts,
+      financeCosts,
+      otherNonSavingsIncome: otherIncome,
+      financeCostsBroughtForward: s24Carry,
+      propertyLossesBroughtForward: personalLossCarry,
+    })
+    const taxablePersonalProfit = s24.propertyProfit
     const grossIncomeTax = incrementalIncomeTax(otherIncome, taxablePersonalProfit)
-    const s24Credit = gbp(s24Base * S24_REDUCTION_RATE)
-    const personalTax = Math.max(0, grossIncomeTax - s24Credit)
-    s24Carry = Math.max(0, financePool - s24Base)
+    const personalTax = Math.max(0, grossIncomeTax - s24.taxReducer)
+    s24Carry = s24.financeCostsCarriedForward
+    personalLossCarry = s24.propertyLossCarriedForward
 
     const personalAfterTax = gbp(
       rent - operatingCosts - financeCosts - personalTax,
@@ -537,7 +649,7 @@ export function comparePersonalVsLtd(
     },
     assumptions: [
       `Tax year ${LTD_CO_TAX_YEAR}, England & Northern Ireland income-tax and dividend rates.`,
-      "Section 24: residential finance costs are not deducted for an individual; a 20% tax reducer applies instead.",
+      "Section 24: residential finance costs are not deducted for an individual; a 20% tax reducer applies to the lower of relievable finance costs, property profits, and adjusted total income after the personal allowance.",
       "Ltd lens deducts finance costs in full and applies corporation tax (19% / marginal relief / 25%).",
       "Extracted lens assumes 100% of post-CT property profit is paid as a dividend the same year. Salary / NI extraction is not modelled.",
       "Disposal (CGT / CT on sale), ATED, 15% enveloped-dwellings SDLT, MTD and licensing are not modelled.",

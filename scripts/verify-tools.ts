@@ -77,7 +77,7 @@ Cap reached (Free → 4th property):
        with "Upgrade to Pro" CTA → /account
 `)
 
-banner("TEST 4 — Personal vs Ltd Co (higher-rate landlord fixture)")
+banner("TEST 4 — Personal vs Ltd Co (test-only engine; live UI uses Flask BE)")
 
 const ltd = comparePersonalVsLtd({
   ...DEFAULT_LTD_CO_INPUT,

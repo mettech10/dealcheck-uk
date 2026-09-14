@@ -1,10 +1,10 @@
 /**
  * Backend calc API client for Personal vs Ltd Co.
  *
- * Proxies Flask `POST /v1/ltd-co/compare` on BACKEND_API_URL
- * (metusa-deal-analyzer PR #96). Maps the Path A / Path B payload into
- * the dual-lens UI model. Falls back to the local operating engine if
- * the BE route is missing, down, or returns an unusable payload.
+ * Flask `POST /v1/ltd-co/compare` on BACKEND_API_URL (metusa-deal-analyzer
+ * PR #96) is the only live source of truth. There is no silent local-tax
+ * fallback — a down or unusable BE returns an error so the UI cannot lean
+ * from a second engine.
  */
 
 import {
@@ -12,7 +12,6 @@ import {
   LTD_CO_DISCLAIMER,
   LTD_CO_TAX_YEAR,
   breakEvenYear,
-  comparePersonalVsLtd,
   leanContainsBannedPhrase,
   leanCopy,
   leanSide,
@@ -22,7 +21,10 @@ import {
   type LtdCoYearRow,
 } from "@/lib/ltdCoCompare"
 
-export type LtdCoCalcSource = "backend" | "local-fallback"
+export type LtdCoCalcSource = "backend"
+
+export const LTD_CO_BACKEND_UNAVAILABLE =
+  "The calc API is unavailable. Figures are not estimated locally — retry when the service is back."
 
 export const LTD_CO_BACKEND_PATH = "/v1/ltd-co/compare"
 
@@ -285,10 +287,23 @@ export function mapBackendCompareToUi(
   }
 }
 
+export type LtdCoCompareFetchResult =
+  | {
+      ok: true
+      ltdCoCompare: LtdCoCompareResult
+      source: LtdCoCalcSource
+    }
+  | {
+      ok: false
+      ltdCoCompare: null
+      source: null
+      error: string
+    }
+
 export async function fetchLtdCoCompare(
   input: LtdCoCompareInput,
   opts?: { fetchImpl?: typeof fetch; backendUrl?: string; timeoutMs?: number },
-): Promise<{ ltdCoCompare: LtdCoCompareResult; source: LtdCoCalcSource }> {
+): Promise<LtdCoCompareFetchResult> {
   const fetchImpl = opts?.fetchImpl ?? fetch
   const timeoutMs = opts?.timeoutMs ?? 8_000
   const url = backendLtdCoUrl(opts?.backendUrl ?? BACKEND_API_URL)
@@ -303,7 +318,7 @@ export async function fetchLtdCoCompare(
     if (resp.ok) {
       const json = await resp.json().catch(() => null)
       const native = unwrapLtdCoComparePayload(json)
-      if (native) return { ltdCoCompare: native, source: "backend" }
+      if (native) return { ok: true, ltdCoCompare: native, source: "backend" }
       const be = isBackendCompareResult(json)
         ? json
         : json && typeof json === "object"
@@ -313,17 +328,20 @@ export async function fetchLtdCoCompare(
           : undefined
       if (be) {
         return {
+          ok: true,
           ltdCoCompare: mapBackendCompareToUi(be, input),
           source: "backend",
         }
       }
     }
   } catch {
-    /* BE missing, timed out, or network error — use local engine */
+    /* timeout, network, or parse — still no local lean */
   }
 
   return {
-    ltdCoCompare: comparePersonalVsLtd(input),
-    source: "local-fallback",
+    ok: false,
+    ltdCoCompare: null,
+    source: null,
+    error: LTD_CO_BACKEND_UNAVAILABLE,
   }
 }

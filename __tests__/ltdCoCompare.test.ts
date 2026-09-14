@@ -9,8 +9,12 @@ import {
   BANNED_LEAN_PHRASES,
   breakEvenYear,
   comparePersonalVsLtd,
+  computeSection24,
   corporationTaxOn,
   DEFAULT_LTD_CO_INPUT,
+  DIVIDEND_ADDITIONAL_RATE,
+  DIVIDEND_ORDINARY_RATE,
+  DIVIDEND_UPPER_RATE,
   incrementalIncomeTax,
   leanContainsBannedPhrase,
   LTD_CO_TAX_YEAR,
@@ -65,6 +69,69 @@ describe("Corporation tax", () => {
 
   test("£250,000+ is main rate 25%", () => {
     expect(corporationTaxOn(250_000)).toBe(62_500)
+  })
+})
+
+describe("2026/27 dividend rates match Flask BE pack", () => {
+  test("ordinary / upper / additional are 10.75 / 35.75 / 39.35", () => {
+    expect(DIVIDEND_ORDINARY_RATE).toBe(0.1075)
+    expect(DIVIDEND_UPPER_RATE).toBe(0.3575)
+    expect(DIVIDEND_ADDITIONAL_RATE).toBe(0.3935)
+  })
+})
+
+describe("Section 24 lower-of-three including ATI (BE golden)", () => {
+  test("John-style extra tax vs full deduction is £146, not 20% of all interest", () => {
+    const s24 = computeSection24({
+      rentalIncome: 18_000,
+      allowableNonFinanceExpenses: 2_000,
+      financeCosts: 8_000,
+      otherNonSavingsIncome: 35_000,
+    })
+    expect(s24.propertyProfit).toBe(16_000)
+    expect(s24.bindingLimb).toBe("finance_costs")
+    expect(s24.actualAmount).toBe(8_000)
+    expect(s24.taxReducer).toBe(1_600)
+    const withS24 = Math.max(
+      0,
+      assessUkIncomeTax(35_000 + 16_000).incomeTax - s24.taxReducer,
+    )
+    const unrestrictedProfit = Math.max(0, 16_000 - 8_000)
+    const unrestricted = assessUkIncomeTax(35_000 + unrestrictedProfit).incomeTax
+    expect(withS24).toBe(6_232)
+    expect(unrestricted).toBe(6_086)
+    expect(withS24 - unrestricted).toBe(146)
+    expect(withS24 - unrestricted).not.toBe(1_600)
+  })
+
+  test("ATI limb binds (s274AA(3)); unused finance carries forward", () => {
+    const s24 = computeSection24({
+      rentalIncome: 15_000,
+      allowableNonFinanceExpenses: 5_000,
+      financeCosts: 15_000,
+      otherNonSavingsIncome: 12_000,
+    })
+    expect(s24.propertyProfit).toBe(10_000)
+    expect(s24.limbFinanceCosts).toBe(15_000)
+    expect(s24.limbPropertyProfits).toBe(10_000)
+    expect(s24.limbAdjustedTotalIncome).toBe(9_430)
+    expect(s24.bindingLimb).toBe("adjusted_total_income")
+    expect(s24.actualAmount).toBe(9_430)
+    expect(s24.taxReducer).toBe(1_886)
+    expect(s24.financeCostsCarriedForward).toBe(5_570)
+  })
+
+  test("profits limb binds and unused finance carries forward", () => {
+    const s24 = computeSection24({
+      rentalIncome: 20_000,
+      allowableNonFinanceExpenses: 7_000,
+      financeCosts: 15_000,
+      otherNonSavingsIncome: 36_000,
+    })
+    expect(s24.bindingLimb).toBe("property_profits")
+    expect(s24.actualAmount).toBe(13_000)
+    expect(s24.taxReducer).toBe(2_600)
+    expect(s24.financeCostsCarriedForward).toBe(2_000)
   })
 })
 

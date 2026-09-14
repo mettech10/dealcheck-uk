@@ -1,9 +1,10 @@
 import { PersonalVsLtdCalculator } from "@/components/tools/personal-vs-ltd-calculator"
+import { fetchLtdCoCompare } from "@/lib/ltdCoBackend"
 import {
-  comparePersonalVsLtd,
   DEFAULT_LTD_CO_INPUT,
   type CalculatorMode,
   type LtdCoCompareInput,
+  type LtdCoCompareResult,
   type UkRegion,
 } from "@/lib/ltdCoCompare"
 
@@ -102,7 +103,18 @@ export default async function PersonalVsLtdPage({
     },
   }
 
-  const initialResult = understood ? comparePersonalVsLtd(input) : null
+  let initialResult: LtdCoCompareResult | null = null
+  let initialError: string | null = null
+  let initialSource: "backend" | null = null
+  if (understood) {
+    const fetched = await fetchLtdCoCompare(input)
+    if (fetched.ok) {
+      initialResult = fetched.ltdCoCompare
+      initialSource = "backend"
+    } else {
+      initialError = fetched.error
+    }
+  }
 
   return (
     <PersonalVsLtdCalculator
@@ -110,6 +122,8 @@ export default async function PersonalVsLtdPage({
       continueHref={continueHref}
       initialUnderstood={understood}
       initialResult={initialResult}
+      initialError={initialError}
+      initialSource={initialSource}
       initialMode={mode}
       initialLens={lens}
       initialFields={{
