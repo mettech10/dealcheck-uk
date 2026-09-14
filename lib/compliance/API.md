@@ -5,10 +5,10 @@ these routes through the Next.js BFF at `/api/compliance/*`, which proxies
 `${BACKEND_API_URL}/v1/compliance/*` with the signed-in user's Supabase
 JWT.
 
-If the backend has not merged this surface yet, the BFF returns **501**
-with `X-Compliance-Source: unavailable` and the UI falls back to an
-in-browser stub (`lib/compliance/stub.ts`). The stub implements the same
-shapes so the cockpit is usable for review.
+Localhost-only UI review: `/tools/compliance?demo=1` seeds two sample
+portfolio rows (BTL + HMO) without a session. It is gated to
+`localhost` / `127.0.0.1` and stored in `sessionStorage`. It does not
+run on production hosts.
 
 Properties are linked by **`propertyId`**, which is the existing
 `portfolio_properties.id` from `GET /api/portfolio`.

@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { COMPLIANCE_CATALOGUE } from "@/lib/compliance/catalogue"
-import { toIsoDate, addMonths } from "@/lib/compliance/status"
+import { toIsoDate, addMonths, tryParseIsoDate } from "@/lib/compliance/status"
 import type { ObligationCode, UploadEvidenceInput } from "@/lib/compliance/types"
 
 export function UploadEvidenceDialog({
@@ -49,8 +49,8 @@ export function UploadEvidenceDialog({
   const suggestExpiry = (issued: string) => {
     setIssuedOn(issued)
     if (!issued || !def.typicalValidityMonths || expiresOn) return
-    const [y, m, d] = issued.split("-").map(Number)
-    const start = new Date(y, (m ?? 1) - 1, d ?? 1)
+    const start = tryParseIsoDate(issued)
+    if (!start) return
     setExpiresOn(toIsoDate(addMonths(start, def.typicalValidityMonths)))
   }
 

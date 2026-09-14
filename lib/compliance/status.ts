@@ -29,6 +29,15 @@ export function parseIsoDate(iso: string): Date {
   return new Date(y, (m ?? 1) - 1, d ?? 1)
 }
 
+/** Strict `YYYY-MM-DD` only — rejects locale strings that would map to 1900s. */
+export function tryParseIsoDate(iso: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
+  const date = parseIsoDate(iso)
+  if (Number.isNaN(date.getTime())) return null
+  if (toIsoDate(date) !== iso) return null
+  return date
+}
+
 export function toIsoDate(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, "0")

@@ -19,6 +19,8 @@ import {
   overallStatus,
   rollupStatus,
   toIsoDate,
+  addMonths,
+  tryParseIsoDate,
   warnWindowDays,
 } from "@/lib/compliance/status"
 import { createStubClient, memoryStorage } from "@/lib/compliance/stub"
@@ -295,5 +297,8 @@ describe("stub client", () => {
     expect(events.find((e) => e.kind === "reminder")?.date).toBe("2026-11-01")
     expect(toIsoDate(at("2026-09-14"))).toBe("2026-09-14")
     expect(overallStatus(file)).toBe("green")
+    expect(toIsoDate(tryParseIsoDate("2026-09-01")!)).toBe("2026-09-01")
+    expect(tryParseIsoDate("09/01/2026")).toBeNull()
+    expect(toIsoDate(addMonths(at("2026-09-01"), 12))).toBe("2027-09-01")
   })
 })

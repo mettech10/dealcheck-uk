@@ -65,6 +65,7 @@ import {
 import {
   toPropertyRef,
   useComplianceSession,
+  LOCAL_DEMO_USER_ID,
 } from "@/hooks/use-compliance-session"
 import { cn } from "@/lib/utils"
 
@@ -193,6 +194,15 @@ export default function ComplianceCockpitPage() {
           Backend <code className="text-foreground">/v1/compliance/*</code> is
           not live yet, so records stay in this browser (keyed to your account).
           Expected contract: <code className="text-foreground">lib/compliance/API.md</code>.
+        </p>
+      )}
+
+      {userId === LOCAL_DEMO_USER_ID && (
+        <p className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+          Local demo only (localhost <code>?demo=1</code>). Two sample properties
+          are linked by <code>propertyId</code> so you can walk the file,
+          calendar, and settings without signing in. This never runs on
+          metalyzi.co.uk.
         </p>
       )}
 
