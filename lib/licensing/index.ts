@@ -1,4 +1,4 @@
-export { isLicensingCheckerEnabled, LICENSING_CHECKER_FLAG } from "./flag"
+export { isLicensingCheckerEnabled, LICENSING_CHECKER_FLAG, LICENSING_CHECK_ENDPOINT } from "./flag"
 export { checkLicensing, licensingBadgeFromCheck, type CheckLicensingDeps } from "./check"
 export { geocodeLicensingPostcode } from "./geocode"
 export { matchCouncilRecord, normaliseCouncilName, ENGLAND_LICENSING_SCHEMES } from "./schemes"

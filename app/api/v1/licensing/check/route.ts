@@ -8,13 +8,8 @@
  */
 
 import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-import { checkArticle4 } from "@/lib/article4-service"
-import {
-  checkLicensing,
-  geocodeLicensingPostcode,
-  isLicensingCheckerEnabled,
-} from "@/lib/licensing"
+import { isLicensingCheckerEnabled } from "@/lib/licensing/flag"
+import { runLicensingCheck } from "@/lib/licensing/runCheck"
 import type { LicensingCheckInput, LicensingIntendedUse } from "@/lib/licensing/types"
 
 export const runtime = "nodejs"
@@ -39,39 +34,20 @@ function parseCount(raw: unknown): number | null {
   return Math.floor(n)
 }
 
-function parseInput(body: Record<string, unknown>, search?: URLSearchParams): LicensingCheckInput | { error: string } {
-  const postcode = String(
-    body.postcode ?? search?.get("postcode") ?? "",
-  ).trim()
+function parseInput(
+  body: Record<string, unknown>,
+  search?: URLSearchParams,
+): LicensingCheckInput | { error: string } {
+  const postcode = String(body.postcode ?? search?.get("postcode") ?? "").trim()
   if (!postcode) return { error: "postcode is required" }
   return {
     postcode,
     occupants: parseCount(body.occupants ?? search?.get("occupants")),
     rooms: parseCount(body.rooms ?? search?.get("rooms")),
-    intendedUse: parseUse(body.intendedUse ?? body.intended_use ?? search?.get("intendedUse")),
+    intendedUse: parseUse(
+      body.intendedUse ?? body.intended_use ?? search?.get("intendedUse"),
+    ),
   }
-}
-
-async function runCheck(input: LicensingCheckInput) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  return checkLicensing(input, {
-    geocode: geocodeLicensingPostcode,
-    checkArticle4: async (postcode) => {
-      if (url && key) {
-        return checkArticle4(createClient(url, key), postcode)
-      }
-      return {
-        isArticle4: false,
-        status: "unknown",
-        areas: [],
-        warningLevel: "none",
-        summary: "Article 4 status could not be confirmed (database unavailable).",
-        district: null,
-        sector: null,
-      }
-    },
-  })
 }
 
 function disabled() {
@@ -89,7 +65,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 })
   }
   try {
-    const result = await runCheck(parsed)
+    const result = await runLicensingCheck(parsed)
     return NextResponse.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -111,7 +87,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 })
   }
   try {
-    const result = await runCheck(parsed)
+    const result = await runLicensingCheck(parsed)
     return NextResponse.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

@@ -3,7 +3,8 @@
 /**
  * Analyse-flow + standalone licensing panel.
  *
- * Fetches POST /v1/licensing/check and renders the four P0–P1 flags with
+ * Fetches POST /api/v1/licensing/check (aliased as /v1/licensing/check) and
+ * renders the four P0–P1 flags with
  * traffic lights, severity, confidence, freshness and sources.
  * Always shows the legal-clearance disclaimer and the Planning Data A4
  * incomplete banner. Hidden when licensing_checker_v1 is off.
@@ -18,7 +19,7 @@ import {
   Scale,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { isLicensingCheckerEnabled } from "@/lib/licensing/flag"
+import { isLicensingCheckerEnabled, LICENSING_CHECK_ENDPOINT } from "@/lib/licensing/flag"
 import type {
   LicensingBanner,
   LicensingCheckResult,
@@ -82,7 +83,7 @@ export function LicensingPanel({
     setError(null)
     ;(async () => {
       try {
-        const res = await fetch("/v1/licensing/check", {
+        const res = await fetch(LICENSING_CHECK_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

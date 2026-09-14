@@ -2,12 +2,13 @@
 
 /**
  * Client island for /tools/licensing-checker.
- * The route is gated by licensing_checker_v1 in page.tsx (notFound when off).
+ *
+ * Native GET form so a check works without client JS (search params are
+ * resolved on the server). The analyse-flow panel still uses the JSON API.
  */
 
-import { useState } from "react"
 import Link from "next/link"
-import { Scale, ArrowRight, Loader2 } from "lucide-react"
+import { Scale, ArrowRight } from "lucide-react"
 import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { LicensingPanel } from "@/components/licensing/licensing-panel"
 import { Button } from "@/components/ui/button"
@@ -17,50 +18,21 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import type { LicensingCheckResult, LicensingIntendedUse } from "@/lib/licensing/types"
 
-export function LicensingCheckerClient() {
-  const [postcode, setPostcode] = useState("")
-  const [occupants, setOccupants] = useState("")
-  const [rooms, setRooms] = useState("")
-  const [intendedUse, setIntendedUse] = useState<LicensingIntendedUse>("hmo")
-  const [result, setResult] = useState<LicensingCheckResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [submittedPc, setSubmittedPc] = useState<string | null>(null)
-
-  const run = async () => {
-    const pc = postcode.trim()
-    if (!pc) {
-      setError("Enter a UK postcode")
-      return
-    }
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    try {
-      const res = await fetch("/v1/licensing/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postcode: pc,
-          occupants: occupants ? Number(occupants) : undefined,
-          rooms: rooms ? Number(rooms) : undefined,
-          intendedUse,
-        }),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error((j as { error?: string }).error || `Check failed (${res.status})`)
-      }
-      const json = (await res.json()) as LicensingCheckResult
-      setResult(json)
-      setSubmittedPc(pc)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Licensing check failed")
-    } finally {
-      setLoading(false)
-    }
-  }
-
+export function LicensingCheckerClient({
+  initialPostcode,
+  initialOccupants,
+  initialRooms,
+  initialIntendedUse,
+  result,
+  error,
+}: {
+  initialPostcode: string
+  initialOccupants: string
+  initialRooms: string
+  initialIntendedUse: LicensingIntendedUse
+  result: LicensingCheckResult | null
+  error: string | null
+}) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-10">
       <ToolsTopBar />
@@ -91,93 +63,85 @@ export function LicensingCheckerClient() {
               Occupancy is optional. It only affects the mandatory HMO flag.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="pc">Postcode</Label>
-              <Input
-                id="pc"
-                value={postcode}
-                onChange={(e) => setPostcode(e.target.value.toUpperCase())}
-                placeholder="M14 5AA"
-                autoComplete="postal-code"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void run()
-                }}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+          <CardContent>
+            <form
+              action="/tools/licensing-checker"
+              method="get"
+              className="flex flex-col gap-4"
+            >
               <div className="flex flex-col gap-2">
-                <Label htmlFor="occ">Occupants (optional)</Label>
+                <Label htmlFor="pc">Postcode</Label>
                 <Input
-                  id="occ"
-                  inputMode="numeric"
-                  value={occupants}
-                  onChange={(e) => setOccupants(e.target.value.replace(/[^\d]/g, ""))}
-                  placeholder="e.g. 5"
+                  id="pc"
+                  name="postcode"
+                  defaultValue={initialPostcode}
+                  placeholder="M14 5AA"
+                  autoComplete="off"
+                  required
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="occ">Occupants (optional)</Label>
+                  <Input
+                    id="occ"
+                    name="occupants"
+                    inputMode="numeric"
+                    defaultValue={initialOccupants}
+                    placeholder="e.g. 5"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="rooms">Rooms (optional)</Label>
+                  <Input
+                    id="rooms"
+                    name="rooms"
+                    inputMode="numeric"
+                    defaultValue={initialRooms}
+                    placeholder="e.g. 4"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="rooms">Rooms (optional)</Label>
-                <Input
-                  id="rooms"
-                  inputMode="numeric"
-                  value={rooms}
-                  onChange={(e) => setRooms(e.target.value.replace(/[^\d]/g, ""))}
-                  placeholder="e.g. 4"
-                />
+                <Label>Intended use</Label>
+                <div className="flex flex-col gap-1.5">
+                  {(
+                    [
+                      ["hmo", "HMO / conversion"],
+                      ["btl", "Single-let BTL"],
+                      ["other", "Other / not sure"],
+                    ] as [LicensingIntendedUse, string][]
+                  ).map(([v, l]) => (
+                    <label
+                      key={v}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border border-border/40 p-3 text-sm has-[:checked]:border-primary/60 has-[:checked]:bg-primary/5"
+                    >
+                      <input
+                        type="radio"
+                        name="intendedUse"
+                        value={v}
+                        defaultChecked={initialIntendedUse === v}
+                        className="size-4 accent-primary"
+                      />
+                      {l}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Intended use</Label>
-              <div className="flex flex-col gap-1.5">
-                {(
-                  [
-                    ["hmo", "HMO / conversion"],
-                    ["btl", "Single-let BTL"],
-                    ["other", "Other / not sure"],
-                  ] as [LicensingIntendedUse, string][]
-                ).map(([v, l]) => (
-                  <label
-                    key={v}
-                    className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
-                      intendedUse === v
-                        ? "border-primary/60 bg-primary/5"
-                        : "border-border/40 hover:border-border/80"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="intendedUse"
-                      value={v}
-                      checked={intendedUse === v}
-                      onChange={() => setIntendedUse(v)}
-                      className="size-4 accent-primary"
-                    />
-                    {l}
-                  </label>
-                ))}
-              </div>
-            </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button onClick={() => void run()} disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Checking…
-                </>
-              ) : (
-                "Check licensing"
-              )}
-            </Button>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button type="submit">Check licensing</Button>
+            </form>
           </CardContent>
         </Card>
 
         <div className="flex flex-col gap-4">
           {result ? (
             <LicensingPanel
-              postcode={submittedPc}
+              postcode={result.location.postcode}
               result={result}
-              intendedUse={intendedUse}
+              intendedUse={initialIntendedUse}
             />
           ) : (
             <Card className="border-dashed">

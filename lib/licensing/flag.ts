@@ -9,6 +9,9 @@
 
 export const LICENSING_CHECKER_FLAG = "licensing_checker_v1"
 
+/** Canonical Next.js route. `/v1/licensing/check` is rewritten to this. */
+export const LICENSING_CHECK_ENDPOINT = "/api/v1/licensing/check"
+
 const OFF = new Set(["0", "false", "off", "no"])
 
 export function isLicensingCheckerEnabled(): boolean {
