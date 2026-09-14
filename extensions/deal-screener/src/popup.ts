@@ -13,6 +13,7 @@ import type {
   ScreenerRules,
   StrategyHint,
 } from "../../../lib/deal-screener/types"
+import { flaskDealsUrl, isNextDealsCreatePath } from "../../../lib/deal-screener/backendOrigin"
 import {
   clearSession,
   connectAccount,
@@ -224,6 +225,14 @@ async function openInMetalyzi() {
 
   const appOrigin = await getAppOrigin()
   const backendOrigin = await getBackendOrigin()
+  const dealsUrl = flaskDealsUrl(backendOrigin)
+  if (isNextDealsCreatePath(dealsUrl)) {
+    showStatus(
+      "Flask origin is required. Open in Metalyzi cannot POST Next /api/v1/deals.",
+      "error",
+    )
+    return
+  }
   const key = resolveIdempotencyKey(
     null,
     body.listing.source,
@@ -232,7 +241,7 @@ async function openInMetalyzi() {
   showStatus("Handing off to Metalyzi (Flask /v1/deals)…", "info")
 
   try {
-    const res = await fetch(`${backendOrigin}/v1/deals`, {
+    const res = await fetch(dealsUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,7 +1,14 @@
+import { resolveFlaskBackendOrigin } from "../../../lib/deal-screener/backendOrigin"
+
+declare const __SCREENER_FLASK_ORIGIN__: string | undefined
+
 export const DEFAULT_APP_ORIGIN = "https://www.metalyzi.co.uk"
-/** Canonical deals API — Flask BE, not Next screener_deals. */
+/** Canonical deals API — Flask BE. Next must not own create / screener_deals. */
 export const DEFAULT_BACKEND_ORIGIN =
-  "https://metusa-deal-analyzer.onrender.com"
+  typeof __SCREENER_FLASK_ORIGIN__ === "string" &&
+  __SCREENER_FLASK_ORIGIN__.startsWith("http")
+    ? __SCREENER_FLASK_ORIGIN__.replace(/\/$/, "")
+    : resolveFlaskBackendOrigin()
 
 export const STORAGE_KEYS = {
   accessToken: "screener.accessToken",

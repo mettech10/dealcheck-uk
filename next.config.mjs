@@ -23,9 +23,7 @@ const nextConfig = {
   },
   async rewrites() {
     return [
-      // Retired create path → 410 (Flask POST /v1/deals is SoT).
-      { source: '/v1/deals', destination: '/api/v1/deals' },
-      // GET hydrate for /analyse?dealId= (shared deals + properties under RLS).
+      // GET hydrate only — Flask POST {be}/v1/deals is the create SoT.
       { source: '/v1/deals/:id', destination: '/api/v1/deals/:id' },
     ]
   },

@@ -15,7 +15,9 @@ import {
   DEFAULT_RULES_PRESET,
   emptyCollectedPage,
   evaluateRules,
+  flaskDealsUrl,
   idempotencyKey,
+  isNextDealsCreatePath,
   isRightmoveListingDetailUrl,
   listingIdFromUrl,
   hydrateFromDealRow,
@@ -25,6 +27,7 @@ import {
   normaliseStrategyHint,
   parseHandoffResponse,
   resolveDeepLinkUrl,
+  resolveFlaskBackendOrigin,
   resolveIdempotencyKey,
   simpleGrossYield,
   simpleMonthlyCashflow,
@@ -35,7 +38,6 @@ import {
   toFlaskListing,
 } from "@/lib/deal-screener"
 import type { CollectedRightmovePage, NormalisedListingV1 } from "@/lib/deal-screener"
-import { POST as postDealsRetired } from "@/app/api/v1/deals/route"
 
 function collected(
   over: Partial<CollectedRightmovePage> = {},
@@ -406,16 +408,45 @@ describe("GET hydrate from shared deals (+ properties)", () => {
   })
 })
 
-describe("Next POST /api/v1/deals is retired", () => {
-  test("returns 410 pointing at Flask POST /v1/deals", async () => {
-    const res = await postDealsRetired(
-      new Request("http://localhost/api/v1/deals", {
-        method: "POST",
-        body: "{}",
+describe("Open in Metalyzi targets Flask, never Next create / screener_deals", () => {
+  test("env precedence: NEXT_PUBLIC_ANALYZER_API_URL then METUSA_API_URL then BACKEND_API_URL", () => {
+    expect(
+      resolveFlaskBackendOrigin({
+        NEXT_PUBLIC_ANALYZER_API_URL: "https://analyzer.example",
+        METUSA_API_URL: "https://metusa.example",
+        BACKEND_API_URL: "https://backend.example",
       }),
+    ).toBe("https://analyzer.example")
+    expect(
+      resolveFlaskBackendOrigin({
+        METUSA_API_URL: "https://metusa.example/",
+        BACKEND_API_URL: "https://backend.example",
+      }),
+    ).toBe("https://metusa.example")
+    expect(
+      resolveFlaskBackendOrigin({
+        BACKEND_API_URL: "https://metusa-deal-analyzer.onrender.com",
+      }),
+    ).toBe("https://metusa-deal-analyzer.onrender.com")
+    expect(resolveFlaskBackendOrigin({})).toBe(
+      "https://metusa-deal-analyzer.onrender.com",
     )
-    expect(res.status).toBe(410)
-    const json = (await res.json()) as { error?: string }
-    expect(json.error).toBe("handoff_retired")
+  })
+
+  test("POST URL is Flask /v1/deals, not Next /api/v1/deals", () => {
+    const url = flaskDealsUrl(undefined, {
+      NEXT_PUBLIC_ANALYZER_API_URL: "https://metusa-deal-analyzer.onrender.com",
+    })
+    expect(url).toBe("https://metusa-deal-analyzer.onrender.com/v1/deals")
+    expect(isNextDealsCreatePath(url)).toBe(false)
+    expect(isNextDealsCreatePath("https://www.metalyzi.co.uk/api/v1/deals")).toBe(
+      true,
+    )
+    expect(isNextDealsCreatePath("https://www.metalyzi.co.uk/v1/deals")).toBe(
+      true,
+    )
+    expect(isNextDealsCreatePath("http://localhost:3000/api/v1/deals")).toBe(
+      true,
+    )
   })
 })

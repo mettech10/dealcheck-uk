@@ -29,6 +29,15 @@ const aliasPlugin = {
   },
 }
 
+const flaskOrigin = (
+  process.env.NEXT_PUBLIC_ANALYZER_API_URL ||
+  process.env.METUSA_API_URL ||
+  process.env.BACKEND_API_URL ||
+  "https://metusa-deal-analyzer.onrender.com"
+)
+  .trim()
+  .replace(/\/$/, "")
+
 async function bundle() {
   await esbuild.build({
     absWorkingDir: root,
@@ -44,6 +53,9 @@ async function bundle() {
     sourcemap: true,
     plugins: [aliasPlugin],
     logLevel: "info",
+    define: {
+      __SCREENER_FLASK_ORIGIN__: JSON.stringify(flaskOrigin),
+    },
   })
 
   copyFile(path.join(root, "manifest.json"), path.join(dist, "manifest.json"))

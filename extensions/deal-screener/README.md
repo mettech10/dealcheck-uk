@@ -4,17 +4,19 @@ Chrome **Manifest V3** extension that captures a **Rightmove listing-detail page
 
 This is an in-platform feature, not a bot and not a Chrome Web Store listing. Load it unpacked.
 
-## Canonical API (Flask)
+## Canonical API (Flask) — required
 
-**Source of truth for deals is Flask** `POST /v1/deals` — see [metusa-deal-analyzer#92](https://github.com/mettech10/metusa-deal-analyzer/pull/92). This frontend repo does **not** persist `screener_deals` and does **not** create deals via Next.js.
+**Source of truth for deals is Flask** `POST /v1/deals` — see [metusa-deal-analyzer#92](https://github.com/mettech10/metusa-deal-analyzer/pull/92). That backend PR **is required**. This frontend does **not** create deals and does **not** use `screener_deals`.
 
 | Path | Owner |
 |---|---|
-| `POST {BACKEND_API_URL}/v1/deals` | Flask (create / idempotent replay) |
-| `GET /api/v1/deals/:id` | Next (hydrate `/analyse?dealId=` from shared Supabase `deals` + `properties` under user RLS) |
-| `/screener/connect` | Next (Metalyzi session → extension Bearer token) |
+| `POST {NEXT_PUBLIC_ANALYZER_API_URL \| METUSA_API_URL \| BACKEND_API_URL}/v1/deals` | **Flask** (create / idempotent replay into `public.deals` + `properties`) |
+| `/screener/connect` | Next (session → extension Bearer token) |
+| `GET /api/v1/deals/:id` | Next (hydrate `/analyse?dealId=` from shared `deals` under user RLS — read only) |
 
-Next `POST /api/v1/deals` is **retired** (410). The popup opens Flask’s returned `deepLinkPath` on metalyzi.co.uk (`/analyse?dealId=&strategy=&propertyId=&url=`).
+There is **no** Next `POST /api/v1/deals` create path. Open in Metalyzi must not write `screener_deals`.
+
+The popup opens Flask’s returned `deepLinkPath` on metalyzi.co.uk (`/analyse?dealId=&strategy=&propertyId=&url=`).
 
 ## What it does
 
@@ -22,7 +24,7 @@ Next `POST /api/v1/deals` is **retired** (410). The popup opens Flask’s return
 2. The popup previews address / price / beds (no photos — photos stay off).
 3. You type monthly rent (never scraped) and pick a strategy.
 4. Client-side rules: max price, min beds, min gross yield, min simple cashflow, strategy allow-list → **Pass / Fail**.
-5. **Open in Metalyzi** `POST`s Flask `{backendOrigin}/v1/deals` as `source: screener`, `schemaVersion: 1`, photos stripped:
+5. **Open in Metalyzi** `POST`s Flask `{be}/v1/deals` as `source: screener`, `schemaVersion: 1`, photos stripped:
    - listing fields: `listingUrl` (alias `sourceUrl`), `priceGbp`, `rentPcmGbp` (required), `bedrooms` (alias `beds`)
    - `strategyHint` lowercase (`btl | hmo | brrr | flip | sa | development`); UI `r2sa` → wire `sa`; omitted → Flask defaults `btl`
    - `Authorization: Bearer` = Supabase access token from `/screener/connect`
@@ -48,6 +50,12 @@ Captured listings are **display-and-discard**: they live in the popup only. Clos
    npm run build
    ```
 
+   Optional Flask origin at build time (baked into the bundle):
+
+   ```bash
+   NEXT_PUBLIC_ANALYZER_API_URL=https://metusa-deal-analyzer.onrender.com npm run build
+   ```
+
 2. Chrome → `chrome://extensions` → enable **Developer mode**.
 3. **Load unpacked** → select `extensions/deal-screener/dist`.
 4. Pin the icon. Open a Rightmove **listing** (not a search page) and click it.
@@ -55,7 +63,7 @@ Captured listings are **display-and-discard**: they live in the popup only. Clos
 ### Connect + handoff
 
 1. **App origin** — `https://www.metalyzi.co.uk` (or `http://localhost:3000`). Used for Connect and to open `deepLinkPath`.
-2. **Flask origin** — `https://metusa-deal-analyzer.onrender.com` (or local Flask / `BACKEND_API_URL`). Used for `POST /v1/deals`.
+2. **Flask origin** — `NEXT_PUBLIC_ANALYZER_API_URL` / `METUSA_API_URL` / `BACKEND_API_URL` (default `https://metusa-deal-analyzer.onrender.com`). Used **only** for `POST /v1/deals`.
 3. Click **Connect Metalyzi**. Same account as metalyzi.co.uk.
 4. Enter rent → Open in Metalyzi.
 

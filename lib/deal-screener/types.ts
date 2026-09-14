@@ -3,9 +3,10 @@
  * `POST /v1/deals` (metusa-deal-analyzer PR #92).
  *
  * Next.js is not the source of truth for deals. The extension POSTs
- * Flask `POST /v1/deals` directly. Next only hydrates
+ * Flask `POST {NEXT_PUBLIC_ANALYZER_API_URL}/v1/deals` directly.
+ * Next only connects the session and hydrates
  * `GET /api/v1/deals/:id` from shared `deals` (+ `properties`) under
- * user RLS. Photos stay off.
+ * user RLS. There is no `screener_deals` create path. Photos stay off.
  */
 
 /** Listing portals the screener can capture. MVP: Rightmove detail only. */
