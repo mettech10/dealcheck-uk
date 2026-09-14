@@ -15,7 +15,6 @@
 
 import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import {
   Building2,
   Info,
@@ -50,7 +49,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { formatCurrency } from "@/lib/calculations"
 import {
@@ -98,6 +96,16 @@ function fromDefaults() {
 
 type FormFields = ReturnType<typeof fromDefaults>
 
+export type LtdCoCalculatorProps = {
+  dealId: string | null
+  continueHref: string
+  initialUnderstood: boolean
+  initialResult: LtdCoCompareResult | null
+  initialMode?: CalculatorMode
+  initialLens?: Lens
+  initialFields?: Partial<FormFields>
+}
+
 function toInput(fields: FormFields, mode: CalculatorMode, dealId: string | null): LtdCoCompareInput {
   return {
     mode,
@@ -128,45 +136,31 @@ function toInput(fields: FormFields, mode: CalculatorMode, dealId: string | null
   }
 }
 
-export function PersonalVsLtdCalculator() {
-  const searchParams = useSearchParams()
-  const dealIdParam = searchParams.get("dealId")
-  const dealId =
-    dealIdParam &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      dealIdParam,
-    )
-      ? dealIdParam
-      : null
-  const understoodParam = searchParams.get("understood") === "1"
-  const continueHref = (() => {
-    const next = new URLSearchParams(searchParams.toString())
-    next.set("understood", "1")
-    return `/tools/personal-vs-ltd?${next.toString()}`
-  })()
-
-  const [fields, setFields] = useState<FormFields>(() => {
-    const base = fromDefaults()
-    const rent = searchParams.get("annualGrossRent")
-    const op = searchParams.get("annualOperatingCosts")
-    const fin = searchParams.get("annualFinanceCosts")
-    const price = searchParams.get("purchasePrice")
-    if (rent) base.annualGrossRent = rent.replace(/[^\d.]/g, "")
-    if (op) base.annualOperatingCosts = op.replace(/[^\d.]/g, "")
-    if (fin) base.annualFinanceCosts = fin.replace(/[^\d.]/g, "")
-    if (price) base.purchasePrice = price.replace(/[^\d.]/g, "")
-    return base
-  })
-  const [mode, setMode] = useState<CalculatorMode>("landlord")
-  const [lens, setLens] = useState<Lens>("retained")
-  const [result, setResult] = useState<LtdCoCompareResult | null>(null)
-  const [calcSource, setCalcSource] = useState<LtdCoCalcSource | null>(null)
+export function PersonalVsLtdCalculator({
+  dealId,
+  continueHref,
+  initialUnderstood,
+  initialResult,
+  initialMode = "landlord",
+  initialLens = "retained",
+  initialFields,
+}: LtdCoCalculatorProps) {
+  const [fields, setFields] = useState<FormFields>(() => ({
+    ...fromDefaults(),
+    ...initialFields,
+  }))
+  const [mode, setMode] = useState<CalculatorMode>(initialMode)
+  const [lens, setLens] = useState<Lens>(initialLens)
+  const [result, setResult] = useState<LtdCoCompareResult | null>(initialResult)
+  const [calcSource, setCalcSource] = useState<LtdCoCalcSource | null>(
+    initialResult ? "local-fallback" : null,
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [attachedToDealId, setAttachedToDealId] = useState<string | null>(null)
   const [dealLabel, setDealLabel] = useState<string | null>(null)
   const [prefillReady, setPrefillReady] = useState(!dealId)
-  const [disclaimerAccepted, setDisclaimerAccepted] = useState(understoodParam)
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(initialUnderstood)
 
   const setField = <K extends keyof FormFields>(key: K, value: FormFields[K]) => {
     setFields((prev) => ({ ...prev, [key]: value }))
@@ -269,26 +263,18 @@ export function PersonalVsLtdCalculator() {
 
   useEffect(() => {
     try {
-      if (understoodParam) {
+      if (initialUnderstood) {
         sessionStorage.setItem(DISCLAIMER_STORAGE_KEY, "1")
         setDisclaimerAccepted(true)
-        const next = new URLSearchParams(searchParams.toString())
-        next.delete("understood")
-        const qs = next.toString()
-        window.history.replaceState(
-          null,
-          "",
-          qs ? `/tools/personal-vs-ltd?${qs}` : "/tools/personal-vs-ltd",
-        )
         return
       }
       if (sessionStorage.getItem(DISCLAIMER_STORAGE_KEY) === "1") {
         setDisclaimerAccepted(true)
       }
     } catch {
-      if (understoodParam) setDisclaimerAccepted(true)
+      if (initialUnderstood) setDisclaimerAccepted(true)
     }
-  }, [understoodParam, searchParams])
+  }, [initialUnderstood])
 
   useEffect(() => {
     if (!prefillReady || !disclaimerAccepted) return
@@ -378,7 +364,15 @@ export function PersonalVsLtdCalculator() {
           }}
         />
       ) : (
-        <>
+        <form
+          method="GET"
+          action="/tools/personal-vs-ltd"
+          className="flex flex-col gap-8"
+        >
+          <input type="hidden" name="understood" value="1" />
+          {dealId && <input type="hidden" name="dealId" value={dealId} />}
+          <input type="hidden" name="lens" value={lens} />
+          <input type="hidden" name="mode" value={mode} />
       <ModeToggle mode={mode} onChange={setMode} />
 
       {mode === "broker" && <BrokerPlaceholder />}
@@ -558,9 +552,10 @@ export function PersonalVsLtdCalculator() {
                 />
               </div>
               <Button
+                id="ltd-co-compare"
+                type="submit"
                 className="w-full gap-2"
                 disabled={loading}
-                onClick={() => void runCompare(fields, mode)}
               >
                 {loading ? (
                   <>
@@ -601,31 +596,41 @@ export function PersonalVsLtdCalculator() {
 
           {result && lensSummary && (
             <>
-              <Tabs value={lens} onValueChange={(v) => setLens(v as Lens)}>
-                <TabsList className="w-full sm:w-auto">
-                  <TabsTrigger value="retained" className="gap-1.5">
+              <div className="flex flex-col gap-3">
+                <div className="bg-muted text-muted-foreground inline-flex h-9 w-full items-center justify-center rounded-lg p-[3px] sm:w-auto">
+                  <button
+                    type="submit"
+                    name="lens"
+                    value="retained"
+                    className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium sm:flex-none sm:px-3 ${
+                      lens === "retained"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    }`}
+                  >
                     <Building2 className="size-3.5" />
                     Entity retained
-                  </TabsTrigger>
-                  <TabsTrigger value="extracted" className="gap-1.5">
+                  </button>
+                  <button
+                    type="submit"
+                    name="lens"
+                    value="extracted"
+                    className={`inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium sm:flex-none sm:px-3 ${
+                      lens === "extracted"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground"
+                    }`}
+                  >
                     <User className="size-3.5" />
                     Owner extracted
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="retained" className="mt-4">
-                  <p className="mb-3 text-xs text-muted-foreground">
-                    Cash left in the company after corporation tax and admin.
-                    The owner has not taken a dividend.
-                  </p>
-                </TabsContent>
-                <TabsContent value="extracted" className="mt-4">
-                  <p className="mb-3 text-xs text-muted-foreground">
-                    Cash the owner takes as a dividend after corporation tax
-                    and dividend tax. Assumes the year&apos;s post-CT property
-                    profit is paid out.
-                  </p>
-                </TabsContent>
-              </Tabs>
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {lens === "retained"
+                    ? "Cash left in the company after corporation tax and admin. The owner has not taken a dividend."
+                    : "Cash the owner takes as a dividend after corporation tax and dividend tax. Assumes the year's post-CT property profit is paid out."}
+                </p>
+              </div>
 
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <Kpi
@@ -766,7 +771,7 @@ export function PersonalVsLtdCalculator() {
           )}
         </div>
       </div>
-        </>
+        </form>
       )}
 
       {disclaimerAccepted && <StickyDisclaimer />}
@@ -835,7 +840,9 @@ function ModeToggle({
   return (
     <div className="inline-flex w-fit rounded-lg border border-border/40 bg-muted/40 p-1 text-sm">
       <button
-        type="button"
+        type="submit"
+        name="mode"
+        value="landlord"
         onClick={() => onChange("landlord")}
         className={`rounded-md px-3 py-1.5 ${
           mode === "landlord"
@@ -846,7 +853,9 @@ function ModeToggle({
         Landlord
       </button>
       <button
-        type="button"
+        type="submit"
+        name="mode"
+        value="broker"
         onClick={() => onChange("broker")}
         className={`rounded-md px-3 py-1.5 ${
           mode === "broker"
@@ -1016,6 +1025,7 @@ function PoundField({
         </span>
         <Input
           id={id}
+          name={id}
           type="text"
           inputMode="decimal"
           className="pl-7"
@@ -1045,6 +1055,7 @@ function PercentField({
       <div className="relative">
         <Input
           id={id}
+          name={id}
           type="text"
           inputMode="decimal"
           className="pr-7"
@@ -1077,6 +1088,7 @@ function NumberField({
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
+        name={id}
         type="text"
         inputMode="numeric"
         value={value}
