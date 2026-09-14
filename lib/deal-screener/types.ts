@@ -2,8 +2,10 @@
  * Deal Screener types — wire contract matches Flask
  * `POST /v1/deals` (metusa-deal-analyzer PR #92).
  *
- * Next.js is not the source of truth for deals. The extension (and a
- * thin Next proxy) POST to Flask. Photos stay off.
+ * Next.js is not the source of truth for deals. The extension POSTs
+ * Flask `POST /v1/deals` directly. Next only hydrates
+ * `GET /api/v1/deals/:id` from shared `deals` (+ `properties`) under
+ * user RLS. Photos stay off.
  */
 
 /** Listing portals the screener can capture. MVP: Rightmove detail only. */

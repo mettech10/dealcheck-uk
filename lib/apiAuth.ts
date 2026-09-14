@@ -47,13 +47,26 @@ export async function getRequestUser(req: Request) {
 }
 
 /**
- * Access token for Flask Bearer passthrough. Prefers the Authorization
- * header; otherwise the HttpOnly cookie session (session exchange).
+ * User-scoped Supabase client for RLS reads (GET hydrate of `deals`).
+ * Bearer (extension) uses the JWT so `auth.uid()` matches; otherwise
+ * the HttpOnly cookie session. Does not use the service role.
  */
-export async function getAccessTokenFromRequest(req: Request): Promise<string | null> {
-  const header = bearerToken(req)
-  if (header) return header
+export async function createUserClientFromRequest(req: Request) {
+  const token = bearerToken(req)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (token && url && anon) {
+    const client = createSupabaseJsClient(url, anon, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const { data } = await client.auth.getUser()
+    if (data.user) return { user: data.user, supabase: client }
+  }
+
   const supabase = await createClient()
-  const { data } = await supabase.auth.getSession()
-  return data.session?.access_token ?? null
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  return { user, supabase }
 }

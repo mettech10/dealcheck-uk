@@ -1,9 +1,8 @@
 /**
  * Deal Screener — client-side rules, metrics, normalisation, handoff.
  *
- * Wire contract matches Flask POST /v1/deals (canonical SoT):
- * listingUrl, priceGbp, rentPcmGbp, bedrooms; strategyHint lowercase
- * (brrrr, sa not r2sa); Idempotency-Key screener:{source}:{id}.
+ * Wire contract matches Flask POST /v1/deals (canonical SoT).
+ * Next GET hydrates shared `deals` (+ properties), not screener_deals.
  */
 import { describe, expect, test } from "vitest"
 import {
@@ -19,7 +18,9 @@ import {
   idempotencyKey,
   isRightmoveListingDetailUrl,
   listingIdFromUrl,
+  hydrateFromDealRow,
   listingToFormPrefill,
+  mergePropertySpine,
   normaliseCollectedListing,
   normaliseStrategyHint,
   parseHandoffResponse,
@@ -34,6 +35,7 @@ import {
   toFlaskListing,
 } from "@/lib/deal-screener"
 import type { CollectedRightmovePage, NormalisedListingV1 } from "@/lib/deal-screener"
+import { POST as postDealsRetired } from "@/app/api/v1/deals/route"
 
 function collected(
   over: Partial<CollectedRightmovePage> = {},
@@ -317,5 +319,103 @@ describe("handoff POST body — Flask canonical fields", () => {
     ).toContain("https://www.metalyzi.co.uk/analyse?dealId=deal-1")
     expect(parsed.deepLinkPath).toContain("strategy=btl")
     expect(parsed.deepLinkPath).toContain("propertyId=prop-1")
+  })
+})
+
+describe("GET hydrate from shared deals (+ properties)", () => {
+  test("fills rentPcmGbp from deals.rent_pcm_gbp when listing JSON omits it", () => {
+    const hydrated = hydrateFromDealRow({
+      id: "11111111-1111-1111-1111-111111111111",
+      property_id: "22222222-2222-2222-2222-222222222222",
+      strategy: "sa",
+      rent_pcm_gbp: "950.00",
+      listing: {
+        source: "rightmove",
+        sourceListingId: "153629507",
+        listingUrl: "https://www.rightmove.co.uk/properties/153629507",
+        address: "42 Oakfield Avenue, Manchester",
+        postcode: "M14 6LT",
+        priceGbp: 185000,
+        bedrooms: 3,
+        images: ["https://media.rightmove.co.uk/secret.jpg"],
+      },
+      status: "created",
+    })
+    expect(hydrated.listing.rentPcmGbp).toBe(950)
+    expect(hydrated.listing.sourceUrl).toContain("/properties/153629507")
+    expect(hydrated.listing.beds).toBe(3)
+    expect(hydrated.listing).not.toHaveProperty("images")
+    expect(hydrated.strategyHint).toBe("sa")
+    expect(hydrated.formPrefill.monthlyRent).toBe(950)
+    expect(hydrated.formPrefill.investmentType).toBe("r2sa")
+    expect(hydrated.formPrefill.purchasePrice).toBe(185000)
+    expect(hydrated.propertyId).toBe("22222222-2222-2222-2222-222222222222")
+  })
+
+  test("merges Discovery properties spine into a sparse listing", () => {
+    const merged = mergePropertySpine(
+      { listingUrl: "https://www.rightmove.co.uk/properties/9" },
+      {
+        canonical_address: "9 Spine Street, Leeds",
+        postcode: "LS6 3AA",
+        bedrooms: 2,
+        property_type: "flat",
+        tenure: "leasehold",
+      },
+    )
+    const hydrated = hydrateFromDealRow(
+      {
+        id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        strategy: "btl",
+        rent_pcm_gbp: 800,
+        listing: merged,
+      },
+      {
+        canonical_address: "9 Spine Street, Leeds",
+        postcode: "LS6 3AA",
+        bedrooms: 2,
+        property_type: "flat",
+        tenure: "leasehold",
+      },
+    )
+    expect(hydrated.listing.address).toBe("9 Spine Street, Leeds")
+    expect(hydrated.listing.postcode).toBe("LS6 3AA")
+    expect(hydrated.listing.bedrooms).toBe(2)
+    expect(hydrated.listing.propertyType).toBe("flat")
+    expect(hydrated.listing.tenure).toBe("leasehold")
+    expect(hydrated.formPrefill.monthlyRent).toBe(800)
+    expect(hydrated.strategyHint).toBe("btl")
+  })
+
+  test("maps listing aliases sourceUrl/beds onto Flask names", () => {
+    const hydrated = hydrateFromDealRow({
+      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      listing: {
+        sourceUrl: "https://www.rightmove.co.uk/properties/99",
+        beds: 2,
+        priceGbp: 150000,
+        rentPcmGbp: 800,
+        address: "1 Alias Street",
+        postcode: "M1 1AA",
+      },
+    })
+    expect(hydrated.listing.listingUrl).toContain("/properties/99")
+    expect(hydrated.listing.sourceUrl).toBe(hydrated.listing.listingUrl)
+    expect(hydrated.listing.bedrooms).toBe(2)
+    expect(hydrated.listing.beds).toBe(2)
+  })
+})
+
+describe("Next POST /api/v1/deals is retired", () => {
+  test("returns 410 pointing at Flask POST /v1/deals", async () => {
+    const res = await postDealsRetired(
+      new Request("http://localhost/api/v1/deals", {
+        method: "POST",
+        body: "{}",
+      }),
+    )
+    expect(res.status).toBe(410)
+    const json = (await res.json()) as { error?: string }
+    expect(json.error).toBe("handoff_retired")
   })
 })
