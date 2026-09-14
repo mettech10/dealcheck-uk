@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { LicensingPanel } from "@/components/licensing/licensing-panel"
 import { isLicensingCheckerEnabled } from "@/lib/licensing/flag"
-import type { LicensingIntendedUse } from "@/lib/licensing/types"
+import { licensingInputFromAnalyse } from "@/lib/licensing/request"
 import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
@@ -103,14 +103,6 @@ interface AnalysisResultsProps {
   /** Lifts live market evidence (sold/rental/ARV comparables + Article 4)
       to the page so the Deal Package PDF matches the on-screen data. */
   onPdfEvidence?: (evidence: DealPdfEvidence) => void
-}
-
-function licensingIntendedUse(data: PropertyFormData): LicensingIntendedUse {
-  if (data.investmentType === "hmo" || data.brrrExitStrategy === "hmo") return "hmo"
-  if (data.investmentType === "r2sa") return "sa"
-  if (data.investmentType === "flip") return "flip"
-  if (data.investmentType === "btl" || data.brrrExitStrategy === "btl") return "btl"
-  return "other"
 }
 
 // Series colours pull from the themed --chart-* tokens so they stay
@@ -2581,16 +2573,7 @@ export function AnalysisResults({
           {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
 
           {isLicensingCheckerEnabled() && (
-            <LicensingPanel
-              postcode={data.postcode}
-              rooms={data.roomCount ?? (data.investmentType === "hmo" ? data.bedrooms : undefined)}
-              occupants={
-                data.investmentType === "hmo" || data.brrrExitStrategy === "hmo"
-                  ? data.roomCount ?? undefined
-                  : undefined
-              }
-              intendedUse={licensingIntendedUse(data)}
-            />
+            <LicensingPanel {...licensingInputFromAnalyse(data)} />
           )}
 
           {/* Article 4 & planning — moved into the sidebar */}

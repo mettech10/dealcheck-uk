@@ -4,7 +4,8 @@
  * Client island for /tools/licensing-checker.
  *
  * Native GET form so a check works without client JS (search params are
- * resolved on the server). The analyse-flow panel still uses the JSON API.
+ * resolved on the server and forwarded to Flask). The analyse-flow panel
+ * still uses the JSON API proxy.
  */
 
 import Link from "next/link"
@@ -22,14 +23,22 @@ export function LicensingCheckerClient({
   initialPostcode,
   initialOccupants,
   initialRooms,
+  initialHouseholds,
   initialIntendedUse,
+  initialConversionFromC3,
+  initialPurposeBuiltFlat,
+  initialFlatsInBlock,
   result,
   error,
 }: {
   initialPostcode: string
   initialOccupants: string
   initialRooms: string
+  initialHouseholds: string
   initialIntendedUse: LicensingIntendedUse
+  initialConversionFromC3: string
+  initialPurposeBuiltFlat: string
+  initialFlatsInBlock: string
   result: LicensingCheckResult | null
   error: string | null
 }) {
@@ -47,7 +56,7 @@ export function LicensingCheckerClient({
           </h1>
           <p className="text-sm text-muted-foreground">
             Postcode screen for mandatory HMO, additional, selective and Article 4
-            C3→C4 flags. England first.
+            C3→C4 flags. England first. Analyzer is the source of truth.
           </p>
           <Badge variant="outline" className="mt-1 w-fit text-xs">
             Screening aid — not legal clearance
@@ -61,6 +70,7 @@ export function LicensingCheckerClient({
             <CardTitle className="text-lg">Check a postcode</CardTitle>
             <CardDescription>
               Occupancy is optional. It only affects the mandatory HMO flag.
+              Purpose-built / block size is sent only when you know it.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -99,10 +109,21 @@ export function LicensingCheckerClient({
                     name="rooms"
                     inputMode="numeric"
                     defaultValue={initialRooms}
-                    placeholder="e.g. 4"
+                    placeholder="occupants fallback"
                     autoComplete="off"
                   />
                 </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="households">Households (optional)</Label>
+                <Input
+                  id="households"
+                  name="households"
+                  inputMode="numeric"
+                  defaultValue={initialHouseholds}
+                  placeholder="e.g. 5"
+                  autoComplete="off"
+                />
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Intended use</Label>
@@ -111,6 +132,7 @@ export function LicensingCheckerClient({
                     [
                       ["hmo", "HMO / conversion"],
                       ["btl", "Single-let BTL"],
+                      ["sa", "Serviced accommodation"],
                       ["other", "Other / not sure"],
                     ] as [LicensingIntendedUse, string][]
                   ).map(([v, l]) => (
@@ -129,6 +151,43 @@ export function LicensingCheckerClient({
                     </label>
                   ))}
                 </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="conversion">C3→C4 conversion?</Label>
+                <select
+                  id="conversion"
+                  name="conversion_from_c3"
+                  defaultValue={initialConversionFromC3}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Not specified (analyzer infers from use)</option>
+                  <option value="true">Yes — conversion play</option>
+                  <option value="false">No — continued use</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="pbf">Purpose-built flat?</Label>
+                <select
+                  id="pbf"
+                  name="purpose_built_flat"
+                  defaultValue={initialPurposeBuiltFlat}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Not specified</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="fib">Flats in block (optional)</Label>
+                <Input
+                  id="fib"
+                  name="flats_in_block"
+                  inputMode="numeric"
+                  defaultValue={initialFlatsInBlock}
+                  placeholder="only if known"
+                  autoComplete="off"
+                />
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <Button type="submit">Check licensing</Button>

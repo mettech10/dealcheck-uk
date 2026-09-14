@@ -3,11 +3,10 @@
 /**
  * Analyse-flow + standalone licensing panel.
  *
- * Fetches POST /api/v1/licensing/check (aliased as /v1/licensing/check) and
- * renders the four P0–P1 flags with
- * traffic lights, severity, confidence, freshness and sources.
- * Always shows the legal-clearance disclaimer and the Planning Data A4
- * incomplete banner. Hidden when licensing_checker_v1 is off.
+ * Fetches POST /api/v1/licensing/check (Next proxy → Flask
+ * /v1/licensing/check) and renders mapped traffic lights, severity_class,
+ * deal_impact hooks, freshness and sources. Always shows the legal-clearance
+ * disclaimer and the Planning Data A4 incomplete banner.
  */
 
 import { useEffect, useState, type ReactNode } from "react"
@@ -22,9 +21,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { isLicensingCheckerEnabled, LICENSING_CHECK_ENDPOINT } from "@/lib/licensing/flag"
 import type {
   LicensingBanner,
+  LicensingCheckInput,
   LicensingCheckResult,
+  LicensingDealImpact,
   LicensingFlag,
   LicensingIntendedUse,
+  SeverityClass,
 } from "@/lib/licensing/types"
 import { TrafficLightDot, TrafficLightLabel, trafficTone } from "./traffic-light"
 
@@ -32,17 +34,22 @@ export interface LicensingPanelProps {
   postcode?: string | null
   occupants?: number | null
   rooms?: number | null
+  households?: number | null
+  sharingAmenities?: boolean | null
   intendedUse?: LicensingIntendedUse | null
+  conversionFromC3?: boolean | null
+  purposeBuiltFlat?: boolean | null
+  flatsInBlock?: number | null
   /** When true, omit the outer card chrome (standalone page supplies its own). */
   embedded?: boolean
   /** Preloaded result — skips fetch when provided. */
   result?: LicensingCheckResult | null
 }
 
-const SEVERITY_LABEL: Record<LicensingFlag["severity"], string> = {
-  high: "High",
-  medium: "Medium",
-  low: "Low",
+const SEVERITY_CLASS_LABEL: Record<SeverityClass, string> = {
+  deal_killer: "Deal killer",
+  compliance_cost: "Compliance cost",
+  soft_warning: "Soft warning",
   info: "Info",
 }
 
@@ -53,11 +60,30 @@ const CONFIDENCE_LABEL: Record<LicensingFlag["confidence"], string> = {
   none: "No confidence",
 }
 
+function checkBody(props: LicensingPanelProps): LicensingCheckInput {
+  return {
+    postcode: props.postcode ?? "",
+    occupants: props.occupants ?? undefined,
+    rooms: props.rooms ?? undefined,
+    households: props.households ?? undefined,
+    sharingAmenities: props.sharingAmenities ?? undefined,
+    intendedUse: props.intendedUse ?? undefined,
+    conversionFromC3: props.conversionFromC3 ?? undefined,
+    purposeBuiltFlat: props.purposeBuiltFlat ?? undefined,
+    flatsInBlock: props.flatsInBlock ?? undefined,
+  }
+}
+
 export function LicensingPanel({
   postcode,
   occupants,
   rooms,
+  households,
+  sharingAmenities,
   intendedUse,
+  conversionFromC3,
+  purposeBuiltFlat,
+  flatsInBlock,
   embedded = false,
   result: preload,
 }: LicensingPanelProps) {
@@ -81,16 +107,32 @@ export function LicensingPanel({
     let cancelled = false
     setLoading(true)
     setError(null)
+    const input = checkBody({
+      postcode,
+      occupants,
+      rooms,
+      households,
+      sharingAmenities,
+      intendedUse,
+      conversionFromC3,
+      purposeBuiltFlat,
+      flatsInBlock,
+    })
     ;(async () => {
       try {
         const res = await fetch(LICENSING_CHECK_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            postcode,
-            occupants: occupants ?? undefined,
-            rooms: rooms ?? undefined,
-            intendedUse: intendedUse ?? undefined,
+            postcode: input.postcode,
+            occupants: input.occupants ?? undefined,
+            rooms: input.rooms ?? undefined,
+            households: input.households ?? undefined,
+            sharing_amenities: input.sharingAmenities ?? undefined,
+            intended_use: input.intendedUse ?? undefined,
+            conversion_from_c3: input.conversionFromC3 ?? undefined,
+            purpose_built_flat: input.purposeBuiltFlat ?? undefined,
+            flats_in_block: input.flatsInBlock ?? undefined,
           }),
         })
         if (res.status === 404) {
@@ -118,7 +160,19 @@ export function LicensingPanel({
     return () => {
       cancelled = true
     }
-  }, [enabled, postcode, occupants, rooms, intendedUse, preload])
+  }, [
+    enabled,
+    postcode,
+    occupants,
+    rooms,
+    households,
+    sharingAmenities,
+    intendedUse,
+    conversionFromC3,
+    purposeBuiltFlat,
+    flatsInBlock,
+    preload,
+  ])
 
   if (!enabled) return null
 
@@ -172,6 +226,8 @@ export function LicensingPanel({
         <Banner key={b.id} banner={b} />
       ))}
 
+      {result.dealImpact && <DealImpactBlock impact={result.dealImpact} />}
+
       <div className="flex flex-col gap-2">
         {result.flags.map((f) => (
           <FlagRow key={f.id} flag={f} />
@@ -190,6 +246,72 @@ export function LicensingPanel({
     <Shell embedded={false} light={result.overallTrafficLight}>
       {body}
     </Shell>
+  )
+}
+
+function gbp(n: number | null | undefined): string | null {
+  if (n == null || !Number.isFinite(n)) return null
+  return `£${Math.round(n).toLocaleString("en-GB")}`
+}
+
+function DealImpactBlock({ impact }: { impact: LicensingDealImpact }) {
+  const fees = impact.estimated_licence_fees_gbp
+  const feeLabel =
+    fees.known && (fees.min != null || fees.max != null)
+      ? fees.min != null && fees.max != null && fees.min !== fees.max
+        ? `${gbp(fees.min)}–${gbp(fees.max)}`
+        : gbp(fees.min ?? fees.max)
+      : null
+  const killers = impact.killers.filter((k) => k.title || k.summary)
+  const capex = impact.analyse_hooks.add_capex_lines.filter((l) => l.label || l.range_text)
+  const notes = impact.analyse_hooks.add_risk_notes.filter((n) => n.summary)
+  if (!killers.length && !feeLabel && !capex.length && !notes.length) return null
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card/60 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Deal impact (indicative)
+      </p>
+      {killers.length > 0 && (
+        <ul className="mt-1.5 list-disc space-y-1 pl-4 text-xs text-red-800 dark:text-red-300">
+          {killers.map((k, i) => (
+            <li key={k.flag_id ?? k.title ?? String(i)}>{k.title || k.summary}</li>
+          ))}
+        </ul>
+      )}
+      {feeLabel && (
+        <p className="mt-1.5 text-xs text-foreground">
+          Estimated licence fees: <span className="font-medium">{feeLabel}</span>
+          <span className="text-muted-foreground"> — not added to cashflow</span>
+        </p>
+      )}
+      {capex.length > 0 && (
+        <div className="mt-1.5">
+          <p className="text-[11px] font-medium text-muted-foreground">Capex / fee hooks</p>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+            {capex.map((line, i) => (
+              <li key={line.id ?? line.label ?? String(i)}>
+                {line.label}
+                {line.range_text ? ` · ${line.range_text}` : ""}
+                {!line.range_text && (line.min_gbp != null || line.max_gbp != null)
+                  ? ` · ${gbp(line.min_gbp) ?? "?"}${line.max_gbp != null && line.max_gbp !== line.min_gbp ? `–${gbp(line.max_gbp)}` : ""}`
+                  : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {notes.length > 0 && (
+        <div className="mt-1.5">
+          <p className="text-[11px] font-medium text-muted-foreground">Risk / cost notes</p>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+            {notes.map((n, i) => (
+              <li key={n.id ?? n.summary ?? String(i)}>{n.summary}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -248,7 +370,7 @@ function FlagRow({ flag }: { flag: LicensingFlag }) {
         <TrafficLightDot light={flag.trafficLight} />
         <p className="text-xs font-semibold text-foreground">{flag.label}</p>
         <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
-          {SEVERITY_LABEL[flag.severity]} · {CONFIDENCE_LABEL[flag.confidence]}
+          {SEVERITY_CLASS_LABEL[flag.severityClass]} · {CONFIDENCE_LABEL[flag.confidence]}
         </span>
       </div>
       <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
@@ -256,18 +378,22 @@ function FlagRow({ flag }: { flag: LicensingFlag }) {
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
         <span>Freshness: {flag.freshness.label}</span>
-        {flag.sources.slice(0, 3).map((s) => (
-          <a
-            key={s.url}
-            href={s.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
-          >
-            {s.name}
-            <ExternalLink className="size-2.5" />
-          </a>
-        ))}
+        {flag.sources.slice(0, 3).map((s) =>
+          s.url ? (
+            <a
+              key={s.url}
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+            >
+              {s.name}
+              <ExternalLink className="size-2.5" />
+            </a>
+          ) : (
+            <span key={s.name}>{s.name}</span>
+          ),
+        )}
       </div>
     </div>
   )

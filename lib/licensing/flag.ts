@@ -1,15 +1,17 @@
 /**
  * Feature flag: licensing_checker_v1
  *
- * Green-lit P0–P1. Defaults ON so the analyse panel, standalone checker
- * and /v1/licensing/check route ship. Set
+ * Defaults ON so the analyse panel, standalone checker and the Next
+ * proxy at /v1/licensing/check ship. Production checks are owned by
+ * Flask metusa-deal-analyzer POST /v1/licensing/check — this flag only
+ * gates the FE UI and proxy. Set
  *   NEXT_PUBLIC_LICENSING_CHECKER_V1=false
- * to hide the UI and 404 the API without a code change.
+ * to hide the UI and 404 the Next route without a code change.
  */
 
 export const LICENSING_CHECKER_FLAG = "licensing_checker_v1"
 
-/** Canonical Next.js route. `/v1/licensing/check` is rewritten to this. */
+/** Browser endpoint: Next proxy. Flask is not called from the client. */
 export const LICENSING_CHECK_ENDPOINT = "/api/v1/licensing/check"
 
 const OFF = new Set(["0", "false", "off", "no"])
