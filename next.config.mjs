@@ -22,7 +22,10 @@ const nextConfig = {
     '/api/comparables/rental-listings': ['./node_modules/playwright-core/**'],
   },
   async rewrites() {
-    return []
+    return [
+      { source: '/v1/deals', destination: '/api/v1/deals' },
+      { source: '/v1/deals/:id', destination: '/api/v1/deals/:id' },
+    ]
   },
   // Old static admin HTML used to live at /admin/admin_dashboard.html
   // and /admin/admin_login.html, exposed via rewrites at /admin/dashboard
