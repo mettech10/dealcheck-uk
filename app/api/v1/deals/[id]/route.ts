@@ -31,6 +31,16 @@ export async function OPTIONS(req: Request) {
   return screenerOptions(req)
 }
 
+type DealQueryRow = {
+  id: string
+  property_id?: string | null
+  strategy?: string | null
+  rent_pcm_gbp?: number | string | null
+  listing?: Record<string, unknown> | null
+  status?: string | null
+  properties?: PropertySpineRow | PropertySpineRow[] | null
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -48,11 +58,9 @@ export async function GET(
   const DEAL_COLUMNS = "id, property_id, strategy, rent_pcm_gbp, listing, status"
   const WITH_PROPERTY = `${DEAL_COLUMNS}, properties ( id, canonical_address, postcode, bedrooms, bathrooms, property_type, tenure )`
 
-  let { data, error } = await supabase
-    .from("deals")
-    .select(WITH_PROPERTY)
-    .eq("id", id)
-    .maybeSingle()
+  const first = await supabase.from("deals").select(WITH_PROPERTY).eq("id", id).maybeSingle()
+  let error = first.error
+  let row = first.data as DealQueryRow | null
 
   if (error && isMissingRelation(error)) {
     const retry = await supabase
@@ -60,8 +68,8 @@ export async function GET(
       .select(DEAL_COLUMNS)
       .eq("id", id)
       .maybeSingle()
-    data = retry.data
     error = retry.error
+    row = retry.data as DealQueryRow | null
   }
 
   if (error && isMissingRelation(error)) {
@@ -76,18 +84,8 @@ export async function GET(
     )
   }
 
-  if (error || !data) {
+  if (error || !row) {
     return screenerJson(req, { error: "not_found" }, 404)
-  }
-
-  const row = data as {
-    id: string
-    property_id?: string | null
-    strategy?: string | null
-    rent_pcm_gbp?: number | string | null
-    listing?: Record<string, unknown> | null
-    status?: string | null
-    properties?: PropertySpineRow | PropertySpineRow[] | null
   }
 
   const property = Array.isArray(row.properties)
