@@ -9,6 +9,10 @@ import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Toaster } from "@/components/ui/sonner"
 import { MtdDisclaimerBanner } from "./disclaimer-banner"
 import { MtdSubnav } from "./subnav"
+import { analyzerApiUrl } from "@/lib/mtd/config"
+import { clearFlaskBearer, ensureBusiness, getFlaskBearer } from "@/lib/mtd/client"
+import { MtdBusinessProvider } from "@/lib/mtd/workspace-context"
+import type { FlaskBusiness } from "@/lib/mtd/types"
 
 export function MtdWorkspaceShell({
   title,
@@ -19,29 +23,44 @@ export function MtdWorkspaceShell({
   description?: string
   children: React.ReactNode
 }) {
-  const [state, setState] = useState<"loading" | "anon" | "ready" | "migration">("loading")
+  const [state, setState] = useState<"loading" | "anon" | "error" | "ready">("loading")
+  const [error, setError] = useState<string | null>(null)
+  const [business, setBusiness] = useState<FlaskBusiness | null>(null)
 
   useEffect(() => {
     ;(async () => {
       try {
-        const res = await fetch("/v1/mtd/business")
-        if (res.status === 401) {
+        await getFlaskBearer()
+      } catch (e) {
+        const status = (e as Error & { status?: number }).status
+        if (status === 401) {
           setState("anon")
           return
         }
-        if (res.status === 503) {
-          setState("migration")
-          return
-        }
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          toast.error((j as { error?: string }).error || "Failed to load MTD Pack")
-          setState("anon")
-          return
-        }
+        setError(e instanceof Error ? e.message : "Could not load MTD Pack")
+        setState("error")
+        return
+      }
+      try {
+        const biz = await ensureBusiness()
+        setBusiness(biz)
         setState("ready")
-      } catch {
-        setState("anon")
+      } catch (e) {
+        const status = (e as Error & { status?: number }).status
+        if (status === 401) {
+          clearFlaskBearer()
+          setState("anon")
+          return
+        }
+        const msg =
+          e instanceof Error
+            ? e.message
+            : "Could not reach the Flask MTD API"
+        toast.error(msg)
+        setError(
+          `${msg} Ledger writes go to Flask ${analyzerApiUrl()}/v1/mtd/* — the same SoT pattern as Screener → Flask /v1/deals.`,
+        )
+        setState("error")
       }
     })()
   }, [])
@@ -67,7 +86,7 @@ export function MtdWorkspaceShell({
           <MtdDisclaimerBanner compact />
           <div className="flex justify-center gap-3">
             <Button asChild>
-              <Link href="/login?redirect=/mtd">Sign in</Link>
+              <Link href="/login?returnTo=/mtd">Sign in</Link>
             </Button>
             <Button asChild variant="outline">
               <Link href="/">Home</Link>
@@ -76,21 +95,19 @@ export function MtdWorkspaceShell({
         </div>
       )}
 
-      {state === "migration" && (
+      {state === "error" && (
         <div className="flex flex-col gap-4 pt-6">
           <h1 className="text-2xl font-bold">MTD Pack</h1>
-          <p className="text-sm text-muted-foreground">
-            The MTD Pack database tables have not been applied yet. Run{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-              supabase/migrations/20260914_mtd_pack.sql
-            </code>{" "}
-            and reload.
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <p className="text-xs text-muted-foreground">
+            Set <code className="rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_ANALYZER_API_URL</code>{" "}
+            if the Flask host is not the default Render URL.
           </p>
         </div>
       )}
 
-      {state === "ready" && (
-        <>
+      {state === "ready" && business && (
+        <MtdBusinessProvider business={business}>
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
@@ -105,7 +122,7 @@ export function MtdWorkspaceShell({
           <MtdDisclaimerBanner compact />
           <MtdSubnav />
           {children}
-        </>
+        </MtdBusinessProvider>
       )}
     </div>
   )

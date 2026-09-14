@@ -1,3 +1,17 @@
+const analyzerOrigin = (() => {
+  const raw =
+    process.env.NEXT_PUBLIC_ANALYZER_API_URL ||
+    process.env.ANALYZER_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_API_URL ||
+    process.env.BACKEND_API_URL ||
+    "https://metusa-deal-analyzer.onrender.com"
+  try {
+    return new URL(raw).origin
+  } catch {
+    return "https://metusa-deal-analyzer.onrender.com"
+  }
+})()
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -55,7 +69,7 @@ const nextConfig = {
               // blob: — client-generated share-card PNG previews
               "img-src 'self' data: blob: https:",
               "font-src 'self'",
-              "connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com",
+              `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerOrigin} http://localhost:5000 http://127.0.0.1:5000`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

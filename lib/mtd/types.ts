@@ -1,19 +1,22 @@
-export type MtdCategoryKind = "income" | "expense" | "allowance" | "adjustment"
+export type MtdCategoryKind =
+  | "income"
+  | "expense"
+  | "residential_finance"
+  | "adjustment"
+  | "income_adjustment"
 
 export interface Sa105Category {
-  id: string
-  label: string
+  code: string
+  name: string
   kind: MtdCategoryKind
-  /** SA105 box number, e.g. "21". Null when the MTD field has no dedicated box. */
   sa105Box: string | null
-  /** HMRC MTD ITSA UK-property field name (documentation mapping only). */
-  hmrcField: string
-  description: string
+  hmrcField: string | null
+  isResidentialFinance: boolean
   aliases: string[]
 }
 
-export interface MtdProperty {
-  propertyId: string
+export interface PortfolioProperty {
+  id: string
   nickname: string | null
   address: string
   postcode: string | null
@@ -21,107 +24,144 @@ export interface MtdProperty {
   status: string | null
 }
 
-export interface MtdBusiness {
+export interface FlaskBusiness {
   id: string
-  user_id: string
+  orgId: string
   name: string
-  accounting_basis: "cash" | "accruals"
-  notes: string | null
-  created_at: string
-  updated_at: string
+  taxYearStart: string
+  basis: "standard" | "calendar"
+  country: string
+  status: string
 }
 
-export interface MtdLedgerEntry {
+export interface FlaskMtdProperty {
   id: string
-  user_id: string
-  business_id: string
-  /** Source of truth — portfolio_properties.id */
-  property_id: string
-  entry_date: string
-  amount: number
-  category_id: string
-  description: string
-  reference: string | null
-  source: "manual" | "csv"
-  created_at: string
-  updated_at: string
-}
-
-export interface MtdLedgerInput {
-  propertyId: string
-  entryDate: string
-  amount: number
-  categoryId: string
-  description: string
-  reference?: string | null
-  source?: "manual" | "csv"
-}
-
-export interface ParsedCsvRow {
-  line: number
-  entryDate: string
-  amount: number
-  description: string
-  categoryId: string | null
-  categoryHint: string | null
+  orgId: string
+  businessId: string
+  /** Metalyzi portfolio property UUID (platform SoT). */
   propertyId: string | null
-  propertyHint: string | null
-  reference: string | null
-  warnings: string[]
-}
-
-export interface CategoryTotals {
-  categoryId: string
   label: string
-  kind: MtdCategoryKind
-  sa105Box: string | null
-  count: number
-  total: number
+  address: string | null
+  postcode: string | null
+  occupancyType: string
 }
 
-export interface PropertyPackSlice {
-  propertyId: string
-  label: string
-  income: number
-  expenses: number
-  allowances: number
-  adjustments: number
-  netWorkingPapers: number
-  entryCount: number
-  byCategory: CategoryTotals[]
+export interface FlaskLedgerEntry {
+  id: string
+  orgId: string
+  businessId: string
+  propertyId: string | null
+  entryDate: string
+  amountPence: number
+  categoryCode: string
+  description: string | null
+  counterparty: string | null
+  source: "manual" | "csv"
 }
 
-export interface MtdPack {
+export interface FlaskQuarterPack {
+  id: string
+  orgId: string
+  businessId: string
   taxYear: string
-  quarter: MtdQuarterId
+  quarter: number
+  basis: string
   periodStart: string
   periodEnd: string
-  generatedAt: string
-  hmrcSubmission: false
-  downloadKind: "working_papers"
+  immutable: true
+  hmrcSubmit: false
   disclaimer: string
-  totals: {
-    income: number
-    expenses: number
-    allowances: number
-    adjustments: number
-    netWorkingPapers: number
-    entryCount: number
-  }
-  byCategory: CategoryTotals[]
-  byProperty: PropertyPackSlice[]
-  entries: MtdLedgerEntry[]
+  snapshot?: FlaskPackSnapshot
 }
 
-export type MtdQuarterId = 1 | 2 | 3 | 4 | "year"
+export interface FlaskPackSnapshot {
+  schemaVersion: number
+  packType: string
+  disclaimer: string
+  hmrcSubmit: false
+  taxYear?: string
+  quarter?: number
+  basis?: string
+  periodStart?: string
+  periodEnd?: string
+  periodNetPence?: number
+  entryCount?: number
+  periodTotalsPence?: Record<string, number>
+  yearToDateTotalsPence?: Record<string, number>
+  residentialFinance?: {
+    excludedFromProfitDeduction?: boolean
+    note?: string
+    period?: {
+      periodPence?: number
+      broughtForwardPence?: number
+      totalPence?: number
+      nonResidentialFinancePence?: number
+    }
+    yearToDate?: {
+      periodPence?: number
+      broughtForwardPence?: number
+      totalPence?: number
+      nonResidentialFinancePence?: number
+    }
+  }
+  entries?: Array<{
+    id: string
+    date: string
+    propertyId: string | null
+    categoryCode: string
+    amountPence: number
+    description?: string | null
+    isResidentialFinance?: boolean
+  }>
+  business?: { id: string; name: string; orgId?: string }
+  properties?: Array<{
+    id: string
+    propertyId: string | null
+    label: string
+    address?: string | null
+  }>
+}
 
-export interface MtdShareLink {
+export interface FlaskShareLink {
   id: string
   token: string
-  label: string | null
-  expires_at: string | null
-  revoked_at: string | null
-  created_at: string
-  last_accessed_at: string | null
+  urlPath: string
+  expiresAt: string
+  packId: string
+}
+
+export interface FlaskCsvPreview {
+  readyToCommit: boolean
+  validCount: number
+  invalidCount: number
+  rowCount: number
+  rows: Array<{
+    rowNumber: number
+    valid: boolean
+    errors: string[]
+    mapped: {
+      date?: string
+      categoryCode?: string
+      propertyId?: string | null
+      amountPence?: number
+      description?: string | null
+    }
+  }>
+}
+
+/** UI quarter selector. Flask packs are Q1–Q4 only (`year` is display, not an API value). */
+export type MtdQuarterId = 1 | 2 | 3 | 4 | "year"
+
+/** @deprecated use Sa105Category.code */
+export type MtdCategoryId = string
+
+export interface StoredShareLink {
+  id: string
+  token: string
   url: string
+  expiresAt: string
+  packId: string
+  taxYear?: string
+  quarter?: number
+  createdAt: string
 }

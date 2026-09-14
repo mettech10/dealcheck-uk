@@ -1,8 +1,9 @@
 "use client"
 
-import { formatGbp } from "@/lib/mtd/money"
+import { formatGbpFromPence } from "@/lib/mtd/money"
 import { kindLabel } from "@/lib/mtd/categories"
-import type { MtdPack } from "@/lib/mtd/types"
+import { incomeExpenseFromTotals, snapshotCategoryRows } from "@/lib/mtd/snapshot"
+import type { FlaskQuarterPack } from "@/lib/mtd/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Accordion,
@@ -18,21 +19,31 @@ export function PackSummary({
   onDownload,
   downloading,
 }: {
-  pack: MtdPack
-  onDownload?: (format: "csv" | "json") => void
+  pack: FlaskQuarterPack
+  onDownload?: (format: "csv" | "json" | "pdf") => void
   downloading?: boolean
 }) {
+  const snapshot = pack.snapshot
+  const totals = incomeExpenseFromTotals(snapshot?.periodTotalsPence)
+  const rows = snapshotCategoryRows(snapshot)
+  const finance = snapshot?.residentialFinance?.period
+  const properties = snapshot?.properties || []
+  const entries = snapshot?.entries || []
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat label="Income" value={formatGbp(pack.totals.income)} />
-        <Stat label="Expenses" value={formatGbp(pack.totals.expenses)} />
-        <Stat label="Allowances" value={formatGbp(pack.totals.allowances)} />
-        <Stat label="Adjustments" value={formatGbp(pack.totals.adjustments)} />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat label="Income" value={formatGbpFromPence(totals.income)} />
+        <Stat label="Expenses" value={formatGbpFromPence(totals.expenses)} />
         <Stat
           label="Working papers net"
-          value={formatGbp(pack.totals.netWorkingPapers)}
+          value={formatGbpFromPence(snapshot?.periodNetPence ?? totals.net)}
           hint="Not a tax computation"
+        />
+        <Stat
+          label="Residential finance"
+          value={formatGbpFromPence(finance?.periodPence ?? 0)}
+          hint="Not a profit deduction (box 44)"
         />
       </div>
 
@@ -58,6 +69,16 @@ export function PackSummary({
             <Download className="size-3.5" />
             Download JSON
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            disabled={downloading}
+            onClick={() => onDownload("pdf")}
+          >
+            <Download className="size-3.5" />
+            Download PDF
+          </Button>
           <p className="self-center text-xs text-muted-foreground">
             Working papers only — not an HMRC quarterly update.
           </p>
@@ -69,7 +90,7 @@ export function PackSummary({
           <CardTitle className="text-base">SA105 category totals — UK property business</CardTitle>
         </CardHeader>
         <CardContent>
-          {pack.byCategory.length === 0 ? (
+          {rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No ledger entries in this period.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -79,18 +100,21 @@ export function PackSummary({
                     <th className="pb-2 pr-3">Box</th>
                     <th className="pb-2 pr-3">Category</th>
                     <th className="pb-2 pr-3">Kind</th>
-                    <th className="pb-2 pr-3 text-right">Entries</th>
                     <th className="pb-2 text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pack.byCategory.map((row) => (
-                    <tr key={row.categoryId} className="border-t border-border/40">
+                  {rows.map((row) => (
+                    <tr key={row.code} className="border-t border-border/40">
                       <td className="py-2 pr-3 tabular-nums">{row.sa105Box ?? "—"}</td>
-                      <td className="py-2 pr-3">{row.label}</td>
-                      <td className="py-2 pr-3 text-muted-foreground">{kindLabel(row.kind)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{row.count}</td>
-                      <td className="py-2 text-right tabular-nums">{formatGbp(row.total)}</td>
+                      <td className="py-2 pr-3">{row.name}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">
+                        {kindLabel(row.kind)}
+                        {row.isResidentialFinance ? " · excluded from profit" : ""}
+                      </td>
+                      <td className="py-2 text-right tabular-nums">
+                        {formatGbpFromPence(row.periodPence)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -105,45 +129,49 @@ export function PackSummary({
           <CardTitle className="text-base">Per property (same property business)</CardTitle>
         </CardHeader>
         <CardContent>
-          {pack.byProperty.length === 0 ? (
+          {properties.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Add properties in Portfolio Tracker. propertyId is the source of truth.
             </p>
           ) : (
             <Accordion type="multiple" className="w-full">
-              {pack.byProperty.map((slice) => (
-                <AccordionItem key={slice.propertyId} value={slice.propertyId}>
-                  <AccordionTrigger className="text-sm">
-                    <span className="flex w-full flex-wrap items-center justify-between gap-2 pr-3">
-                      <span>{slice.label}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {slice.entryCount} entries · {formatGbp(slice.netWorkingPapers)}
+              {properties.map((slice) => {
+                const sliceEntries = entries.filter((e) => e.propertyId === slice.id)
+                const slicePence = sliceEntries.reduce((sum, e) => sum + e.amountPence, 0)
+                return (
+                  <AccordionItem key={slice.id} value={slice.id}>
+                    <AccordionTrigger className="text-sm">
+                      <span className="flex w-full flex-wrap items-center justify-between gap-2 pr-3">
+                        <span>{slice.label}</span>
+                        <span className="tabular-nums text-muted-foreground">
+                          {sliceEntries.length} entries · {formatGbpFromPence(slicePence)}
+                        </span>
                       </span>
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    {slice.byCategory.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No entries this period.</p>
-                    ) : (
-                      <table className="w-full text-sm">
-                        <tbody>
-                          {slice.byCategory.map((row) => (
-                            <tr key={row.categoryId} className="border-t border-border/30">
-                              <td className="py-1.5">{row.label}</td>
-                              <td className="py-1.5 text-right tabular-nums">
-                                {formatGbp(row.total)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      propertyId: {slice.propertyId}
-                    </p>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      {sliceEntries.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No entries this period.</p>
+                      ) : (
+                        <table className="w-full text-sm">
+                          <tbody>
+                            {sliceEntries.map((row) => (
+                              <tr key={row.id} className="border-t border-border/30">
+                                <td className="py-1.5">{row.categoryCode}</td>
+                                <td className="py-1.5 text-right tabular-nums">
+                                  {formatGbpFromPence(row.amountPence)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        propertyId: {slice.propertyId || "unlinked"}
+                      </p>
+                    </AccordionContent>
+                  </AccordionItem>
+                )
+              })}
             </Accordion>
           )}
         </CardContent>

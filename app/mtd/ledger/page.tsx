@@ -19,10 +19,17 @@ import {
 import { MtdWorkspaceShell } from "@/components/mtd/workspace-shell"
 import { CategoryPicker } from "@/components/mtd/category-picker"
 import { CsvImportDialog } from "@/components/mtd/csv-import"
-import { createLedgerEntry, deleteLedgerEntry, fetchLedger } from "@/lib/mtd/client"
+import {
+  createLedgerEntry,
+  deleteLedgerEntry,
+  fetchPortfolioProperties,
+  listFlaskProperties,
+  listLedger,
+} from "@/lib/mtd/client"
 import { getCategory } from "@/lib/mtd/categories"
-import { formatGbp } from "@/lib/mtd/money"
-import type { MtdLedgerEntry, MtdProperty } from "@/lib/mtd/types"
+import { formatGbpFromPence } from "@/lib/mtd/money"
+import { useMtdBusiness } from "@/lib/mtd/workspace-context"
+import type { FlaskLedgerEntry, FlaskMtdProperty, PortfolioProperty } from "@/lib/mtd/types"
 
 function todayIso() {
   const d = new Date()
@@ -33,17 +40,19 @@ function todayIso() {
 }
 
 function LedgerInner() {
+  const business = useMtdBusiness()
   const searchParams = useSearchParams()
   const initialProperty = searchParams.get("propertyId") || "all"
   const [propertyFilter, setPropertyFilter] = useState(initialProperty)
-  const [properties, setProperties] = useState<MtdProperty[]>([])
-  const [entries, setEntries] = useState<MtdLedgerEntry[]>([])
+  const [properties, setProperties] = useState<PortfolioProperty[]>([])
+  const [flaskProperties, setFlaskProperties] = useState<FlaskMtdProperty[]>([])
+  const [entries, setEntries] = useState<FlaskLedgerEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [importOpen, setImportOpen] = useState(false)
 
   const [entryDate, setEntryDate] = useState(todayIso)
   const [amount, setAmount] = useState("")
-  const [categoryId, setCategoryId] = useState("")
+  const [categoryCode, setCategoryCode] = useState("")
   const [description, setDescription] = useState("")
   const [reference, setReference] = useState("")
   const [formPropertyId, setFormPropertyId] = useState("")
@@ -52,31 +61,48 @@ function LedgerInner() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchLedger(
-        propertyFilter !== "all" ? { propertyId: propertyFilter } : undefined,
-      )
-      setEntries(data.entries)
-      setProperties(data.properties)
+      const [portfolio, flask, ledger] = await Promise.all([
+        fetchPortfolioProperties(),
+        listFlaskProperties(business.id),
+        listLedger(business.id),
+      ])
+      setProperties(portfolio)
+      setFlaskProperties(flask)
+      setEntries(ledger)
       setFormPropertyId((current) => {
         if (current) return current
         const fromUrl = initialProperty !== "all" ? initialProperty : ""
-        return fromUrl || data.properties[0]?.propertyId || ""
+        return fromUrl || portfolio[0]?.id || ""
       })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load ledger")
     } finally {
       setLoading(false)
     }
-  }, [propertyFilter, initialProperty])
+  }, [business.id, initialProperty])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const propertyLabel = useMemo(() => {
-    const map = new Map(properties.map((p) => [p.propertyId, p.nickname || p.address]))
-    return (id: string) => map.get(id) || id.slice(0, 8)
+  const flaskByPk = useMemo(() => {
+    const map = new Map(flaskProperties.map((p) => [p.id, p]))
+    return map
+  }, [flaskProperties])
+
+  const platformLabel = useMemo(() => {
+    const map = new Map(properties.map((p) => [p.id, p.nickname || p.address]))
+    return (platformId: string | null | undefined) =>
+      (platformId && map.get(platformId)) || platformId?.slice(0, 8) || "—"
   }, [properties])
+
+  const visibleEntries = useMemo(() => {
+    if (propertyFilter === "all") return entries
+    return entries.filter((row) => {
+      const linked = flaskByPk.get(row.propertyId || "")
+      return linked?.propertyId === propertyFilter
+    })
+  }, [entries, propertyFilter, flaskByPk])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,25 +111,26 @@ function LedgerInner() {
       return
     }
     const n = Number(amount)
-    if (!Number.isFinite(n) || n <= 0) {
-      toast.error("Enter an amount greater than 0.")
+    if (!Number.isFinite(n) || n === 0) {
+      toast.error("Enter an amount in pounds (converted to pence on Flask).")
       return
     }
-    if (!categoryId) {
+    if (!categoryCode) {
       toast.error("Pick an SA105 category.")
       return
     }
     setSaving(true)
     try {
       await createLedgerEntry({
-        propertyId: formPropertyId,
-        entryDate,
-        amount: n,
-        categoryId,
+        businessId: business.id,
+        platformPropertyId: formPropertyId,
+        date: entryDate,
+        amountPounds: n,
+        categoryCode,
         description,
         reference: reference || undefined,
       })
-      toast.success("Ledger entry saved")
+      toast.success("Ledger entry saved on Flask")
       setAmount("")
       setDescription("")
       setReference("")
@@ -145,7 +172,8 @@ function LedgerInner() {
               <Link href="/tools/portfolio" className="underline">
                 Portfolio Tracker
               </Link>{" "}
-              before recording income or expenses.
+              before recording income or expenses. Flask create/link requires that platform
+              propertyId.
             </p>
           ) : (
             <form onSubmit={(e) => void submit(e)} className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -165,7 +193,7 @@ function LedgerInner() {
                   </SelectTrigger>
                   <SelectContent>
                     {properties.map((p) => (
-                      <SelectItem key={p.propertyId} value={p.propertyId}>
+                      <SelectItem key={p.id} value={p.id}>
                         {p.nickname || p.address}
                       </SelectItem>
                     ))}
@@ -173,7 +201,7 @@ function LedgerInner() {
                 </Select>
               </Field>
               <Field label="SA105 category" htmlFor="entry-category">
-                <CategoryPicker id="entry-category" value={categoryId} onChange={setCategoryId} />
+                <CategoryPicker id="entry-category" value={categoryCode} onChange={setCategoryCode} />
               </Field>
               <Field label="Amount (£)" htmlFor="entry-amount">
                 <Input
@@ -225,21 +253,21 @@ function LedgerInner() {
             <SelectContent>
               <SelectItem value="all">All properties in this business</SelectItem>
               {properties.map((p) => (
-                <SelectItem key={p.propertyId} value={p.propertyId}>
+                <SelectItem key={p.id} value={p.id}>
                   {p.nickname || p.address}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-        <p className="text-xs text-muted-foreground">{entries.length} entries</p>
+        <p className="text-xs text-muted-foreground">{visibleEntries.length} entries · Flask /v1/mtd</p>
       </div>
 
       <Card>
         <CardContent className="overflow-x-auto p-0">
           {loading ? (
             <div className="p-10 text-center text-sm text-muted-foreground">Loading ledger…</div>
-          ) : entries.length === 0 ? (
+          ) : visibleEntries.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted-foreground">
               No entries yet. Add one above or import a CSV.
             </div>
@@ -256,27 +284,31 @@ function LedgerInner() {
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e) => {
-                  const cat = getCategory(e.category_id)
+                {visibleEntries.map((e) => {
+                  const cat = getCategory(e.categoryCode)
+                  const linked = flaskByPk.get(e.propertyId || "")
                   return (
                     <tr key={e.id} className="border-t border-border/40">
                       <td className="px-4 py-2.5 tabular-nums whitespace-nowrap">
-                        {e.entry_date}
+                        {e.entryDate}
                       </td>
-                      <td className="px-4 py-2.5">{propertyLabel(e.property_id)}</td>
+                      <td className="px-4 py-2.5">{platformLabel(linked?.propertyId)}</td>
                       <td className="px-4 py-2.5">
-                        <div>{cat?.label ?? e.category_id}</div>
+                        <div>{cat?.name ?? e.categoryCode}</div>
                         <div className="text-[11px] text-muted-foreground">
                           {cat?.sa105Box ? `Box ${cat.sa105Box}` : ""} {cat?.kind}
+                          {cat?.isResidentialFinance ? " · not a profit deduction" : ""}
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
                         <div>{e.description}</div>
-                        {e.reference && (
-                          <div className="text-[11px] text-muted-foreground">{e.reference}</div>
+                        {e.counterparty && (
+                          <div className="text-[11px] text-muted-foreground">{e.counterparty}</div>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{formatGbp(e.amount)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {formatGbpFromPence(e.amountPence)}
+                      </td>
                       <td className="px-4 py-2.5 text-right">
                         <Button
                           size="sm"
@@ -300,6 +332,7 @@ function LedgerInner() {
       <CsvImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
+        businessId={business.id}
         properties={properties}
         defaultPropertyId={formPropertyId}
         onImported={() => void load()}
@@ -330,7 +363,7 @@ export default function MtdLedgerPage() {
     <Suspense fallback={<div className="p-12 text-center text-muted-foreground">Loading…</div>}>
       <MtdWorkspaceShell
         title="Ledger"
-        description="Manual entries and CSV import, categorised to SA105 boxes. Each row is stored against a portfolio propertyId."
+        description="Manual entries and CSV import, categorised to SA105 boxes. Each row is stored on Flask against a linked platform propertyId."
       >
         <LedgerInner />
       </MtdWorkspaceShell>

@@ -17,7 +17,7 @@ export function CategoryPicker({
   id,
 }: {
   value: string
-  onChange: (id: string) => void
+  onChange: (code: string) => void
   id?: string
 }) {
   return (
@@ -30,8 +30,8 @@ export function CategoryPicker({
           <SelectGroup key={kind}>
             <SelectLabel>{kindLabel(kind)}</SelectLabel>
             {categoriesByKind(kind).map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.sa105Box ? `Box ${c.sa105Box} · ${c.label}` : c.label}
+              <SelectItem key={c.code} value={c.code}>
+                {c.sa105Box ? `Box ${c.sa105Box} · ${c.name}` : c.name}
               </SelectItem>
             ))}
           </SelectGroup>

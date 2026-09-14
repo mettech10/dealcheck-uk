@@ -3,45 +3,30 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Toaster } from "@/components/ui/sonner"
 import { MtdDisclaimerBanner } from "@/components/mtd/disclaimer-banner"
 import { PackSummary } from "@/components/mtd/pack-summary"
-import { downloadPackFile, fetchSharedPack } from "@/lib/mtd/client"
-import { currentTaxYear, quarterFromDate, recentTaxYears } from "@/lib/mtd/taxYear"
-import type { MtdPack, MtdQuarterId } from "@/lib/mtd/types"
+import { downloadSharedPack, fetchSharedPack } from "@/lib/mtd/client"
+import type { FlaskQuarterPack } from "@/lib/mtd/types"
 import { toast } from "sonner"
 
 export default function MtdPublicSharePage() {
   const params = useParams<{ token: string }>()
   const token = params.token
-  const current = quarterFromDate(new Date())
-  const [taxYear, setTaxYear] = useState(current.taxYear)
-  const [quarter, setQuarter] = useState<MtdQuarterId>(current.quarter)
-  const [pack, setPack] = useState<MtdPack | null>(null)
-  const [meta, setMeta] = useState<{ name: string; label: string | null } | null>(null)
+  const [pack, setPack] = useState<FlaskQuarterPack | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
-  const years = recentTaxYears()
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetchSharedPack(token, taxYear, String(quarter))
+    fetchSharedPack(token)
       .then((j) => {
         if (cancelled) return
         setPack(j.pack)
-        setMeta({ name: j.business.name, label: j.label })
       })
       .catch((e) => {
         if (cancelled) return
@@ -54,12 +39,12 @@ export default function MtdPublicSharePage() {
     return () => {
       cancelled = true
     }
-  }, [token, taxYear, quarter])
+  }, [token])
 
-  const download = async (format: "csv" | "json") => {
+  const download = async (format: "csv" | "json" | "pdf") => {
     setDownloading(true)
     try {
-      await downloadPackFile({ taxYear, quarter: String(quarter), format, token })
+      await downloadSharedPack(token, format)
       toast.success("Working papers downloaded — not an HMRC submission.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed")
@@ -67,6 +52,8 @@ export default function MtdPublicSharePage() {
       setDownloading(false)
     }
   }
+
+  const businessName = pack?.snapshot?.business?.name || "UK property business"
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
@@ -80,9 +67,9 @@ export default function MtdPublicSharePage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {meta?.label ? `${meta.label} · ` : ""}
-          {meta?.name ?? "UK property business"} — working papers shared via Metalyzi. You cannot
-          edit the ledger from this link.
+          {businessName}
+          {pack ? ` · ${pack.taxYear} Q${pack.quarter}` : ""} — working papers shared via Metalyzi.
+          You cannot edit the ledger from this link.
         </p>
       </div>
       <MtdDisclaimerBanner />
@@ -94,56 +81,14 @@ export default function MtdPublicSharePage() {
             Sign in to MTD Pack
           </Link>
         </div>
+      ) : loading || !pack ? (
+        <div className="p-10 text-center text-sm text-muted-foreground">Loading pack…</div>
       ) : (
-        <>
-          <div className="flex flex-wrap gap-3">
-            <div>
-              <Label>Tax year</Label>
-              <Select value={taxYear} onValueChange={setTaxYear}>
-                <SelectTrigger className="mt-1.5 min-w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={y.taxYear} value={y.taxYear}>
-                      {y.taxYear}
-                      {y.taxYear === currentTaxYear().taxYear ? " (current)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Period</Label>
-              <Select
-                value={String(quarter)}
-                onValueChange={(v) =>
-                  setQuarter((v === "year" ? "year" : Number(v)) as MtdQuarterId)
-                }
-              >
-                <SelectTrigger className="mt-1.5 min-w-[200px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">Q1 (6 Apr – 5 Jul)</SelectItem>
-                  <SelectItem value="2">Q2 (6 Jul – 5 Oct)</SelectItem>
-                  <SelectItem value="3">Q3 (6 Oct – 5 Jan)</SelectItem>
-                  <SelectItem value="4">Q4 (6 Jan – 5 Apr)</SelectItem>
-                  <SelectItem value="year">Full tax year</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {loading || !pack ? (
-            <div className="p-10 text-center text-sm text-muted-foreground">Loading pack…</div>
-          ) : (
-            <PackSummary
-              pack={pack}
-              onDownload={(f) => void download(f)}
-              downloading={downloading}
-            />
-          )}
-        </>
+        <PackSummary
+          pack={pack}
+          onDownload={(f) => void download(f)}
+          downloading={downloading}
+        />
       )}
     </div>
   )

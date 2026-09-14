@@ -12,15 +12,16 @@ import {
 } from "@/components/ui/select"
 import { MtdWorkspaceShell } from "@/components/mtd/workspace-shell"
 import { PackSummary } from "@/components/mtd/pack-summary"
-import { downloadPackFile, fetchPack } from "@/lib/mtd/client"
+import { downloadPackExport, ensureQuarterPack } from "@/lib/mtd/client"
 import { currentTaxYear, quarterFromDate, quarterPeriod, recentTaxYears } from "@/lib/mtd/taxYear"
-import type { MtdPack, MtdQuarterId } from "@/lib/mtd/types"
+import { useMtdBusiness } from "@/lib/mtd/workspace-context"
+import type { FlaskQuarterPack } from "@/lib/mtd/types"
 
 export default function MtdPackPage() {
   return (
     <MtdWorkspaceShell
       title="Quarterly pack"
-      description="SA105-aligned totals for your UK property business. Downloads are working papers from /v1/mtd/pack/download — Metalyzi never files them with HMRC."
+      description="Immutable SA105-aligned snapshot from Flask POST /v1/mtd/businesses/:id/packs. Downloads are working papers — Metalyzi never files them with HMRC."
     >
       <PackBody />
     </MtdWorkspaceShell>
@@ -28,10 +29,11 @@ export default function MtdPackPage() {
 }
 
 function PackBody() {
+  const business = useMtdBusiness()
   const current = quarterFromDate(new Date())
   const [taxYear, setTaxYear] = useState(current.taxYear)
-  const [quarter, setQuarter] = useState<MtdQuarterId>(current.quarter)
-  const [pack, setPack] = useState<MtdPack | null>(null)
+  const [quarter, setQuarter] = useState<1 | 2 | 3 | 4>(current.quarter)
+  const [pack, setPack] = useState<FlaskQuarterPack | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
 
@@ -41,9 +43,9 @@ function PackBody() {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetchPack(taxYear, String(quarter))
+    ensureQuarterPack(business.id, taxYear, quarter)
       .then((j) => {
-        if (!cancelled) setPack(j.pack)
+        if (!cancelled) setPack(j)
       })
       .catch((e) => {
         if (!cancelled) toast.error(e instanceof Error ? e.message : "Failed to load pack")
@@ -54,12 +56,13 @@ function PackBody() {
     return () => {
       cancelled = true
     }
-  }, [taxYear, quarter])
+  }, [business.id, taxYear, quarter])
 
-  const download = async (format: "csv" | "json") => {
+  const download = async (format: "csv" | "json" | "pdf") => {
+    if (!pack) return
     setDownloading(true)
     try {
-      await downloadPackFile({ taxYear, quarter: String(quarter), format })
+      await downloadPackExport(pack.id, format)
       toast.success("Working papers downloaded — this is not an HMRC submission.")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Download failed")
@@ -91,7 +94,7 @@ function PackBody() {
           <Label>Period</Label>
           <Select
             value={String(quarter)}
-            onValueChange={(v) => setQuarter((v === "year" ? "year" : Number(v)) as MtdQuarterId)}
+            onValueChange={(v) => setQuarter(Number(v) as 1 | 2 | 3 | 4)}
           >
             <SelectTrigger className="mt-1.5 min-w-[200px]">
               <SelectValue />
@@ -101,19 +104,18 @@ function PackBody() {
               <SelectItem value="2">Q2 (6 Jul – 5 Oct)</SelectItem>
               <SelectItem value="3">Q3 (6 Oct – 5 Jan)</SelectItem>
               <SelectItem value="4">Q4 (6 Jan – 5 Apr)</SelectItem>
-              <SelectItem value="year">Full tax year</SelectItem>
             </SelectContent>
           </Select>
         </div>
         {period && (
           <p className="self-end pb-2 text-xs text-muted-foreground">
-            {period.label}: {pack?.periodStart} → {pack?.periodEnd}
+            {period.label}: {pack?.periodStart ?? ""} → {pack?.periodEnd ?? ""}
           </p>
         )}
       </div>
 
       {loading || !pack ? (
-        <div className="p-10 text-center text-sm text-muted-foreground">Building pack…</div>
+        <div className="p-10 text-center text-sm text-muted-foreground">Building pack on Flask…</div>
       ) : (
         <PackSummary pack={pack} onDownload={(f) => void download(f)} downloading={downloading} />
       )}

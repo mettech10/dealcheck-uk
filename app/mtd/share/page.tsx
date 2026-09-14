@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Copy, Link2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -15,14 +14,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { MtdWorkspaceShell } from "@/components/mtd/workspace-shell"
-import { createShareLink, fetchShareLinks, revokeShareLink } from "@/lib/mtd/client"
-import type { MtdShareLink } from "@/lib/mtd/types"
+import { createShareLink, ensureQuarterPack, revokeShareLink } from "@/lib/mtd/client"
+import { dropShareLink, loadShareLinks, persistShareLink } from "@/lib/mtd/shareMemory"
+import { currentTaxYear, quarterFromDate, recentTaxYears } from "@/lib/mtd/taxYear"
+import { useMtdBusiness } from "@/lib/mtd/workspace-context"
+import type { StoredShareLink } from "@/lib/mtd/types"
 
 export default function MtdSharePage() {
   return (
     <MtdWorkspaceShell
       title="Accountant share"
-      description="Send a read-only link to your accountant. They can view and download working papers. The link does not grant HMRC filing access — Metalyzi never submits."
+      description="Create a Flask share link for a quarterly pack, then copy a Metalyzi URL. The public page proxies GET /v1/mtd/share/:token. Metalyzi never submits to HMRC."
     >
       <ShareBody />
     </MtdWorkspaceShell>
@@ -30,34 +32,38 @@ export default function MtdSharePage() {
 }
 
 function ShareBody() {
-  const [links, setLinks] = useState<MtdShareLink[]>([])
-  const [label, setLabel] = useState("Accountant pack")
+  const business = useMtdBusiness()
+  const current = quarterFromDate(new Date())
+  const [links, setLinks] = useState<StoredShareLink[]>([])
+  const [taxYear, setTaxYear] = useState(current.taxYear)
+  const [quarter, setQuarter] = useState<1 | 2 | 3 | 4>(current.quarter)
   const [expiresInDays, setExpiresInDays] = useState("30")
   const [busy, setBusy] = useState(false)
-
-  const load = async () => {
-    try {
-      const j = await fetchShareLinks()
-      setLinks(j.links)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load share links")
-    }
-  }
+  const years = recentTaxYears()
 
   useEffect(() => {
-    void load()
+    setLinks(loadShareLinks())
   }, [])
 
   const create = async () => {
     setBusy(true)
     try {
-      const j = await createShareLink({
-        label,
-        expiresInDays: Number(expiresInDays),
-      })
-      setLinks((prev) => [j.link, ...prev])
+      const pack = await ensureQuarterPack(business.id, taxYear, quarter)
+      const j = await createShareLink(pack.id, Number(expiresInDays))
+      const stored: StoredShareLink = {
+        id: j.id,
+        token: j.token,
+        url: j.url,
+        expiresAt: j.expiresAt,
+        packId: pack.id,
+        taxYear,
+        quarter,
+        createdAt: new Date().toISOString(),
+      }
+      persistShareLink(stored)
+      setLinks(loadShareLinks())
       try {
-        await navigator.clipboard.writeText(j.link.url)
+        await navigator.clipboard.writeText(j.url)
         toast.success("Link created and copied")
       } catch {
         toast.success("Link created")
@@ -82,8 +88,9 @@ function ShareBody() {
     if (!confirm("Revoke this accountant link? They will lose access immediately.")) return
     try {
       await revokeShareLink(id)
+      dropShareLink(id)
+      setLinks(loadShareLinks())
       toast.success("Link revoked")
-      await load()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not revoke")
     }
@@ -95,20 +102,44 @@ function ShareBody() {
         <CardHeader>
           <CardTitle className="text-base">Create a share link</CardTitle>
           <CardDescription>
-            Anyone with the link can see this tax year’s ledger and quarterly pack until it expires
-            or you revoke it.
+            Flask issues an expiring token for one immutable quarter pack. Anyone with the Metalyzi
+            link can view that snapshot until it expires or you revoke it.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="share-label">Label</Label>
-              <Input
-                id="share-label"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="e.g. Q2 pack for Jane at Smith & Co"
-              />
+              <Label>Tax year</Label>
+              <Select value={taxYear} onValueChange={setTaxYear}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => (
+                    <SelectItem key={y.taxYear} value={y.taxYear}>
+                      {y.taxYear}
+                      {y.taxYear === currentTaxYear().taxYear ? " (current)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Quarter</Label>
+              <Select
+                value={String(quarter)}
+                onValueChange={(v) => setQuarter(Number(v) as 1 | 2 | 3 | 4)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Q1</SelectItem>
+                  <SelectItem value="2">Q2</SelectItem>
+                  <SelectItem value="3">Q3</SelectItem>
+                  <SelectItem value="4">Q4</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label>Expires</Label>
@@ -133,16 +164,18 @@ function ShareBody() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Existing links</CardTitle>
+          <CardTitle className="text-base">Links created in this browser</CardTitle>
+          <CardDescription>
+            Flask does not list share tokens. Revoke still hits DELETE /v1/mtd/share-links/:id.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {links.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No share links yet.</p>
+            <p className="text-sm text-muted-foreground">No share links yet in this session.</p>
           ) : (
             <ul className="flex flex-col gap-2">
               {links.map((link) => {
-                const revoked = Boolean(link.revoked_at)
-                const expired = Boolean(link.expires_at && new Date(link.expires_at) < new Date())
+                const expired = Boolean(link.expiresAt && new Date(link.expiresAt) < new Date())
                 return (
                   <li
                     key={link.id}
@@ -150,11 +183,8 @@ function ShareBody() {
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-medium">
-                        {link.label || "Accountant pack"}
-                        {revoked && (
-                          <span className="ml-2 text-[10px] uppercase text-red-600">Revoked</span>
-                        )}
-                        {!revoked && expired && (
+                        {link.taxYear ? `${link.taxYear} Q${link.quarter}` : "Accountant pack"}
+                        {expired && (
                           <span className="ml-2 text-[10px] uppercase text-amber-600">Expired</span>
                         )}
                       </div>
@@ -162,12 +192,9 @@ function ShareBody() {
                         {link.url}
                       </div>
                       <div className="text-[11px] text-muted-foreground">
-                        Created {new Date(link.created_at).toLocaleDateString("en-GB")}
-                        {link.expires_at
-                          ? ` · expires ${new Date(link.expires_at).toLocaleDateString("en-GB")}`
-                          : ""}
-                        {link.last_accessed_at
-                          ? ` · last opened ${new Date(link.last_accessed_at).toLocaleDateString("en-GB")}`
+                        Created {new Date(link.createdAt).toLocaleDateString("en-GB")}
+                        {link.expiresAt
+                          ? ` · expires ${new Date(link.expiresAt).toLocaleDateString("en-GB")}`
                           : ""}
                       </div>
                     </div>
@@ -176,7 +203,6 @@ function ShareBody() {
                         size="sm"
                         variant="outline"
                         className="gap-1.5"
-                        disabled={revoked}
                         onClick={() => void copy(link.url)}
                       >
                         <Copy className="size-3.5" />
@@ -186,7 +212,6 @@ function ShareBody() {
                         size="sm"
                         variant="ghost"
                         className="gap-1.5 text-red-600"
-                        disabled={revoked}
                         onClick={() => void revoke(link.id)}
                       >
                         <Trash2 className="size-3.5" />

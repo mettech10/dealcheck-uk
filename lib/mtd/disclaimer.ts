@@ -1,6 +1,6 @@
-/** Canonical copy: this product must never be described as HMRC software. */
+/** Canonical copy — Flask MTD Pack v1 disclaimer (no HMRC submit). */
 export const MTD_DISCLAIMER =
-  "Metalyzi MTD Pack is digital record-keeping software for UK landlords. It produces working papers aligned to HMRC SA105 (UK property) categories for you and your accountant. It is not HMRC-recognised submission software and does not send quarterly updates or Self Assessment returns to HMRC."
+  "Metalyzi MTD Pack v1 is a record-keeping snapshot only. It does not submit quarterly updates or a tax return to HMRC."
 
 export const MTD_DISCLAIMER_SHORT =
   "Working papers only. Metalyzi does not file with HMRC."

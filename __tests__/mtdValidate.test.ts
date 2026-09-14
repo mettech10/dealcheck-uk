@@ -1,31 +1,42 @@
 import { describe, expect, test } from "vitest"
-import { validateLedgerInput, isUuid } from "@/lib/mtd/validate"
+import {
+  flaskMtdUrl,
+  flaskPropertyLinkBody,
+  isPlatformPropertyId,
+  requirePlatformPropertyId,
+} from "@/lib/mtd/config"
+import { poundsToPence, requireAmountPence } from "@/lib/mtd/money"
 
-describe("ledger input validation", () => {
-  const good = {
-    propertyId: "11111111-1111-4111-8111-111111111111",
-    entryDate: "2025-04-06",
-    amount: 12.5,
-    categoryId: "rent",
-    description: "April rent",
-  }
-
-  test("accepts a valid row keyed by propertyId", () => {
-    const result = validateLedgerInput(good)
-    expect(result.ok).toBe(true)
-    if (result.ok) {
-      expect(result.value.propertyId).toBe(good.propertyId)
-      expect(result.value.amount).toBe(12.5)
-    }
+describe("Flask MTD SoT helpers", () => {
+  test("flaskMtdUrl targets canonical /v1/mtd", () => {
+    expect(flaskMtdUrl("/health")).toMatch(/\/v1\/mtd\/health$/)
+    expect(flaskMtdUrl("businesses")).toMatch(/\/v1\/mtd\/businesses$/)
+    expect(flaskMtdUrl("/businesses/b1/ledger")).toMatch(/\/v1\/mtd\/businesses\/b1\/ledger$/)
   })
 
-  test("requires propertyId UUID (source of truth)", () => {
-    expect(validateLedgerInput({ ...good, propertyId: "14 Acacia" }).ok).toBe(false)
-    expect(isUuid(good.propertyId)).toBe(true)
+  test("P1: create/link requires a platform property UUID", () => {
+    const id = "11111111-1111-4111-8111-111111111111"
+    expect(isPlatformPropertyId(id)).toBe(true)
+    expect(requirePlatformPropertyId(id)).toBe(id)
+    expect(() => requirePlatformPropertyId("14 Acacia")).toThrow(/propertyId is required/)
+    expect(() => requirePlatformPropertyId("")).toThrow(/propertyId is required/)
   })
 
-  test("rejects unknown categories and non-positive amounts", () => {
-    expect(validateLedgerInput({ ...good, categoryId: "widgets" }).ok).toBe(false)
-    expect(validateLedgerInput({ ...good, amount: 0 }).ok).toBe(false)
+  test("property link payload passes propertyId through as property_id", () => {
+    const propertyId = "11111111-1111-4111-8111-111111111111"
+    expect(flaskPropertyLinkBody({ propertyId, label: "Manchester BTL" })).toEqual(
+      expect.objectContaining({
+        propertyId,
+        property_id: propertyId,
+        label: "Manchester BTL",
+      }),
+    )
+  })
+
+  test("amountPence is whole pence, not pounds", () => {
+    expect(poundsToPence(12.5)).toBe(1250)
+    expect(poundsToPence("1,250.00")).toBe(125000)
+    expect(requireAmountPence(1250)).toBe(1250)
+    expect(() => requireAmountPence(12.5)).toThrow(/whole pence/)
   })
 })
