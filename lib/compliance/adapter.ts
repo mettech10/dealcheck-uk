@@ -359,6 +359,7 @@ export function calendarFromAnalyzer(opts: {
     if (!isObligationCode(codeRaw)) continue
     const def = COMPLIANCE_CATALOGUE[codeRaw]
     const light = obligation ? mapBeStatus(obligation.status) : "amber"
+    const severity = light === "red" ? "red" : "amber"
     events.push({
       id: rem.id || `${propertyId}:${codeRaw}:${rem.scheduledFor}`,
       date: rem.scheduledFor!.slice(0, 10),
@@ -368,7 +369,7 @@ export function calendarFromAnalyzer(opts: {
       nickname: property.nickname,
       obligationCode: codeRaw,
       obligationName: def.name,
-      severity: light === "green" ? "amber" : light,
+      severity,
       label: rem.offsetCode
         ? `${def.shortName} (${String(rem.offsetCode).replace(/_/g, " ")})`
         : `${def.shortName} reminder`,
