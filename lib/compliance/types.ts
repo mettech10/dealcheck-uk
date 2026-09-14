@@ -66,10 +66,14 @@ export interface EvidenceRecord {
 
 export interface ObligationState {
   code: ObligationCode
+  /** Flask obligation instance id. Null until POST /obligations. */
+  instanceId?: string | null
   applicability: Applicability
   notes: string | null
+  issuedOn?: string | null
+  expiresOn?: string | null
   evidence: EvidenceRecord[]
-  /** Derived client-side (and echoed by BE when live). */
+  /** Derived client-side, or mapped from Flask `valid` | `due_soon` | `overdue`. */
   status: TrafficLight
   daysUntilExpiry: number | null
   latestExpiry: string | null
@@ -105,7 +109,7 @@ export interface ComplianceDashboard {
     missing: number
   }
   properties: PropertyComplianceSummary[]
-  source: "live" | "stub"
+  source: "live" | "stub" | "unavailable"
 }
 
 export interface CalendarEvent {
@@ -127,6 +131,11 @@ export interface ReminderSettings {
   reminderDays: number[]
   emailEnabled: boolean
   inAppEnabled: boolean
+  /**
+   * `analyzer` = Flask owns the T-90…overdue ladder (no PUT /settings).
+   * `device` = localhost/demo stub only.
+   */
+  persistedBy?: "analyzer" | "device"
 }
 
 export interface UploadEvidenceInput {
@@ -150,4 +159,5 @@ export const DEFAULT_SETTINGS: ReminderSettings = {
   reminderDays: [...DEFAULT_REMINDER_DAYS],
   emailEnabled: true,
   inAppEnabled: true,
+  persistedBy: "device",
 }

@@ -1,299 +1,195 @@
-# Compliance Cockpit API (`/v1/compliance/*`)
+# Compliance Cockpit API — aligned to Flask PR #93
 
-England-only MVP for landlords with **1–20 units**. The frontend talks to
-these routes through the Next.js BFF at `/api/compliance/*`, which proxies
-`${BACKEND_API_URL}/v1/compliance/*` with the signed-in user's Supabase
-JWT.
+Frontend talks to the Next.js BFF `/api/compliance/*`, which proxies
 
-Localhost-only UI review: `/tools/compliance?demo=1` seeds two sample
-portfolio rows (BTL + HMO) without a session. It is gated to
-`localhost` / `127.0.0.1` and stored in `sessionStorage`. It does not
-run on production hosts.
+```
+${ANALYZER_API_URL || ANALYZER_URL || BACKEND_API_URL}/v1/compliance/*
+Authorization: Bearer <supabase access token>
+```
 
-Properties are linked by **`propertyId`**, which is the existing
-`portfolio_properties.id` from `GET /api/portfolio`.
+**Flask is the source of truth** for signed-in users on production and
+preview hosts. The browser localStorage stub is **not** a second store
+on those hosts: if the analyzer is down the UI fail-closes with retry.
 
-Out of scope (do not add handlers for these in this MVP): MTD, deal
-screener, limited-company modules, full licensing applications.
+Stub is allowed only on `localhost` / `127.0.0.1`, `?demo=1` (loopback),
+or unit tests.
+
+Live contract = [metusa-deal-analyzer#93](https://github.com/mettech10/metusa-deal-analyzer/pull/93)
+(`docs/compliance-api.md` in that repo). This file records the mapping
+the cockpit actually uses — not an invented parallel API.
+
+Properties are linked **only** via `propertyId` (UUID,
+`portfolio_properties.id`) on `POST /v1/compliance/obligations`. There
+is no PUT `/properties/:id` and the frontend does not create one.
+
+Email deep links must open **`/tools/compliance`** (in-platform). Flask
+email.py currently builds `{site}/compliance` — that path 404s on this
+app. Note for BE: use `/tools/compliance`.
 
 ---
 
 ## Auth
 
-All routes require a logged-in user.
+Protected Flask routes: `Authorization: Bearer <supabase JWT>`.
+`GET /catalogue` and `GET /health` are public on Flask. The BFF still
+forwards the session Bearer when present.
 
-```
-Authorization: Bearer <supabase access token>
-```
-
-The BFF also forwards `X-User-Id` and `X-User-Email` as convenience
-headers. Enforce tenancy isolation on `propertyId` — a file may only
-belong to a property the caller owns in `portfolio_properties`.
-
-Jurisdiction is **England**. Reject or ignore other nations.
-
-Unit cap: warn (do not hard-fail) when the caller links more than 20
-properties. The UI shows a 1–20 units banner.
+Cron dispatch (`POST /reminders/dispatch`) is `X-Cron-Secret` on Flask
+and is **not** called from this frontend.
 
 ---
 
-## Catalogue
+## Routes the cockpit calls
 
-### `GET /v1/compliance/catalogue`
+| Method | Flask path | UI use |
+|--------|------------|--------|
+| GET | `/v1/compliance/catalogue` | Catalogue tab + reminder offsets. Body `{ items: [...] }` |
+| GET | `/v1/compliance/health` | Optional probe |
+| GET | `/v1/compliance/dashboard` | Traffic-light roll-up (`?propertyId=` optional) |
+| GET | `/v1/compliance/obligations` | List (`?propertyId=&code=&status=`) |
+| POST | `/v1/compliance/obligations` | Create instance `{ propertyId, code, issuedOn?, expiresOn?, notes? }` |
+| GET | `/v1/compliance/obligations/:id` | Single instance |
+| PATCH | `/v1/compliance/obligations/:id` | Update dates / notes |
+| DELETE | `/v1/compliance/obligations/:id` | Unused in MVP UI |
+| GET | `/v1/compliance/properties/:propertyId/obligations` | Property file |
+| POST | `/v1/compliance/obligations/:id/evidence` | Multipart `file` or JSON `{filename, contentType, dataBase64}` |
+| GET | `/v1/compliance/obligations/:id/evidence` | Evidence list |
+| GET | `/v1/compliance/reminders` | Pending stubs (`?channel=email\|in_app&status=pending`) |
 
-Returns the MVP obligation catalogue.
+There is **no** `GET/PUT /settings`, **no** `PUT /properties/:id`,
+**no** `POST /dashboard`, **no** `POST /calendar`, **no** DELETE evidence.
+
+---
+
+## Catalogue `{items}`
 
 ```json
 {
-  "jurisdiction": "england",
-  "catalogue": [
+  "success": true,
+  "items": [
     {
       "code": "GAS",
       "name": "Gas Safety Certificate (CP12)",
-      "shortName": "Gas safety",
-      "typicalValidity": "12 months",
-      "typicalValidityMonths": 12,
-      "expiryModel": "fixed_term",
-      "summary": "...",
-      "legalNote": "...",
-      "englandOnly": true
+      "jurisdiction": "UK",
+      "defaultValidityYears": 1,
+      "dueSoonDays": 90,
+      "description": "...",
+      "reminderOffsetsDays": [-90, -60, -30, -14, -7, 0, 1]
     }
-  ]
+  ],
+  "statuses": ["valid", "due_soon", "overdue"],
+  "channels": ["email", "in_app"],
+  "reminderOffsetsDays": [-90, -60, -30, -14, -7, 0, 1],
+  "overdueWeeklyDays": 7
 }
 ```
 
-MVP codes (exactly these seven):
+MVP codes: `GAS`, `EICR`, `EPC`, `DEP`, `HTR`, `LIC_HMO`, `LIC_SEL`.
 
-| Code     | Meaning                                      | Typical validity |
-|----------|----------------------------------------------|------------------|
-| `GAS`    | Gas Safety Certificate (CP12)                | 12 months        |
-| `EICR`   | Electrical Installation Condition Report     | 5 years          |
-| `EPC`    | Energy Performance Certificate               | 10 years         |
-| `DEP`    | Tenancy deposit protection                   | tenancy          |
-| `HTR`    | How to Rent guide                            | at grant/renewal |
-| `LIC_HMO`| HMO licence (tracker row only)               | up to 5 years    |
-| `LIC_SEL`| Selective licence (tracker row only)         | up to 5 years    |
+The adapter maps each item onto the cockpit catalogue shape (shortName,
+legal note, expiry model stay FE copy). Traffic lights map Flask status:
+
+| Flask | Light |
+|-------|-------|
+| `valid` | green |
+| `due_soon` | amber |
+| `overdue` | red |
+
+Missing instance + default N/A (e.g. LIC_HMO on BTL) → grey `na`.
+Missing required instance → red.
 
 ---
 
-## Settings
+## Dashboard
 
-### `GET /v1/compliance/settings`
-### `PUT /v1/compliance/settings`
-
-Reminder preferences for the current user.
+`GET /v1/compliance/dashboard`
 
 ```json
 {
-  "jurisdiction": "england",
-  "reminderDays": [90, 60, 30, 7],
-  "emailEnabled": true,
-  "inAppEnabled": true
+  "success": true,
+  "asOf": "2026-09-14",
+  "counts": { "valid": 1, "due_soon": 0, "overdue": 2 },
+  "obligations": [ { "id": "...", "propertyId": "...", "code": "GAS", "status": "valid", "issuedOn": "...", "expiresOn": "...", "evidence": [], "reminders": [] } ],
+  "upcomingReminders": []
 }
 ```
 
-`jurisdiction` is always `"england"` in this MVP. `reminderDays` is the
-set of offsets (days before expiry) used for calendar reminder events
-and the amber “due soon” window (amber starts at `max(reminderDays)`).
+The UI still rolls up **per portfolio property** (traffic-light cards)
+by grouping `obligations[]` on `propertyId` and overlaying the seven
+catalogue rows. Flask `counts` are per-obligation; the tiles use the
+composed property roll-up.
 
 ---
 
-## Property files
+## Linking a property
 
-A compliance file is one property. Create / refresh metadata by upserting
-the portfolio row:
+Create an obligation with the portfolio UUID — that **is** the link:
 
-### `PUT /v1/compliance/properties/:propertyId`
-
-```json
-{
-  "propertyId": "uuid",
-  "address": "14 Acacia Avenue",
-  "nickname": "Manchester BTL",
-  "postcode": "M14 5AA",
-  "strategy": "BTL",
-  "bedrooms": 3
-}
+```http
+POST /v1/compliance/obligations
+{ "propertyId": "<portfolio_properties.id UUID>", "code": "GAS", "issuedOn": "2026-09-01" }
 ```
 
-Creates the seven obligation rows if missing. Suggested defaults:
+`propertyId` must be a UUID (Flask 400 otherwise). Demo ids such as
+`demo-btl-acacia` stay on the localhost stub.
 
-- `GAS`, `EICR`, `EPC`, `DEP`, `HTR` → `required`
-- `LIC_HMO` → `required` when `strategy` is `HMO`; `unknown` if bedrooms ≥ 5; else `not_applicable`
-- `LIC_SEL` → `unknown` (landlord must confirm the designation)
-
-### `GET /v1/compliance/properties/:propertyId`
-
-Full property compliance file:
-
-```json
-{
-  "property": { "propertyId": "...", "address": "...", "nickname": null, "postcode": "...", "strategy": "BTL", "bedrooms": 3 },
-  "overallStatus": "red",
-  "updatedAt": "2026-09-14T12:00:00.000Z",
-  "obligations": [
-    {
-      "code": "GAS",
-      "applicability": "required",
-      "notes": null,
-      "status": "red",
-      "daysUntilExpiry": null,
-      "latestExpiry": null,
-      "evidence": []
-    }
-  ]
-}
-```
-
-`status` traffic lights:
-
-| Light   | Meaning |
-|---------|---------|
-| `green` | Required, evidence present, expiry (if any) beyond the warn window |
-| `amber` | Expires within the warn window, **or** applicability is `unknown` |
-| `red`   | Required and missing, **or** latest evidence expired |
-| `na`    | Marked `not_applicable` |
-
-### `POST /v1/compliance/dashboard`
-
-Body: `{ "properties": [ PropertyRef, ... ] }`
-
-Returns the portfolio roll-up used by the dashboard traffic-light view.
-The backend should upsert any missing files for the given `propertyId`s
-and ignore ids the user does not own.
-
-```json
-{
-  "jurisdiction": "england",
-  "unitCap": 20,
-  "overCap": false,
-  "source": "live",
-  "summary": {
-    "properties": 3,
-    "green": 1,
-    "amber": 1,
-    "red": 1,
-    "overdue": 2,
-    "dueSoon": 1,
-    "missing": 4
-  },
-  "properties": [
-    {
-      "property": { "propertyId": "...", "address": "..." },
-      "overallStatus": "amber",
-      "lights": {
-        "GAS": "green",
-        "EICR": "amber",
-        "EPC": "green",
-        "DEP": "green",
-        "HTR": "green",
-        "LIC_HMO": "na",
-        "LIC_SEL": "amber"
-      },
-      "overdueCount": 0,
-      "dueSoonCount": 1,
-      "missingCount": 0
-    }
-  ]
-}
-```
+Opening `/tools/compliance/:propertyId` is
+`GET /properties/:propertyId/obligations` only. Empty file = no
+instances yet; we do **not** pre-insert seven rows.
 
 ---
 
-## Obligation rows
+## Evidence
 
-### `PATCH /v1/compliance/properties/:propertyId/obligations/:code`
-
-```json
-{ "applicability": "not_applicable", "notes": "No gas supply" }
-```
-
-`applicability`: `required` | `not_applicable` | `unknown`.
+Dates live on the **obligation** (`issuedOn` / `expiresOn`). A scan is
+`POST /obligations/:id/evidence`. Dates-only logging PATCHes the
+instance and does not require a blob.
 
 ---
 
-## Evidence / uploads
+## Reminders (gap vs a settings document)
 
-### `POST /v1/compliance/properties/:propertyId/obligations/:code/evidence`
+Flask seeds `channel=email` stubs (T-90, T-60, T-30, T-14, T-7, T-0,
+overdue +1 day, then weekly while overdue). `GET /reminders?channel=in_app`
+is ready for the FE; dispatch does not email those rows.
 
-`multipart/form-data`:
-
-| Field       | Required | Notes |
-|-------------|----------|-------|
-| `file`      | no       | Certificate / scheme confirmation. Logging dates without a scan is allowed. |
-| `issuedOn`  | no       | `YYYY-MM-DD` |
-| `expiresOn` | no       | `YYYY-MM-DD` |
-| `notes`     | no       | Free text |
-| `schemeRef` | no       | Deposit scheme reference (`DEP`) |
-
-Response: the updated `PropertyComplianceFile`.
-
-Stub behaviour: stores metadata only (filename, size, dates). Live BE
-should persist the blob to private object storage and return a
-time-limited download URL on `GET` of the file (not required for MVP UI).
-
-### `DELETE /v1/compliance/properties/:propertyId/obligations/:code/evidence/:evidenceId`
-
-Removes one evidence row. Response: updated file.
+There is **no** user reminder-preference document. The Settings tab on
+the live store is **read-only**: it shows the analyzer ladder and does
+not PUT. Localhost/demo stub may persist device prefs; production never
+does.
 
 ---
 
-## Calendar
+## Gaps vs an invented FE-only API
 
-### `POST /v1/compliance/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD`
+These are **not** required for the green path (catalogue → dashboard →
+property file → POST obligation → PATCH dates → POST evidence):
 
-Body: `{ "properties": [ PropertyRef, ... ] }`
-
-```json
-{
-  "events": [
-    {
-      "id": "prop:GAS:expiry:ev_1",
-      "date": "2026-11-01",
-      "kind": "expiry",
-      "propertyId": "...",
-      "address": "...",
-      "nickname": null,
-      "obligationCode": "GAS",
-      "obligationName": "Gas Safety Certificate (CP12)",
-      "severity": "amber",
-      "label": "Gas safety expires"
-    },
-    {
-      "id": "prop:GAS:reminder:30:ev_1",
-      "date": "2026-10-02",
-      "kind": "reminder",
-      "severity": "amber",
-      "label": "Gas safety reminder (30 days)"
-    }
-  ]
-}
-```
-
-Emit one `expiry` event per current evidence `expiresOn`, plus one
-`reminder` event per settings offset. Do not emit events for
-`not_applicable` rows.
+| Missing on Flask | Frontend behaviour |
+|------------------|--------------------|
+| GET/PUT `/settings` | Settings tab is read-only on live. Offsets come from catalogue `reminderOffsetsDays`. Device prefs exist only on localhost/demo. |
+| PUT `/properties/:id` | No second property store. Link = `POST /obligations` with `propertyId`. Opening a file is GET-only. |
+| Applicability field | FE composes N/A (e.g. LIC_HMO on BTL) locally. Live UI does not persist required/unknown/N/A. |
+| DELETE evidence | Hidden on the live property file. |
+| Email deep link `/tools/compliance` | Note for BE: Flask `email.py` currently builds `{site}/compliance`. |
 
 ---
 
-## Errors
+## Fail-closed policy
 
-| Status | When |
-|--------|------|
-| 401    | Missing / invalid session |
-| 403    | `propertyId` not owned by caller |
-| 404    | Unknown property file or evidence id |
-| 413    | Upload too large (suggest 10 MB) |
-| 422    | Unknown obligation code, bad dates |
-| 501    | Surface not implemented yet (frontend will stub) |
+| Host | Analyzer down |
+|------|----------------|
+| `localhost` / `127.0.0.1` / `?demo=1` | Stub OK |
+| Unit tests (`allowStub`) | Stub OK |
+| Production / preview | Error UI + retry. **Never** `createStubClient` / localStorage |
 
-Error body: `{ "error": "machine_code", "message": "human" }`.
+BFF errors are HTTP 502 `{ error: "compliance_upstream_unavailable" }`
+without enabling a browser write.
 
 ---
 
-## Disclaimer (must remain visible in UI)
+## Disclaimer
 
-This cockpit is an organisational checklist for **England** only. It is
-**not legal advice** and does not confirm that a property is lawful to
-let. Licensing rows (`LIC_HMO`, `LIC_SEL`) do not submit applications.
-MTD, screener, and limited-company modules are not part of this feature.
+England organisational checklist, **not legal advice**. LIC_* are
+certificate trackers only. Out of scope: MTD, screener, Ltd Co, full
+licensing applications.

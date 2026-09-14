@@ -1,13 +1,13 @@
 /**
  * BFF proxy for the Compliance Cockpit.
  *
- * Frontend calls `/api/compliance/<path>`; this route forwards to
- * `${BACKEND_API_URL}/v1/compliance/<path>` with the caller's Supabase
- * JWT. When the backend surface is missing (network error, 404 on the
- * catalogue probe, or 501), we return 501 + `X-Compliance-Source:
- * unavailable` so `lib/compliance/client.ts` can fall back to the stub.
+ * Forwards `/api/compliance/<path>` to the Flask analyzer
+ * `${ANALYZER_API_URL || ANALYZER_URL || BACKEND_API_URL}/v1/compliance/<path>`
+ * with the caller's Supabase JWT.
  *
- * Auth is always required — even the stub path is login-gated in the UI.
+ * Flask is the only store for signed-in production/preview users.
+ * This route never instructs the browser to use the localStorage stub
+ * (`X-Compliance-Source: unavailable` with no stub write).
  */
 
 import { NextResponse } from "next/server"
@@ -15,7 +15,14 @@ import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
 
-const UPSTREAM_UNAVAILABLE = 501
+function analyzerBase(): string {
+  return (
+    process.env.ANALYZER_API_URL ||
+    process.env.ANALYZER_URL ||
+    process.env.BACKEND_API_URL ||
+    ""
+  ).replace(/\/$/, "")
+}
 
 function sourceHeaders(source: "live" | "unavailable"): HeadersInit {
   return {
@@ -24,10 +31,10 @@ function sourceHeaders(source: "live" | "unavailable"): HeadersInit {
   }
 }
 
-function unavailable(message = "Compliance API is not available on the backend yet") {
+function unavailable(message: string, status = 502) {
   return NextResponse.json(
-    { error: "compliance_upstream_unavailable", message, stub: true },
-    { status: UPSTREAM_UNAVAILABLE, headers: sourceHeaders("unavailable") },
+    { error: "compliance_upstream_unavailable", message },
+    { status, headers: sourceHeaders("unavailable") },
   )
 }
 
@@ -46,23 +53,27 @@ async function sessionContext() {
 
 async function proxy(request: Request, path: string[]): Promise<NextResponse> {
   const auth = await sessionContext()
-  if (!auth) {
+  const upstreamPath = path.join("/")
+  const isPublic = upstreamPath === "catalogue" || upstreamPath === "health"
+
+  if (!auth && !isPublic) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const backend = (process.env.BACKEND_API_URL ?? "").replace(/\/$/, "")
-  if (!backend) return unavailable("BACKEND_API_URL is not configured")
+  const backend = analyzerBase()
+  if (!backend) {
+    return unavailable("ANALYZER_API_URL / BACKEND_API_URL is not configured")
+  }
 
   const url = new URL(request.url)
-  const upstreamPath = path.join("/")
   const target = `${backend}/v1/compliance/${upstreamPath}${url.search}`
 
   const headers = new Headers()
-  if (auth.accessToken) {
+  if (auth?.accessToken) {
     headers.set("Authorization", `Bearer ${auth.accessToken}`)
   }
-  headers.set("X-User-Id", auth.user.id)
-  if (auth.user.email) headers.set("X-User-Email", auth.user.email)
+  if (auth?.user.id) headers.set("X-User-Id", auth.user.id)
+  if (auth?.user.email) headers.set("X-User-Email", auth.user.email)
   headers.set("Accept", "application/json")
 
   const contentType = request.headers.get("content-type")
@@ -81,13 +92,6 @@ async function proxy(request: Request, path: string[]): Promise<NextResponse> {
       cache: "no-store",
     })
 
-    // Catalogue 404 = surface not merged yet → stub. Other 404s (missing
-    // property file) are real and must pass through.
-    const isCatalogue = upstreamPath === "catalogue" || upstreamPath === ""
-    if (isCatalogue && (upstream.status === 404 || upstream.status === 501)) {
-      return unavailable()
-    }
-
     const buf = await upstream.arrayBuffer()
     const responseHeaders = new Headers(sourceHeaders("live"))
     const upstreamType = upstream.headers.get("content-type")
@@ -97,8 +101,8 @@ async function proxy(request: Request, path: string[]): Promise<NextResponse> {
       headers: responseHeaders,
     })
   } catch (err) {
-    console.warn("[compliance] upstream failed:", err)
-    return unavailable()
+    console.warn("[compliance] analyzer failed:", err)
+    return unavailable("Flask /v1/compliance is unreachable")
   }
 }
 

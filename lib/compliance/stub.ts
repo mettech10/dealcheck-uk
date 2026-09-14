@@ -33,6 +33,7 @@ import {
   type ReminderSettings,
   type UploadEvidenceInput,
 } from "./types"
+import { assertComplianceStubAllowed } from "./host"
 
 const STORAGE_PREFIX = "metalyzi.compliance.v1."
 
@@ -64,6 +65,7 @@ export function memoryStorage(initial: StubSnapshot = emptySnapshot()): Complian
 export function localStorageStore(userId: string): ComplianceStorage {
   const key = `${STORAGE_PREFIX}${userId}`
   if (typeof window === "undefined") return memoryStorage()
+  assertComplianceStubAllowed(window.location.hostname)
   return {
     load() {
       try {
@@ -188,7 +190,9 @@ export function createStubClient(opts: {
   userId?: string
   storage?: ComplianceStorage
   now?: () => Date
+  hostname?: string
 } = {}): ComplianceApi {
+  assertComplianceStubAllowed(opts.hostname)
   const storage = opts.storage ?? localStorageStore(opts.userId ?? "local")
   const nowFn = opts.now ?? (() => new Date())
 
@@ -219,6 +223,7 @@ export function createStubClient(opts: {
           reminderDays: reminderDays.length ? reminderDays : [...DEFAULT_SETTINGS.reminderDays],
           emailEnabled: patch.emailEnabled ?? state.settings.emailEnabled,
           inAppEnabled: patch.inAppEnabled ?? state.settings.inAppEnabled,
+          persistedBy: "device",
         }
         for (const id of Object.keys(state.files)) {
           state.files[id] = rehydrateFile(state.files[id], nowFn(), warnWindowDays(state.settings))

@@ -36,8 +36,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { COMPLIANCE_CATALOGUE } from "@/lib/compliance/catalogue"
-import { getComplianceClient, type ComplianceSource } from "@/lib/compliance/client"
-import type { ComplianceApi } from "@/lib/compliance/stub"
+import { ComplianceUnavailable } from "@/components/compliance/unavailable"
+import { useComplianceStore } from "@/hooks/use-compliance-client"
 import { propertyLabel } from "@/lib/compliance/status"
 import type {
   Applicability,
@@ -56,10 +56,15 @@ export default function PropertyCompliancePage() {
   const propertyId = params.propertyId
   const { authChecked, isLoggedIn, userId, properties, loading } =
     useComplianceSession()
+  const {
+    api,
+    source,
+    error: clientError,
+    ready: clientReady,
+    retry: retryClient,
+  } = useComplianceStore(userId, isLoggedIn)
   const portfolioRow = properties.find((p) => p.id === propertyId)
 
-  const [api, setApi] = useState<ComplianceApi | null>(null)
-  const [source, setSource] = useState<ComplianceSource>("stub")
   const [file, setFile] = useState<PropertyComplianceFile | null>(null)
   const [busy, setBusy] = useState(false)
   const [uploadCode, setUploadCode] = useState<ObligationCode | null>(null)
@@ -68,20 +73,6 @@ export default function PropertyCompliancePage() {
     () => (portfolioRow ? toPropertyRef(portfolioRow) : null),
     [portfolioRow],
   )
-
-  useEffect(() => {
-    if (!isLoggedIn) return
-    let cancelled = false
-    ;(async () => {
-      const handle = await getComplianceClient({ userId: userId ?? "local" })
-      if (cancelled) return
-      setApi(handle.api)
-      setSource(handle.source)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [isLoggedIn, userId])
 
   const loadFile = useCallback(async () => {
     if (!api || !ref) return
@@ -119,6 +110,21 @@ export default function PropertyCompliancePage() {
           </Button>
         </div>
       </div>
+    )
+  }
+
+  if (!clientReady) {
+    return <div className="p-12 text-center text-muted-foreground">Loading…</div>
+  }
+
+  if (source === "unavailable" || !api) {
+    return (
+      <ComplianceUnavailable
+        message={clientError}
+        onRetry={() => {
+          void retryClient()
+        }}
+      />
     )
   }
 
@@ -173,7 +179,9 @@ export default function PropertyCompliancePage() {
               </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 propertyId: {propertyId}
-                {source === "stub" ? " · on-device stub" : ""}
+                {source === "stub"
+                  ? " · localhost/demo store"
+                  : " · analyzer /v1/compliance"}
               </p>
             </div>
           </div>
@@ -189,8 +197,15 @@ export default function PropertyCompliancePage() {
                   key={row.code}
                   row={row}
                   disabled={!api}
+                  liveStore={source === "live"}
                   onApplicability={async (applicability) => {
                     if (!api) return
+                    if (source === "live" && applicability !== "required") {
+                      toast.error(
+                        "Applicability is not stored on Flask. Not-applicable is not persisted.",
+                      )
+                      return
+                    }
                     try {
                       const next = await api.patchObligation(propertyId, row.code, {
                         applicability,
@@ -204,6 +219,12 @@ export default function PropertyCompliancePage() {
                   onUpload={() => setUploadCode(row.code)}
                   onDeleteEvidence={async (evidenceId) => {
                     if (!api) return
+                    if (source === "live") {
+                      toast.error(
+                        "The analyzer has no DELETE evidence route. Remove is unavailable on the live store.",
+                      )
+                      return
+                    }
                     if (!confirm("Remove this evidence from the file?")) return
                     try {
                       const next = await api.deleteEvidence(
@@ -246,12 +267,14 @@ export default function PropertyCompliancePage() {
 function ObligationRow({
   row,
   disabled,
+  liveStore,
   onApplicability,
   onUpload,
   onDeleteEvidence,
 }: {
   row: ObligationState
   disabled: boolean
+  liveStore: boolean
   onApplicability: (value: Applicability) => Promise<void>
   onUpload: () => void
   onDeleteEvidence: (id: string) => Promise<void>
@@ -286,7 +309,7 @@ function ObligationRow({
             <Select
               value={row.applicability}
               onValueChange={(v) => onApplicability(v as Applicability)}
-              disabled={disabled}
+              disabled={disabled || liveStore}
             >
               <SelectTrigger size="sm" className="w-[200px]">
                 <SelectValue />
@@ -297,6 +320,11 @@ function ObligationRow({
                 <SelectItem value="not_applicable">Not applicable</SelectItem>
               </SelectContent>
             </Select>
+            {liveStore && (
+              <span className="text-[11px] text-muted-foreground">
+                Flask has no applicability field; N/A is not persisted.
+              </span>
+            )}
           </div>
 
           <div className="text-right text-xs text-muted-foreground">
@@ -347,6 +375,7 @@ function ObligationRow({
                     {ev.issuedOn ? ` · issued ${ev.issuedOn}` : ""}
                   </span>
                 </span>
+                {!liveStore && (
                 <button
                   type="button"
                   className="shrink-0 text-muted-foreground hover:text-destructive"
@@ -355,6 +384,7 @@ function ObligationRow({
                 >
                   <Trash2 className="size-3.5" />
                 </button>
+                )}
               </li>
             ))}
           </ul>

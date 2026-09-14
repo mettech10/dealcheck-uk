@@ -40,5 +40,15 @@ export {
   propertyLabel,
 } from "./status"
 
-export { getComplianceClient, resetComplianceClientCache } from "./client"
+export { getComplianceClient, resetComplianceClientCache, stubAllowed } from "./client"
 export type { ComplianceApi, ComplianceClientHandle, ComplianceSource } from "./client"
+
+export {
+  mapCatalogueResponse,
+  mapBeStatus,
+  composePropertyFile,
+  composeDashboard,
+  COMPLIANCE_COCKPIT_PATH,
+} from "./adapter"
+
+export { isComplianceStubHost, isLocalComplianceDemo, assertComplianceStubAllowed } from "./host"

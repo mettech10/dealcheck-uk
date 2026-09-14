@@ -7,6 +7,9 @@
 
 import { useCallback, useEffect, useState } from "react"
 import type { PropertyRef } from "@/lib/compliance/types"
+import { isLocalComplianceDemo } from "@/lib/compliance/host"
+
+export { isLocalComplianceDemo }
 
 export interface PortfolioPropertyRow {
   id: string
@@ -49,24 +52,6 @@ const LOCAL_DEMO_PROPERTIES: PortfolioPropertyRow[] = [
     bedrooms: 6,
   },
 ]
-
-const DEMO_STORAGE_KEY = "metalyzi.compliance.localDemo"
-
-export function isLocalComplianceDemo(): boolean {
-  if (typeof window === "undefined") return false
-  const host = window.location.hostname
-  if (host !== "localhost" && host !== "127.0.0.1") return false
-  const flag = new URLSearchParams(window.location.search).get("demo")
-  if (flag === "1") {
-    window.sessionStorage.setItem(DEMO_STORAGE_KEY, "1")
-    return true
-  }
-  if (flag === "0") {
-    window.sessionStorage.removeItem(DEMO_STORAGE_KEY)
-    return false
-  }
-  return window.sessionStorage.getItem(DEMO_STORAGE_KEY) === "1"
-}
 
 export function useComplianceSession() {
   const [authChecked, setAuthChecked] = useState(false)

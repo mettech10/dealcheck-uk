@@ -9,8 +9,8 @@
  *   Catalogue  — GAS, EICR, EPC, DEP, HTR, LIC_HMO, LIC_SEL
  *   Settings   — reminder offsets + channels
  *
- * Wired to /v1/compliance/* via the BFF; falls back to a local stub
- * when the backend surface is not merged yet.
+ * Wired to Flask /v1/compliance/* via the BFF. Production never writes a
+ * localStorage stub; localhost/demo may.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
@@ -46,8 +46,9 @@ import {
   OUT_OF_SCOPE_MODULES,
   OBLIGATION_CODES,
 } from "@/lib/compliance/catalogue"
-import { getComplianceClient, type ComplianceSource } from "@/lib/compliance/client"
-import type { ComplianceApi } from "@/lib/compliance/stub"
+import type { ComplianceSource } from "@/lib/compliance/client"
+import { ComplianceUnavailable } from "@/components/compliance/unavailable"
+import { useComplianceStore } from "@/hooks/use-compliance-client"
 import {
   addDays,
   parseIsoDate,
@@ -74,9 +75,14 @@ const REMINDER_CHOICES = [...DEFAULT_REMINDER_DAYS, 14] as const
 export default function ComplianceCockpitPage() {
   const { authChecked, isLoggedIn, userId, properties, loading } =
     useComplianceSession()
+  const {
+    api,
+    source,
+    error: clientError,
+    ready: clientReady,
+    retry: retryClient,
+  } = useComplianceStore(userId, isLoggedIn)
   const [tab, setTab] = useState("dashboard")
-  const [source, setSource] = useState<ComplianceSource>("stub")
-  const [api, setApi] = useState<ComplianceApi | null>(null)
   const [dashboard, setDashboard] = useState<ComplianceDashboard | null>(null)
   const [settings, setSettings] = useState<ReminderSettings>(DEFAULT_SETTINGS)
   const [events, setEvents] = useState<CalendarEvent[]>([])
@@ -84,20 +90,6 @@ export default function ComplianceCockpitPage() {
   const [busy, setBusy] = useState(false)
 
   const refs = useMemo(() => properties.map(toPropertyRef), [properties])
-
-  useEffect(() => {
-    if (!isLoggedIn) return
-    let cancelled = false
-    ;(async () => {
-      const handle = await getComplianceClient({ userId: userId ?? "local" })
-      if (cancelled) return
-      setApi(handle.api)
-      setSource(handle.source)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [isLoggedIn, userId])
 
   const refresh = useCallback(async () => {
     if (!api) return
@@ -107,7 +99,7 @@ export default function ComplianceCockpitPage() {
       const to = toIsoDate(addDays(new Date(), 366))
       const [dash, prefs, cal] = await Promise.all([
         api.getDashboard(refs),
-        api.getSettings(),
+        api.getSettings().catch(() => DEFAULT_SETTINGS),
         api.getCalendar(refs, from, to),
       ])
       setDashboard(dash)
@@ -155,6 +147,21 @@ export default function ComplianceCockpitPage() {
     )
   }
 
+  if (!clientReady) {
+    return <div className="p-12 text-center text-muted-foreground">Loading…</div>
+  }
+
+  if (source === "unavailable" || !api) {
+    return (
+      <ComplianceUnavailable
+        message={clientError}
+        onRetry={() => {
+          void retryClient()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
       <ToolsTopBar />
@@ -169,8 +176,11 @@ export default function ComplianceCockpitPage() {
             <Badge variant="secondary">1–20 units</Badge>
             {source === "stub" && (
               <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400">
-                On-device stub
+                Local demo store
               </Badge>
+            )}
+            {source === "live" && (
+              <Badge variant="outline">Analyzer</Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground">
@@ -191,9 +201,10 @@ export default function ComplianceCockpitPage() {
       {source === "stub" && (
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <Info className="mt-0.5 size-3.5 shrink-0" />
-          Backend <code className="text-foreground">/v1/compliance/*</code> is
-          not live yet, so records stay in this browser (keyed to your account).
-          Expected contract: <code className="text-foreground">lib/compliance/API.md</code>.
+          Localhost/demo only. Production signed-in traffic uses Flask
+          <code className="ml-1 text-foreground">/v1/compliance/*</code> and
+          never writes this browser store. Contract:{" "}
+          <code className="text-foreground">lib/compliance/API.md</code>.
         </p>
       )}
 
@@ -261,12 +272,13 @@ export default function ComplianceCockpitPage() {
           <SettingsTab
             settings={settings}
             source={source}
-            disabled={!api}
+            disabled={!api || source === "live"}
+            analyzerOwned={source === "live" || settings.persistedBy === "analyzer"}
             onSave={async (next) => {
               if (!api) return
               const saved = await api.putSettings(next)
               setSettings(saved)
-              toast.success("Reminder preferences saved")
+              toast.success("Reminder preferences saved on this device")
               await refresh()
             }}
           />
@@ -573,11 +585,13 @@ function SettingsTab({
   settings,
   source,
   disabled,
+  analyzerOwned,
   onSave,
 }: {
   settings: ReminderSettings
   source: ComplianceSource
   disabled: boolean
+  analyzerOwned: boolean
   onSave: (next: ReminderSettings) => Promise<void>
 }) {
   const [draft, setDraft] = useState(settings)
@@ -599,8 +613,9 @@ function SettingsTab({
       <CardHeader>
         <CardTitle className="text-base">Reminder preferences</CardTitle>
         <CardDescription>
-          Used for the calendar and the amber “due soon” window (the widest
-          offset). Email delivery requires the live backend.
+          {analyzerOwned
+            ? "Email reminders are sent by the analyzer (T-90, T-60, T-30, T-14, T-7, due, overdue, then weekly). There is no PUT /settings — this view is read-only."
+            : "Device-only demo prefs. Production uses the analyzer reminder ladder."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
@@ -624,7 +639,7 @@ function SettingsTab({
                   <Checkbox
                     checked={checked}
                     onCheckedChange={(v) => toggleDay(day, v === true)}
-                    disabled={disabled}
+                    disabled={disabled || analyzerOwned}
                   />
                   {day} days
                 </label>
@@ -638,32 +653,35 @@ function SettingsTab({
             <div>
               <div className="text-sm font-medium">In-app reminders</div>
               <div className="text-xs text-muted-foreground">
-                Show due-soon and overdue on the dashboard and calendar.
+                {source === "live"
+                  ? "GET /v1/compliance/reminders?channel=in_app is available; dispatch does not email those rows."
+                  : "Show due-soon and overdue on the dashboard and calendar."}
               </div>
             </div>
             <Switch
               checked={draft.inAppEnabled}
               onCheckedChange={(on) => setDraft({ ...draft, inAppEnabled: on })}
-              disabled={disabled}
+              disabled={disabled || analyzerOwned}
             />
           </div>
           <div className="flex items-center justify-between gap-3 rounded-md border border-border/40 px-3 py-2">
             <div>
               <div className="text-sm font-medium">Email reminders</div>
               <div className="text-xs text-muted-foreground">
-                {source === "stub"
-                  ? "Stored now; sending starts when /v1/compliance is live."
-                  : "Send to the address on your Metalyzi account."}
+                {source === "live"
+                  ? "Brevo mail is sent by Flask. Deep link must be /tools/compliance."
+                  : "Local demo only — not synced to the analyzer."}
               </div>
             </div>
             <Switch
               checked={draft.emailEnabled}
               onCheckedChange={(on) => setDraft({ ...draft, emailEnabled: on })}
-              disabled={disabled}
+              disabled={disabled || analyzerOwned}
             />
           </div>
         </div>
 
+        {!analyzerOwned && (
         <div>
           <Button
             disabled={disabled || saving || draft.reminderDays.length === 0}
@@ -678,9 +696,10 @@ function SettingsTab({
               }
             }}
           >
-            {saving ? "Saving…" : "Save preferences"}
+            {saving ? "Saving…" : "Save device prefs"}
           </Button>
         </div>
+        )}
       </CardContent>
     </Card>
   )
