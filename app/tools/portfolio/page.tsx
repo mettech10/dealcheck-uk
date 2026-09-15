@@ -191,10 +191,15 @@ export default function PortfolioPage() {
             Your complete property investment portfolio in one place
           </p>
         </div>
-        <Button onClick={() => { setEditing(null); setShowModal(true) }} className="gap-2">
-          <Plus className="size-4" />
-          Add Property
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" className="gap-2">
+            <Link href="/mtd">MTD Pack</Link>
+          </Button>
+          <Button onClick={() => { setEditing(null); setShowModal(true) }} className="gap-2">
+            <Plus className="size-4" />
+            Add Property
+          </Button>
+        </div>
       </div>
 
       {/* ── Upgrade prompt (when cap hit) ──────────────────── */}
@@ -366,6 +371,9 @@ function PropertyCard({
               <ShieldCheck className="size-3.5" />
               Compliance
             </Link>
+          </Button>
+          <Button size="sm" variant="ghost" asChild>
+            <Link href={`/mtd/ledger?propertyId=${p.id}`}>MTD ledger</Link>
           </Button>
           <Button size="sm" variant="ghost" asChild>
             <Link href={`/analyse?postcode=${encodeURIComponent(p.postcode || "")}`}>Analyse Again</Link>
