@@ -12,6 +12,7 @@
  */
 
 import { calculateSDLT } from "../lib/calculations.ts"
+import { comparePersonalVsLtd, DEFAULT_LTD_CO_INPUT } from "../lib/ltdCoCompare.ts"
 
 const banner = (s: string) =>
   console.log("\n" + "═".repeat(72) + "\n  " + s + "\n" + "═".repeat(72))
@@ -75,3 +76,37 @@ Cap reached (Free → 4th property):
        "Free limit reached — Pro unlocks unlimited portfolio tracking"
        with "Upgrade to Pro" CTA → /account
 `)
+
+banner("TEST 4 — Personal vs Ltd Co (test-only engine; live UI uses Flask BE)")
+
+const ltd = comparePersonalVsLtd({
+  ...DEFAULT_LTD_CO_INPUT,
+  deal: {
+    annualGrossRent: 24_000,
+    annualOperatingCosts: 4_000,
+    annualFinanceCosts: 8_000,
+    rentGrowthPercent: 0,
+    costGrowthPercent: 0,
+    financeGrowthPercent: 0,
+    purchasePrice: 250_000,
+  },
+  personal: { otherTaxableIncome: 60_000, region: "england-ni" },
+  company: {
+    associatedCompanies: 0,
+    annualAccountancyCost: 1_500,
+    otherCompanyProfits: 0,
+    setupCostYear1: 0,
+  },
+  horizon: { years: 10, discountRatePercent: 5 },
+})
+const y1Personal = ltd.personal.year1AfterTax
+const y1Ltd = ltd.retained.year1AfterTax
+console.log(`Year-1 personal after-tax: £${y1Personal.toLocaleString()}`)
+console.log(`Year-1 Ltd retained:       £${y1Ltd.toLocaleString()}`)
+console.log(`Lean (retained):           ${ltd.retained.lean}`)
+console.log(`Disclaimer educational:    ${ltd.flags.educationalOnly}`)
+const leanPass =
+  y1Personal === 5_600 &&
+  y1Ltd === 8_505 &&
+  !ltd.retained.copy.toLowerCase().includes("incorporate now")
+console.log(leanPass ? "\n  ✓ PASS" : "\n  ✗ FAIL — Ltd Co compare drift")

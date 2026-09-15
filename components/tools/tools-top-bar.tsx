@@ -16,7 +16,8 @@ import { ArrowLeft } from "lucide-react"
  *
  * Used by: app/tools/sdlt-calculator/page.tsx, app/tools/portfolio/page.tsx,
  *          app/tools/compare/page.tsx, app/tools/compliance/page.tsx,
- *          app/tools/licensing-checker/page.tsx, app/mtd/* pages.
+ *          app/tools/licensing-checker/page.tsx, app/tools/personal-vs-ltd/page.tsx,
+ *          app/mtd/* pages.
  */
 export function ToolsTopBar() {
   return (

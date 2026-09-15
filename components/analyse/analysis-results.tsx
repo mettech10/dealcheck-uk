@@ -103,6 +103,8 @@ interface AnalysisResultsProps {
   /** Lifts live market evidence (sold/rental/ARV comparables + Article 4)
       to the page so the Deal Package PDF matches the on-screen data. */
   onPdfEvidence?: (evidence: DealPdfEvidence) => void
+  /** Saved-analysis id for the current run — used to attach Ltd Co compare. */
+  savedAnalysisId?: string | null
 }
 
 // Series colours pull from the themed --chart-* tokens so they stay
@@ -128,6 +130,30 @@ function Row({ label, value, muted = false }: { label: string; value: number; mu
       </span>
     </div>
   )
+}
+
+function personalVsLtdHref(
+  data: PropertyFormData,
+  results: CalculationResults,
+  dealId?: string | null,
+): string {
+  const params = new URLSearchParams()
+  if (dealId) params.set("dealId", dealId)
+  const rent =
+    results.monthlyIncome && results.monthlyIncome > 0
+      ? results.monthlyIncome * 12
+      : (data.monthlyRent ?? 0) * 12
+  params.set("annualGrossRent", String(Math.round(rent)))
+  params.set(
+    "annualOperatingCosts",
+    String(Math.round(results.annualRunningCosts ?? 0)),
+  )
+  params.set(
+    "annualFinanceCosts",
+    String(Math.round(results.annualMortgageCost ?? 0)),
+  )
+  params.set("purchasePrice", String(Math.round(data.purchasePrice ?? 0)))
+  return `/tools/personal-vs-ltd?${params.toString()}`
 }
 
 // Strategy-aware metric list for the horizontal key-metrics strip. Only
@@ -1554,6 +1580,7 @@ export function AnalysisResults({
   scrapedListing,
   onRefurbAnalysis,
   onPdfEvidence,
+  savedAnalysisId,
 }: AnalysisResultsProps) {
   const [comparablesData, setComparablesData] = useState<ComparablesLoadedData | null>(null)
 
@@ -2653,6 +2680,12 @@ export function AnalysisResults({
               Open licensing checker →
             </Link>
           )}
+          <Link
+            href={personalVsLtdHref(data, results, savedAnalysisId)}
+            className="rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+          >
+            Personal vs Ltd Co →
+          </Link>
         </div>
       </div>
 

@@ -2178,6 +2178,7 @@ function AnalysePage() {
                   setUpgradeReason("free_limit_reached")
                   setShowUpgrade(true)
                 }}
+                savedAnalysisId={savedAnalysisId}
               />
             ) : (
               /* URL mode -- AI text only (no structured data from backend) */

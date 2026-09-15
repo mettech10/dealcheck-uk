@@ -104,6 +104,7 @@ const FREE: Tier = {
     { text: "Live regional benchmarks" },
     { text: "Deal score" },
     { text: "SDLT calculator (unlimited, no login)" },
+    { text: "Personal vs Ltd Co calculator (unlimited, no login)" },
     { text: "Portfolio tracker: 3 properties" },
     { text: "Deal comparison: 2 deals" },
     { text: "PDF report export", locked: true },

@@ -41,6 +41,10 @@ const nextConfig = {
       { source: '/v1/deals/:id', destination: '/api/v1/deals/:id' },
       // Public alias of the Next proxy (Flask remains the licensing SoT).
       { source: '/v1/licensing/check', destination: '/api/v1/licensing/check' },
+      {
+        source: "/v1/ltd-co/compare",
+        destination: "/api/v1/ltd-co/compare",
+      },
     ]
   },
   // Old static admin HTML used to live at /admin/admin_dashboard.html

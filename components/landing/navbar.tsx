@@ -32,6 +32,7 @@ interface ToolItem {
 const TOOLS: ToolItem[] = [
   { href: "/discovery",             name: "Deal Discovery" },
   { href: "/tools/sdlt-calculator", name: "SDLT Calculator" },
+  { href: "/tools/personal-vs-ltd", name: "Personal vs Ltd Co" },
   { href: "/tools/portfolio",       name: "Portfolio Tracker" },
   { href: "/tools/compare",         name: "Deal Comparison" },
   { href: "/tools/compliance",      name: "Compliance Cockpit" },

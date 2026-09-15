@@ -59,6 +59,7 @@ const FOOTER_LINKS: { heading: string; links: { label: string; href: string }[] 
     heading: "Tools",
     links: [
       { label: "SDLT calculator", href: "/tools/sdlt-calculator" },
+      { label: "Personal vs Ltd Co", href: "/tools/personal-vs-ltd" },
       { label: "Article 4 map", href: "/article4-map" },
       { label: "Pricing", href: "#pricing" },
     ],
