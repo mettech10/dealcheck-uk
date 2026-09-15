@@ -1,3 +1,4 @@
+import { createClient as createSupabaseJsClient } from "@supabase/supabase-js"
 import { createClient } from "@/lib/supabase/server"
 
 /**
@@ -15,4 +16,57 @@ export async function getSessionUser() {
     data: { user },
   } = await supabase.auth.getUser()
   return user
+}
+
+function bearerToken(req: Request): string | null {
+  const header = req.headers.get("authorization")
+  if (!header?.toLowerCase().startsWith("bearer ")) return null
+  const token = header.slice(7).trim()
+  return token || null
+}
+
+/**
+ * Cookie session (web app) or `Authorization: Bearer` (Deal Screener
+ * extension). Bearer uses the same Metalyzi Supabase access token issued
+ * on /screener/connect — not a separate account.
+ */
+export async function getRequestUser(req: Request) {
+  const token = bearerToken(req)
+  if (token) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (url && anon) {
+      const client = createSupabaseJsClient(url, anon, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+      const { data } = await client.auth.getUser(token)
+      if (data.user) return data.user
+    }
+  }
+  return getSessionUser()
+}
+
+/**
+ * User-scoped Supabase client for RLS reads (GET hydrate of `deals`).
+ * Bearer (extension) uses the JWT so `auth.uid()` matches; otherwise
+ * the HttpOnly cookie session. Does not use the service role.
+ */
+export async function createUserClientFromRequest(req: Request) {
+  const token = bearerToken(req)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (token && url && anon) {
+    const client = createSupabaseJsClient(url, anon, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+    const { data } = await client.auth.getUser()
+    if (data.user) return { user: data.user, supabase: client }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  return { user, supabase }
 }

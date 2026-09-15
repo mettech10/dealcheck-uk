@@ -1,0 +1,221 @@
+:root {
+  color-scheme: dark;
+  --navy: #0a1628;
+  --navy-2: #10233f;
+  --teal: #2dd4bf;
+  --teal-deep: #0d9488;
+  --text: #f0f4f8;
+  --muted: #94a7bd;
+  --border: #1e334d;
+  --fail: #f87171;
+  --pass: #34d399;
+  --pending: #fbbf24;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  width: 380px;
+  background: var(--navy);
+  color: var(--text);
+}
+
+.shell {
+  padding: 14px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  margin: 2px 0 6px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--teal);
+}
+
+.muted { color: var(--muted); font-size: 12px; margin: 0; }
+
+.card {
+  background: var(--navy-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.banner {
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: #1d2838;
+  border: 1px solid var(--border);
+}
+
+.banner.error { border-color: #7f1d1d; color: var(--fail); }
+.banner.info { color: var(--muted); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #1d2838;
+  color: var(--muted);
+}
+
+.pill-muted { color: var(--muted); }
+.pill.pass { background: #064e3b; color: var(--pass); }
+.pill.fail { background: #7f1d1d; color: var(--fail); }
+.pill.pending { background: #78350f; color: var(--pending); }
+
+.facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+  margin: 8px 0 0;
+}
+
+.facts dt {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.facts dd { margin: 0; font-weight: 600; font-size: 13px; }
+
+.field, .rules-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+input, select {
+  background: var(--navy);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+
+.rules-grid label { margin-top: 0; }
+
+.strategies {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.strategies legend {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.strategies label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.outcomes {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.outcomes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.outcomes .status { font-weight: 700; text-transform: uppercase; font-size: 10px; }
+.outcomes .pass { color: var(--pass); }
+.outcomes .fail { color: var(--fail); }
+.outcomes .pending { color: var(--pending); }
+
+.hint { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+}
+
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { background: var(--teal-deep); border-color: var(--teal-deep); color: #042f2e; }
+.btn-ghost:hover { border-color: var(--teal); }
+
+.advanced {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.advanced summary { cursor: pointer; }

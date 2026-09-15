@@ -385,17 +385,16 @@ function AnalysePage() {
   >(null)
   const verifyRanRef = useRef<string | null>(null)
 
-  // ── Deep link from Deal Discovery: /analyse?url=…&strategy=… ──────────
-  // Pre-populates the URL field and target strategy so the user lands on the
-  // normal flow with everything filled in. We deliberately do NOT auto-run:
+  // ── Deep link: Flask screener handoff / Deal Discovery ──────────────
+  // Flask POST /v1/deals returns /analyse?dealId=&strategy=&propertyId=&url=
+  // GET /api/v1/deals/:id hydrates shared `deals` (+ properties) under RLS.
+  // url+strategy still prefill if hydrate is unavailable. Do NOT auto-run:
   // scraping + analysis spend real credits, so the user presses the button.
   useEffect(() => {
+    const dealId = searchParams.get("dealId")
     const deepUrl = searchParams.get("url")
-    if (!deepUrl) return
-    setInputMode("url")
-    setListingUrl(deepUrl)
     const strat = (searchParams.get("strategy") ?? "").toUpperCase()
-    const map: Record<string, string> = {
+    const map: Record<string, PropertyFormData["investmentType"]> = {
       BTL: "btl",
       HMO: "hmo",
       BRRRR: "brr",
@@ -403,12 +402,46 @@ function AnalysePage() {
       FLIP: "flip",
       SA: "r2sa",
       R2SA: "r2sa",
+      DEVELOPMENT: "development",
+      DEV: "development",
+    }
+    if (deepUrl) {
+      setInputMode("url")
+      setListingUrl(deepUrl)
     }
     if (map[strat]) {
       setPrefillData((prev) => ({
         ...(prev ?? {}),
-        investmentType: map[strat] as PropertyFormData["investmentType"],
+        investmentType: map[strat],
       }))
+    }
+    if (!dealId) return
+
+    let cancelled = false
+    fetch(`/api/v1/deals/${encodeURIComponent(dealId)}`, {
+      credentials: "include",
+    })
+      .then(async (r) => {
+        if (!r.ok || cancelled) return
+        const data = (await r.json().catch(() => null)) as {
+          listing?: { listingUrl?: string; sourceUrl?: string }
+          formPrefill?: Partial<PropertyFormData>
+        } | null
+        if (!data || cancelled) return
+        const listingUrlFromDeal =
+          data.listing?.listingUrl || data.listing?.sourceUrl
+        if (listingUrlFromDeal) setListingUrl(listingUrlFromDeal)
+        if (data.formPrefill && Object.keys(data.formPrefill).length > 0) {
+          setPrefillData((prev) => ({ ...(prev ?? {}), ...data.formPrefill }))
+          setScrapedFromUrl(true)
+          setInputMode("manual")
+        }
+      })
+      .catch(() => {
+        // Keep url+strategy query prefill; do not block analyse.
+      })
+    return () => {
+      cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

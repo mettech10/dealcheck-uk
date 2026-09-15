@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Metalyzi Deal Screener</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top">
+        <div>
+          <p class="eyebrow">Metalyzi · Closed beta</p>
+          <h1>Deal Screener</h1>
+        </div>
+        <span id="auth-pill" class="pill pill-muted">Not connected</span>
+      </header>
+
+      <section id="status" class="banner" hidden></section>
+
+      <section id="preview" class="card" hidden>
+        <p class="eyebrow">Listing preview</p>
+        <h2 id="preview-address">—</h2>
+        <p id="preview-meta" class="muted"></p>
+        <dl class="facts">
+          <div><dt>Price</dt><dd id="fact-price">—</dd></div>
+          <div><dt>Beds</dt><dd id="fact-beds">—</dd></div>
+          <div><dt>Type</dt><dd id="fact-type">—</dd></div>
+          <div><dt>Yield</dt><dd id="fact-yield">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <label class="field">
+          <span>Monthly rent (£) — you type this, we never scrape it</span>
+          <input id="rent" type="number" min="0" step="25" placeholder="e.g. 950" />
+        </label>
+        <label class="field">
+          <span>Strategy</span>
+          <select id="strategy">
+            <option value="btl">BTL</option>
+            <option value="brrrr">BRRRR</option>
+            <option value="hmo">HMO</option>
+            <option value="flip">Flip</option>
+            <option value="sa">SA</option>
+            <option value="development">Development</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <p class="eyebrow">Rules preset</p>
+          <span id="verdict" class="pill">—</span>
+        </div>
+        <p id="preset-name" class="muted">Default screen</p>
+        <div class="rules-grid">
+          <label>Max price (£)
+            <input id="rule-max-price" type="number" min="0" step="1000" />
+          </label>
+          <label>Min beds
+            <input id="rule-min-beds" type="number" min="0" max="20" />
+          </label>
+          <label>Min gross yield (%)
+            <input id="rule-min-yield" type="number" min="0" step="0.1" />
+          </label>
+          <label>Min simple cashflow (£/mo)
+            <input id="rule-min-cashflow" type="number" step="25" />
+          </label>
+        </div>
+        <fieldset class="strategies">
+          <legend>Strategy allow-list</legend>
+          <label><input type="checkbox" value="btl" data-strategy /> BTL</label>
+          <label><input type="checkbox" value="brrrr" data-strategy /> BRRRR</label>
+          <label><input type="checkbox" value="hmo" data-strategy /> HMO</label>
+          <label><input type="checkbox" value="flip" data-strategy /> Flip</label>
+          <label><input type="checkbox" value="sa" data-strategy /> SA</label>
+          <label><input type="checkbox" value="development" data-strategy /> Dev</label>
+        </fieldset>
+        <ul id="outcomes" class="outcomes"></ul>
+        <p class="hint">Simple cashflow = rent − 75% LTV interest-only at 5%. This is a screen, not the analyser.</p>
+      </section>
+
+      <div class="actions">
+        <button id="capture" type="button" class="btn btn-ghost">Recapture listing</button>
+        <button id="connect" type="button" class="btn btn-ghost">Connect Metalyzi</button>
+        <button id="open" type="button" class="btn btn-primary" disabled>Open in Metalyzi</button>
+      </div>
+
+      <details class="advanced">
+        <summary>Origins</summary>
+        <label class="field">
+          <span>App origin (connect + open deepLinkPath)</span>
+          <input id="app-origin" type="url" />
+        </label>
+        <label class="field">
+          <span>Flask origin (POST /v1/deals — canonical)</span>
+          <input id="backend-origin" type="url" />
+        </label>
+        <button id="save-origin" type="button" class="btn btn-ghost">Save origins</button>
+      </details>
+    </div>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

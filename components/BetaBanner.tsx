@@ -23,6 +23,7 @@ const SHOW_ON_PREFIXES = [
   "/analyse",
   "/tools",
   "/account",
+  "/screener",
 ] as const
 
 function shouldShow(pathname: string | null): boolean {

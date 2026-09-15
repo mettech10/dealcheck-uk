@@ -72,3 +72,7 @@ node_modules/
 tsconfig.tsbuildinfo
 .vercel
 .env*
+
+# Deal Screener extension build
+extensions/deal-screener/node_modules/
+extensions/deal-screener/dist/

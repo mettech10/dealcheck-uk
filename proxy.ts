@@ -31,6 +31,17 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3000",
 ]
 
+function isAllowedApiOrigin(origin: string | null): boolean {
+  if (!origin) return true
+  if (ALLOWED_ORIGINS.includes(origin)) return true
+  // Closed-beta Deal Screener MV3 extension (unpacked; origin is chrome-extension://<id>)
+  return origin.startsWith("chrome-extension://")
+}
+
+function isScreenerApiPath(pathname: string): boolean {
+  return pathname.startsWith("/api/v1/") || pathname.startsWith("/v1/")
+}
+
 /**
  * Admin gate — runs first for /admin/*. Returns a NextResponse to
  * short-circuit when access denied, or `null` to let the rest of
@@ -102,22 +113,46 @@ export async function proxy(request: NextRequest) {
 
   // 2. CORS preflight + session refresh for API routes and static.
   const origin = request.headers.get("origin")
-  const isAllowedOrigin = !origin || ALLOWED_ORIGINS.includes(origin)
+  const isAllowedOrigin = isAllowedApiOrigin(origin)
+
+  if (request.method === "OPTIONS" && isScreenerApiPath(pathname)) {
+    const preflight = new NextResponse(null, { status: 204 })
+    if (isAllowedOrigin && origin) {
+      preflight.headers.set("Access-Control-Allow-Origin", origin)
+    }
+    preflight.headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    preflight.headers.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, Idempotency-Key",
+    )
+    preflight.headers.set("Access-Control-Max-Age", "86400")
+    preflight.headers.set("Vary", "Origin")
+    return preflight
+  }
 
   if (
     pathname.startsWith("/_next/") ||
     pathname.startsWith("/api/") ||
+    pathname.startsWith("/v1/") ||
     pathname.startsWith("/static/") ||
     pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|css|js)$/)
   ) {
     const response = await updateSession(request)
-    if (pathname.startsWith("/api/")) {
+    if (pathname.startsWith("/api/") || pathname.startsWith("/v1/")) {
       if (isAllowedOrigin && origin) {
         response.headers.set("Access-Control-Allow-Origin", origin)
       }
       response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-      response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-      response.headers.set("Access-Control-Allow-Credentials", "true")
+      response.headers.set(
+        "Access-Control-Allow-Headers",
+        isScreenerApiPath(pathname)
+          ? "Content-Type, Authorization, Idempotency-Key"
+          : "Content-Type, Authorization",
+      )
+      if (!origin?.startsWith("chrome-extension://")) {
+        response.headers.set("Access-Control-Allow-Credentials", "true")
+      }
+      response.headers.set("Vary", "Origin")
     }
     return response
   }
