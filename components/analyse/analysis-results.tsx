@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { LicensingPanel } from "@/components/licensing/licensing-panel"
+import { isLicensingCheckerEnabled } from "@/lib/licensing/flag"
+import { licensingInputFromAnalyse } from "@/lib/licensing/request"
 import { DealScorePanel } from "./deal-score-panel"
 import { BRRRRResults } from "./brrrr-results"
 import { FlipResults } from "./flip-results"
@@ -2569,6 +2572,10 @@ export function AnalysisResults({
           {/* Risk flags — one row per flag with severity badge */}
           {hasRiskFlags && <RiskFlagsPanel flags={backendData?.risk_flags} />}
 
+          {isLicensingCheckerEnabled() && (
+            <LicensingPanel {...licensingInputFromAnalyse(data)} />
+          )}
+
           {/* Article 4 & planning — moved into the sidebar */}
       {/* ── Article 4 & Planning ────────────────────────────────────── */}
       {/* Always rendered — the card checks the Metalyzi Article 4 database
@@ -2638,6 +2645,14 @@ export function AnalysisResults({
           >
             Compare with another deal →
           </Link>
+          {isLicensingCheckerEnabled() && data.postcode && (
+            <Link
+              href={`/tools/licensing-checker`}
+              className="rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              Open licensing checker →
+            </Link>
+          )}
         </div>
       </div>
 

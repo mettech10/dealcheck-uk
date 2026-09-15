@@ -17,6 +17,8 @@ import { signOut } from "@/app/auth/actions"
 import { CreditsPill } from "@/components/landing/credits-pill"
 import { ThemeToggle } from "@/components/theme-toggle"
 
+import { isLicensingCheckerEnabled } from "@/lib/licensing/flag"
+
 interface NavbarProps {
   user?: { email?: string; name?: string } | null
 }
@@ -33,6 +35,9 @@ const TOOLS: ToolItem[] = [
   { href: "/tools/portfolio",       name: "Portfolio Tracker" },
   { href: "/tools/compare",         name: "Deal Comparison" },
   { href: "/tools/compliance",      name: "Compliance Cockpit" },
+  ...(isLicensingCheckerEnabled()
+    ? [{ href: "/tools/licensing-checker", name: "Licensing Checker" }]
+    : []),
 ]
 
 /** Map raw tier id from /api/usage to a friendly label + badge tone. */
