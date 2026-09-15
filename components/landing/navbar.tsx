@@ -32,6 +32,7 @@ const TOOLS: ToolItem[] = [
   { href: "/tools/sdlt-calculator", name: "SDLT Calculator" },
   { href: "/tools/portfolio",       name: "Portfolio Tracker" },
   { href: "/tools/compare",         name: "Deal Comparison" },
+  { href: "/tools/compliance",      name: "Compliance Cockpit" },
 ]
 
 /** Map raw tier id from /api/usage to a friendly label + badge tone. */

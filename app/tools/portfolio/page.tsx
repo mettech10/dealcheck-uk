@@ -34,6 +34,7 @@ import {
   Sparkles,
   X,
   Home,
+  ShieldCheck,
 } from "lucide-react"
 import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Button } from "@/components/ui/button"
@@ -355,10 +356,16 @@ function PropertyCard({
             )}
           </div>
         )}
-        <div className="flex gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-1">
           <Button size="sm" variant="outline" onClick={onEdit} className="gap-1.5">
             <Edit2 className="size-3.5" />
             Edit
+          </Button>
+          <Button size="sm" variant="outline" asChild className="gap-1.5">
+            <Link href={`/tools/compliance/${p.id}`}>
+              <ShieldCheck className="size-3.5" />
+              Compliance
+            </Link>
           </Button>
           <Button size="sm" variant="ghost" asChild>
             <Link href={`/analyse?postcode=${encodeURIComponent(p.postcode || "")}`}>Analyse Again</Link>
