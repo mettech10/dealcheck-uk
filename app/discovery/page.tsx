@@ -396,7 +396,7 @@ export default function DiscoveryPage() {
         ) : (
           <>
             {/* ── Search builder ── */}
-            <div className="flex flex-col gap-5 rounded-xl border border-border/60 bg-card p-5">
+            <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm">Search name</Label>
                 <Input
