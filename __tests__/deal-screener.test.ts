@@ -8,6 +8,7 @@ import { describe, expect, test } from "vitest"
 import {
   SCHEMA_VERSION,
   applyDomFallbacks,
+  buildExtensionConnectHash,
   buildHandoffRequest,
   collectFromPageModel,
   computeScreenMetrics,
@@ -19,6 +20,7 @@ import {
   idempotencyKey,
   isNextDealsCreatePath,
   isRightmoveListingDetailUrl,
+  isSafeExtensionRedirect,
   listingIdFromUrl,
   hydrateFromDealRow,
   listingToFormPrefill,
@@ -29,6 +31,8 @@ import {
   resolveDeepLinkUrl,
   resolveFlaskBackendOrigin,
   resolveIdempotencyKey,
+  screenerConnectLoginPath,
+  screenerConnectPath,
   simpleGrossYield,
   simpleMonthlyCashflow,
   SIMPLE_CASHFLOW_ANNUAL_RATE,
@@ -448,5 +452,52 @@ describe("Open in Metalyzi targets Flask, never Next create / screener_deals", (
     expect(isNextDealsCreatePath("http://localhost:3000/api/v1/deals")).toBe(
       true,
     )
+  })
+})
+
+describe("/screener/connect redirect allowlist + login returnTo", () => {
+  const extId = "abcdefghijklmnopabcdefghijklmnop"
+  const good = `https://${extId}.chromiumapp.org/callback`
+
+  test("accepts https chromiumapp.org with a 32-char a-p extension id", () => {
+    expect(isSafeExtensionRedirect(good)).toBe(true)
+    expect(isSafeExtensionRedirect(`${good}?state=1`)).toBe(true)
+  })
+
+  test("rejects non-extension redirect_uri values (open-redirect)", () => {
+    expect(isSafeExtensionRedirect("https://evil.example/callback")).toBe(false)
+    expect(isSafeExtensionRedirect(`http://${extId}.chromiumapp.org/`)).toBe(false)
+    expect(isSafeExtensionRedirect("https://notchromiumapp.org/")).toBe(false)
+    expect(isSafeExtensionRedirect("https://abc.chromiumapp.org/")).toBe(false)
+    expect(isSafeExtensionRedirect("/screener/connect")).toBe(false)
+    expect(isSafeExtensionRedirect("")).toBe(false)
+  })
+
+  test("login bounce preserves redirect_uri inside returnTo (same encoding as /account-style gate)", () => {
+    expect(screenerConnectPath(null)).toBe("/screener/connect")
+    expect(screenerConnectPath(good)).toBe(
+      `/screener/connect?redirect_uri=${encodeURIComponent(good)}`,
+    )
+    expect(screenerConnectLoginPath(good)).toBe(
+      `/login?returnTo=${encodeURIComponent(
+        `/screener/connect?redirect_uri=${encodeURIComponent(good)}`,
+      )}`,
+    )
+  })
+
+  test("extension hash carries tokens in the fragment contract, never a query string", () => {
+    const hash = buildExtensionConnectHash({
+      access_token: "tok_abc",
+      expires_in: 3600,
+      expires_at: 1_700_000_000,
+      refresh_token: "ref_xyz",
+    })
+    const params = new URLSearchParams(hash)
+    expect(params.get("access_token")).toBe("tok_abc")
+    expect(params.get("refresh_token")).toBe("ref_xyz")
+    expect(params.get("token_type")).toBe("bearer")
+    expect(params.get("expires_in")).toBe("3600")
+    expect(`${good}#${hash}`).toContain("#")
+    expect(`${good}#${hash}`).not.toMatch(/\?access_token=/)
   })
 })
