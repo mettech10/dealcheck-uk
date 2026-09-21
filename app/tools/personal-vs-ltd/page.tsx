@@ -2,6 +2,7 @@ import { PersonalVsLtdCalculator } from "@/components/tools/personal-vs-ltd-calc
 import { fetchLtdCoCompare } from "@/lib/ltdCoBackend"
 import {
   DEFAULT_LTD_CO_INPUT,
+  validateLtdCoCompareInput,
   type CalculatorMode,
   type LtdCoCompareInput,
   type LtdCoCompareResult,
@@ -20,6 +21,17 @@ function num(raw: string, fallback: number): number {
   return Number.isFinite(n) && raw !== "" ? n : fallback
 }
 
+function numIfPresent(
+  raw: string,
+  present: boolean,
+  fallback: number,
+): number {
+  if (!present) return fallback
+  if (raw === "") return 0
+  const n = Number(String(raw).replace(/,/g, ""))
+  return Number.isFinite(n) ? n : 0
+}
+
 export default async function PersonalVsLtdPage({
   searchParams,
 }: {
@@ -27,6 +39,7 @@ export default async function PersonalVsLtdPage({
 }) {
   const raw = await searchParams
   const q = (key: string) => last(raw[key])
+  const has = (key: string) => raw[key] !== undefined
   const understood = q("understood") === "1"
 
   const dealIdRaw = q("dealId")
@@ -58,7 +71,11 @@ export default async function PersonalVsLtdPage({
     mode,
     dealId,
     deal: {
-      annualGrossRent: num(q("annualGrossRent"), d.deal.annualGrossRent),
+      annualGrossRent: numIfPresent(
+        q("annualGrossRent"),
+        has("annualGrossRent"),
+        d.deal.annualGrossRent,
+      ),
       annualOperatingCosts: num(
         q("annualOperatingCosts"),
         d.deal.annualOperatingCosts,
@@ -70,7 +87,11 @@ export default async function PersonalVsLtdPage({
         q("financeGrowthPercent"),
         d.deal.financeGrowthPercent,
       ),
-      purchasePrice: num(q("purchasePrice"), d.deal.purchasePrice),
+      purchasePrice: numIfPresent(
+        q("purchasePrice"),
+        has("purchasePrice"),
+        d.deal.purchasePrice,
+      ),
     },
     personal: {
       otherTaxableIncome: num(
@@ -105,14 +126,22 @@ export default async function PersonalVsLtdPage({
 
   let initialResult: LtdCoCompareResult | null = null
   let initialError: string | null = null
+  let initialErrorKind: "validation" | "unavailable" | null = null
   let initialSource: "backend" | null = null
   if (understood) {
-    const fetched = await fetchLtdCoCompare(input)
-    if (fetched.ok) {
-      initialResult = fetched.ltdCoCompare
-      initialSource = "backend"
+    const invalid = validateLtdCoCompareInput(input)
+    if (invalid) {
+      initialError = invalid.message
+      initialErrorKind = "validation"
     } else {
-      initialError = fetched.error
+      const fetched = await fetchLtdCoCompare(input)
+      if (fetched.ok) {
+        initialResult = fetched.ltdCoCompare
+        initialSource = "backend"
+      } else {
+        initialError = fetched.error
+        initialErrorKind = fetched.reason
+      }
     }
   }
 
@@ -123,14 +152,19 @@ export default async function PersonalVsLtdPage({
       initialUnderstood={understood}
       initialResult={initialResult}
       initialError={initialError}
+      initialErrorKind={initialErrorKind}
       initialSource={initialSource}
       initialMode={mode}
       initialLens={lens}
       initialFields={{
-        annualGrossRent: String(input.deal.annualGrossRent),
+        annualGrossRent: has("annualGrossRent")
+          ? q("annualGrossRent")
+          : String(input.deal.annualGrossRent),
         annualOperatingCosts: String(input.deal.annualOperatingCosts),
         annualFinanceCosts: String(input.deal.annualFinanceCosts),
-        purchasePrice: String(input.deal.purchasePrice),
+        purchasePrice: has("purchasePrice")
+          ? q("purchasePrice")
+          : String(input.deal.purchasePrice),
         rentGrowthPercent: String(input.deal.rentGrowthPercent),
         costGrowthPercent: String(input.deal.costGrowthPercent),
         financeGrowthPercent: String(input.deal.financeGrowthPercent),

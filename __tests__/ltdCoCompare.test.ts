@@ -17,9 +17,14 @@ import {
   DIVIDEND_UPPER_RATE,
   incrementalIncomeTax,
   leanContainsBannedPhrase,
+  LTD_CO_GROSS_RENT_REQUIRED,
+  LTD_CO_PURCHASE_PRICE_REQUIRED,
   LTD_CO_TAX_YEAR,
   npvOf,
+  parseLtdCoAmount,
   personalAllowanceFor,
+  validateLtdCoCompareInput,
+  validateLtdCoFormFields,
   type LtdCoCompareInput,
 } from "@/lib/ltdCoCompare"
 
@@ -307,5 +312,51 @@ describe("helpers", () => {
     expect(breakEvenYear([10, 30, 60], [20, 40, 50])).toBe(3)
     expect(breakEvenYear([10, 20], [30, 40])).toBeNull()
     expect(breakEvenYear([50], [10])).toBe(1)
+  })
+})
+
+describe("required-field validation — empty Gross rent must not compare", () => {
+  test("parseLtdCoAmount treats blank and non-numeric as missing", () => {
+    expect(parseLtdCoAmount("")).toBeNull()
+    expect(parseLtdCoAmount("   ")).toBeNull()
+    expect(parseLtdCoAmount("12,000")).toBe(12_000)
+    expect(parseLtdCoAmount("abc")).toBeNull()
+  })
+
+  test("cleared Gross rent blocks compare with a validation error", () => {
+    const issue = validateLtdCoFormFields({
+      annualGrossRent: "",
+      purchasePrice: "185000",
+    })
+    expect(issue).not.toBeNull()
+    expect(issue?.field).toBe("annualGrossRent")
+    expect(issue?.message).toBe(LTD_CO_GROSS_RENT_REQUIRED)
+  })
+
+  test("zero Gross rent is treated as missing, not a £0 deal", () => {
+    const issue = validateLtdCoCompareInput({
+      deal: { ...DEFAULT_LTD_CO_INPUT.deal, annualGrossRent: 0 },
+    })
+    expect(issue?.field).toBe("annualGrossRent")
+    expect(issue?.message).toBe(LTD_CO_GROSS_RENT_REQUIRED)
+  })
+
+  test("cleared Purchase price blocks compare", () => {
+    const issue = validateLtdCoFormFields({
+      annualGrossRent: "11400",
+      purchasePrice: "",
+    })
+    expect(issue?.field).toBe("purchasePrice")
+    expect(issue?.message).toBe(LTD_CO_PURCHASE_PRICE_REQUIRED)
+  })
+
+  test("happy-path defaults still validate", () => {
+    expect(validateLtdCoCompareInput(DEFAULT_LTD_CO_INPUT)).toBeNull()
+    expect(
+      validateLtdCoFormFields({
+        annualGrossRent: String(DEFAULT_LTD_CO_INPUT.deal.annualGrossRent),
+        purchasePrice: String(DEFAULT_LTD_CO_INPUT.deal.purchasePrice),
+      }),
+    ).toBeNull()
   })
 })

@@ -16,6 +16,7 @@ import {
   leanCopy,
   leanSide,
   npvOf,
+  validateLtdCoCompareInput,
   type LtdCoCompareInput,
   type LtdCoCompareResult,
   type LtdCoYearRow,
@@ -287,6 +288,8 @@ export function mapBackendCompareToUi(
   }
 }
 
+export type LtdCoCompareFailReason = "validation" | "unavailable"
+
 export type LtdCoCompareFetchResult =
   | {
       ok: true
@@ -298,12 +301,24 @@ export type LtdCoCompareFetchResult =
       ltdCoCompare: null
       source: null
       error: string
+      reason: LtdCoCompareFailReason
     }
 
 export async function fetchLtdCoCompare(
   input: LtdCoCompareInput,
   opts?: { fetchImpl?: typeof fetch; backendUrl?: string; timeoutMs?: number },
 ): Promise<LtdCoCompareFetchResult> {
+  const invalid = validateLtdCoCompareInput(input)
+  if (invalid) {
+    return {
+      ok: false,
+      ltdCoCompare: null,
+      source: null,
+      error: invalid.message,
+      reason: "validation",
+    }
+  }
+
   const fetchImpl = opts?.fetchImpl ?? fetch
   const timeoutMs = opts?.timeoutMs ?? 8_000
   const url = backendLtdCoUrl(opts?.backendUrl ?? BACKEND_API_URL)
@@ -343,5 +358,6 @@ export async function fetchLtdCoCompare(
     ltdCoCompare: null,
     source: null,
     error: LTD_CO_BACKEND_UNAVAILABLE,
+    reason: "unavailable",
   }
 }

@@ -3,7 +3,12 @@ import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getSessionUser } from "@/lib/apiAuth"
 import { fetchLtdCoCompare } from "@/lib/ltdCoBackend"
-import type { LtdCoCompareInput, LtdCoCompareResult } from "@/lib/ltdCoCompare"
+import {
+  LTD_CO_GROSS_RENT_REQUIRED,
+  LTD_CO_PURCHASE_PRICE_REQUIRED,
+  type LtdCoCompareInput,
+  type LtdCoCompareResult,
+} from "@/lib/ltdCoCompare"
 
 /**
  * POST /api/tools/ltd-co-compare
@@ -18,13 +23,25 @@ import type { LtdCoCompareInput, LtdCoCompareResult } from "@/lib/ltdCoCompare"
  */
 
 const dealSchema = z.object({
-  annualGrossRent: z.number().min(0).max(50_000_000),
+  annualGrossRent: z
+    .number({
+      required_error: LTD_CO_GROSS_RENT_REQUIRED,
+      invalid_type_error: LTD_CO_GROSS_RENT_REQUIRED,
+    })
+    .gt(0, LTD_CO_GROSS_RENT_REQUIRED)
+    .max(50_000_000),
   annualOperatingCosts: z.number().min(0).max(50_000_000),
   annualFinanceCosts: z.number().min(0).max(50_000_000),
   rentGrowthPercent: z.number().min(-20).max(30),
   costGrowthPercent: z.number().min(-20).max(30),
   financeGrowthPercent: z.number().min(-20).max(30),
-  purchasePrice: z.number().min(0).max(50_000_000),
+  purchasePrice: z
+    .number({
+      required_error: LTD_CO_PURCHASE_PRICE_REQUIRED,
+      invalid_type_error: LTD_CO_PURCHASE_PRICE_REQUIRED,
+    })
+    .gt(0, LTD_CO_PURCHASE_PRICE_REQUIRED)
+    .max(50_000_000),
 })
 
 const personalSchema = z.object({
@@ -63,8 +80,10 @@ export async function POST(req: Request) {
 
   const parsed = bodySchema.safeParse(json)
   if (!parsed.success) {
+    const message =
+      parsed.error.issues[0]?.message || "Invalid input"
     return NextResponse.json(
-      { error: "Invalid input", details: parsed.error.flatten() },
+      { error: message, details: parsed.error.flatten(), reason: "validation" },
       { status: 400 },
     )
   }
@@ -80,9 +99,15 @@ export async function POST(req: Request) {
 
   const fetched = await fetchLtdCoCompare(input)
   if (!fetched.ok) {
+    const status = fetched.reason === "validation" ? 400 : 503
     return NextResponse.json(
-      { success: false, error: fetched.error, source: null },
-      { status: 503 },
+      {
+        success: false,
+        error: fetched.error,
+        source: null,
+        reason: fetched.reason,
+      },
+      { status },
     )
   }
 

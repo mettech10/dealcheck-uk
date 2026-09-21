@@ -71,6 +71,7 @@ describe("fetchLtdCoCompare", () => {
     expect(r.source).toBeNull()
     expect(r.ltdCoCompare).toBeNull()
     expect(r.error).toBe(LTD_CO_BACKEND_UNAVAILABLE)
+    expect(r.reason).toBe("unavailable")
     expect(JSON.stringify(r).toLowerCase()).not.toContain("lean")
   })
 
@@ -84,6 +85,26 @@ describe("fetchLtdCoCompare", () => {
     if (r.ok) return
     expect(r.ltdCoCompare).toBeNull()
     expect(r.error).toMatch(/not estimated locally/i)
+    expect(r.reason).toBe("unavailable")
+  })
+
+  test("empty or zero Gross rent fails closed before the calc API is called", async () => {
+    const fetchImpl = vi.fn()
+    const r = await fetchLtdCoCompare(
+      {
+        ...DEFAULT_LTD_CO_INPUT,
+        deal: { ...DEFAULT_LTD_CO_INPUT.deal, annualGrossRent: 0 },
+      },
+      { fetchImpl },
+    )
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.reason).toBe("validation")
+    expect(r.ltdCoCompare).toBeNull()
+    expect(r.source).toBeNull()
+    expect(r.error).toMatch(/gross rent/i)
+    expect(JSON.stringify(r).toLowerCase()).not.toContain("lean")
   })
 
   test("backend URL is Flask /v1/ltd-co/compare", () => {
