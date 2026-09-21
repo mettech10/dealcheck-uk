@@ -9,10 +9,21 @@ import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Toaster } from "@/components/ui/sonner"
 import { MtdDisclaimerBanner } from "./disclaimer-banner"
 import { MtdSubnav } from "./subnav"
-import { analyzerApiUrl } from "@/lib/mtd/config"
-import { clearFlaskBearer, ensureBusiness, getFlaskBearer } from "@/lib/mtd/client"
+import { analyzerApiUrl, analyzerUnreachableMessage } from "@/lib/mtd/config"
+import { ensureBusiness } from "@/lib/mtd/client"
 import { MtdBusinessProvider } from "@/lib/mtd/workspace-context"
 import type { FlaskBusiness } from "@/lib/mtd/types"
+
+async function probeSignedIn(): Promise<"anon" | "signed_in" | "error"> {
+  try {
+    const res = await fetch("/api/me", { credentials: "same-origin", cache: "no-store" })
+    if (res.status === 401) return "anon"
+    if (!res.ok) return "error"
+    return "signed_in"
+  } catch {
+    return "error"
+  }
+}
 
 export function MtdWorkspaceShell({
   title,
@@ -28,41 +39,41 @@ export function MtdWorkspaceShell({
   const [business, setBusiness] = useState<FlaskBusiness | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     ;(async () => {
-      try {
-        await getFlaskBearer()
-      } catch (e) {
-        const status = (e as Error & { status?: number }).status
-        if (status === 401) {
-          setState("anon")
-          return
-        }
-        setError(e instanceof Error ? e.message : "Could not load MTD Pack")
+      const auth = await probeSignedIn()
+      if (cancelled) return
+      if (auth === "anon") {
+        setState("anon")
+        return
+      }
+      if (auth === "error") {
+        setError("Could not check your Metalyzi session. Refresh and try again.")
         setState("error")
         return
       }
       try {
         const biz = await ensureBusiness()
+        if (cancelled) return
         setBusiness(biz)
         setState("ready")
       } catch (e) {
+        if (cancelled) return
         const status = (e as Error & { status?: number }).status
         if (status === 401) {
-          clearFlaskBearer()
           setState("anon")
           return
         }
         const msg =
-          e instanceof Error
-            ? e.message
-            : "Could not reach the Flask MTD API"
+          e instanceof Error ? e.message : analyzerUnreachableMessage(analyzerApiUrl())
         toast.error(msg)
-        setError(
-          `${msg} Ledger writes go to Flask ${analyzerApiUrl()}/v1/mtd/* — the same SoT pattern as Screener → Flask /v1/deals.`,
-        )
+        setError(msg)
         setState("error")
       }
     })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   return (
@@ -100,8 +111,14 @@ export function MtdWorkspaceShell({
           <h1 className="text-2xl font-bold">MTD Pack</h1>
           <p className="text-sm text-muted-foreground">{error}</p>
           <p className="text-xs text-muted-foreground">
-            Set <code className="rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_ANALYZER_API_URL</code>{" "}
-            if the Flask host is not the default Render URL.
+            Ledger writes go to Flask via same-origin{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">/api/mtd/*</code> (BFF) →{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">/v1/mtd/*</code>. Set{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">ANALYZER_API_URL</code> or{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">BACKEND_API_URL</code> on Vercel if
+            the host is not {analyzerApiUrl()}.{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5">NEXT_PUBLIC_ANALYZER_API_URL</code> is
+            optional for this BFF path.
           </p>
         </div>
       )}

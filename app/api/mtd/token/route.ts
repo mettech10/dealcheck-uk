@@ -1,29 +1,38 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { getMtdAuth, MTD_TOKEN_MISSING_MESSAGE } from "@/lib/mtd/session"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+
+const NO_STORE = {
+  "Cache-Control": "private, no-store, max-age=0",
+}
 
 /**
- * Issue the signed-in user's Supabase JWT so the browser can call
- * Flask `/v1/mtd/*` with `Authorization: Bearer`. This route does not
- * write ledger data — Flask owns mtd_* tables.
+ * Issue the signed-in user's Supabase JWT. The MTD UI no longer calls
+ * Flask from the browser — `/api/mtd/[...path]` is the BFF. This route
+ * stays for diagnostics and any same-origin caller that needs Bearer.
+ *
+ * 401 = anonymous. 503 = signed in but access_token missing (do NOT
+ * treat that as the sign-in gate).
  */
 export async function GET() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const auth = await getMtdAuth()
+  if (auth.status === "anon") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE })
   }
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const accessToken = session?.access_token
-  if (!accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (auth.status === "token_missing") {
+    return NextResponse.json(
+      { error: MTD_TOKEN_MISSING_MESSAGE, code: "mtd_session_token_missing" },
+      { status: 503, headers: NO_STORE },
+    )
   }
-  return NextResponse.json({
-    accessToken,
-    tokenType: "Bearer",
-    canonical: "flask",
-  })
+  return NextResponse.json(
+    {
+      accessToken: auth.accessToken,
+      tokenType: "Bearer",
+      canonical: "flask",
+    },
+    { headers: NO_STORE },
+  )
 }

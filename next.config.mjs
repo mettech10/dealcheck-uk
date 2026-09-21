@@ -12,6 +12,14 @@ const analyzerOrigin = (() => {
   }
 })()
 
+const analyzerConnectSrc = Array.from(
+  new Set([
+    analyzerOrigin,
+    "https://metusa-deal-analyzer.onrender.com",
+    "https://analyzer.metusaproperty.co.uk",
+  ]),
+).join(" ")
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -56,6 +64,10 @@ const nextConfig = {
     return [
       { source: '/admin/dashboard', destination: '/admin', permanent: true },
       { source: '/admin/login', destination: '/login?returnTo=/admin', permanent: true },
+      // Canonical MTD Pack is /mtd. /tools/mtd 404'd in live QA because
+      // other tools live under /tools/*. Keep bookmarks working.
+      { source: '/tools/mtd', destination: '/mtd', permanent: true },
+      { source: '/tools/mtd/:path*', destination: '/mtd/:path*', permanent: true },
     ]
   },
   // Security headers
@@ -73,7 +85,7 @@ const nextConfig = {
               // blob: — client-generated share-card PNG previews
               "img-src 'self' data: blob: https:",
               "font-src 'self'",
-              `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerOrigin} http://localhost:5000 http://127.0.0.1:5000`,
+              `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerConnectSrc} http://localhost:5000 http://127.0.0.1:5000`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
