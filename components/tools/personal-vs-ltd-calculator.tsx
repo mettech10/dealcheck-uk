@@ -185,14 +185,15 @@ export function PersonalVsLtdCalculator({
 
   const setField = <K extends keyof FormFields>(key: K, value: FormFields[K]) => {
     setFields((prev) => ({ ...prev, [key]: value }))
-    if (key === "annualGrossRent" || key === "purchasePrice") {
-      setFieldErrors((prev) => {
-        if (!prev[key]) return prev
-        const next = { ...prev }
-        delete next[key]
-        return next
-      })
-    }
+    if (key !== "annualGrossRent" && key !== "purchasePrice") return
+    const field: LtdCoRequiredField =
+      key === "annualGrossRent" ? "annualGrossRent" : "purchasePrice"
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
   }
 
   const runCompare = useCallback(
