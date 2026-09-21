@@ -156,4 +156,47 @@ describe("getComplianceClient fail-closed", () => {
       /no DELETE evidence/,
     )
   })
+
+  test("live dashboard and property file surface analyzer error messages", async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/catalogue")) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            items: [{ code: "GAS", name: "Gas Safety Certificate (CP12)" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message:
+            "Apply supabase/migrations/20260914_compliance_cockpit.sql",
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      )
+    }) as unknown as typeof fetch
+    const handle = await getComplianceClient({
+      hostname: "www.metalyzi.co.uk",
+      fetch: fetchSpy,
+      force: true,
+    })
+    expect(handle.source).toBe("live")
+    await expect(handle.api!.getDashboard([])).rejects.toThrow(
+      /20260914_compliance_cockpit/,
+    )
+    await expect(
+      handle.api!.upsertProperty({
+        propertyId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        address: "1 Test Street",
+        nickname: null,
+        postcode: null,
+        strategy: null,
+        bedrooms: null,
+      }),
+    ).rejects.toThrow(/Failed to load property obligations|20260914_compliance_cockpit/)
+  })
 })
+
