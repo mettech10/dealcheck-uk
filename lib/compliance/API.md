@@ -224,6 +224,13 @@ Retest: sign in → `/tools/compliance` dashboard counts match portfolio
 properties → open a file → add GAS with issuedOn → dashboard overdue/valid
 updates. Reminder dispatch is cron + Brevo, not this UI.
 
+Companion analyzer patch (this agent could not push `metusa-deal-analyzer`,
+GitHub 403): apply `patches/metusa-deal-analyzer-compliance-p0.patch` on
+that repo (`git am` from repo root) so dashboard/property reads return
+JSON 503 with a migration hint instead of an unhandled 500, health exposes
+`storeProbe.ready`, and the blueprint is exempt from the 50/hour shared-IP
+limit.
+
 ---
 
 ## Disclaimer
