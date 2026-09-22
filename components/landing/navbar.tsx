@@ -39,6 +39,7 @@ const TOOLS: ToolItem[] = [
   ...(isLicensingCheckerEnabled()
     ? [{ href: "/tools/licensing-checker", name: "Licensing Checker" }]
     : []),
+  // Canonical route is /mtd. /tools/mtd permanently redirects there.
   { href: "/mtd",                    name: "MTD Pack" },
 ]
 

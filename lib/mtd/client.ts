@@ -1,9 +1,12 @@
 /**
- * Browser client for the canonical Flask MTD API (`/v1/mtd/*`).
- * Ledger writes go to Flask with Bearer auth — never a Next mtd_* table.
+ * Browser client for MTD Pack.
+ *
+ * Authenticated ledger calls go same-origin to `/api/mtd/*`. The Next BFF
+ * forwards to Flask `/v1/mtd/*` with Bearer auth. Next never owns mtd_*
+ * tables. Public accountant shares stay on `/v1/mtd/share/:token`.
  */
 
-import { flaskMtdUrl, flaskPropertyLinkBody, requirePlatformPropertyId } from "./config"
+import { mtdBffUrl, flaskPropertyLinkBody, requirePlatformPropertyId } from "./config"
 import { csvTemplate } from "./csv"
 import { poundsToPence, requireAmountPence } from "./money"
 import { currentTaxYear, toIsoDate } from "./taxYear"
@@ -17,8 +20,6 @@ import type {
   PortfolioProperty,
 } from "./types"
 
-let cachedToken: string | null = null
-
 async function parseJson(res: Response) {
   const json = await res.json().catch(() => ({}))
   if (!res.ok) {
@@ -29,47 +30,26 @@ async function parseJson(res: Response) {
   return json
 }
 
-export async function getFlaskBearer(): Promise<string> {
-  if (cachedToken) return cachedToken
-  const res = await fetch("/api/mtd/token")
-  const json = await parseJson(res)
-  cachedToken = json.accessToken as string
-  return cachedToken
-}
-
-export function clearFlaskBearer() {
-  cachedToken = null
-}
-
 export async function flaskFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = await getFlaskBearer()
   const headers = new Headers(init?.headers)
-  headers.set("Authorization", `Bearer ${token}`)
   if (init?.body && !headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json")
   }
-  const res = await fetch(flaskMtdUrl(path), { ...init, headers, credentials: "omit" })
-  if (res.status === 401) {
-    cachedToken = null
-  }
-  return res
+  return fetch(mtdBffUrl(path), {
+    ...init,
+    headers,
+    credentials: "same-origin",
+    cache: "no-store",
+  })
 }
 
 export async function flaskJson<T = Record<string, unknown>>(path: string, init?: RequestInit): Promise<T> {
   const res = await flaskFetch(path, init)
-  if (res.status === 401) {
-    const retryToken = await getFlaskBearer()
-    const headers = new Headers(init?.headers)
-    headers.set("Authorization", `Bearer ${retryToken}`)
-    if (init?.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json")
-    const retry = await fetch(flaskMtdUrl(path), { ...init, headers, credentials: "omit" })
-    return parseJson(retry) as Promise<T>
-  }
   return parseJson(res) as Promise<T>
 }
 
 export async function fetchPortfolioProperties(): Promise<PortfolioProperty[]> {
-  const res = await fetch("/api/portfolio")
+  const res = await fetch("/api/portfolio", { credentials: "same-origin", cache: "no-store" })
   if (res.status === 401) {
     const err = new Error("Unauthorized") as Error & { status: number }
     err.status = 401
