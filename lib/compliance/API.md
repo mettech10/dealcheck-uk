@@ -3,9 +3,13 @@
 Frontend talks to the Next.js BFF `/api/compliance/*`, which proxies
 
 ```
-${ANALYZER_API_URL || ANALYZER_URL || BACKEND_API_URL}/v1/compliance/*
+${ANALYZER_API_URL || ANALYZER_URL || NEXT_PUBLIC_ANALYZER_API_URL || METUSA_API_URL || BACKEND_API_URL}/v1/compliance/*
 Authorization: Bearer <supabase access token>
 ```
+
+Protected Flask routes **require** that Bearer. `X-User-Id` is test-only on
+the analyzer. The BFF refuses to proxy dashboard/obligations when the user
+is signed in but no access token can be recovered from the session cookie.
 
 **Flask is the source of truth** for signed-in users on production and
 preview hosts. The browser localStorage stub is **not** a second store
@@ -185,6 +189,47 @@ property file → POST obligation → PATCH dates → POST evidence):
 
 BFF errors are HTTP 502 `{ error: "compliance_upstream_unavailable" }`
 without enabling a browser write.
+
+---
+
+## Metalyzi live checklist (P0 2026-09-21)
+
+Catalogue (`GET /catalogue`) is **public**. Dashboard, property files, and
+writes are **auth + Supabase store**. A green catalogue tab does **not**
+mean obligations can load.
+
+Vercel (dealcheck-uk):
+
+1. At least one analyzer origin is set. First non-empty wins:
+   `ANALYZER_API_URL`, `ANALYZER_URL`, `NEXT_PUBLIC_ANALYZER_API_URL`,
+   `METUSA_API_URL`, `BACKEND_API_URL`, `NEXT_PUBLIC_BACKEND_API_URL`.
+2. `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` (JWT cookie).
+
+Render (metusa-deal-analyzer):
+
+1. `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`
+2. `SUPABASE_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Flask JWT check)
+3. `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` (writes; do not use anon here)
+4. Optional reminders: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `COMPLIANCE_CRON_SECRET`
+5. Preview CORS: `CORS_ALLOWED_ORIGINS` comma-separated if not metalyzi.co.uk
+
+Supabase (same project as auth):
+
+1. Apply `supabase/migrations/20260914_compliance_cockpit.sql`
+2. Apply `supabase/migrations/20260921_compliance_cockpit_grants.sql`
+3. Confirm `GET https://metusa-deal-analyzer.onrender.com/v1/compliance/health`
+   has `storeProbe.ready: true` (not only `store: "supabase"`).
+
+Retest: sign in → `/tools/compliance` dashboard counts match portfolio
+properties → open a file → add GAS with issuedOn → dashboard overdue/valid
+updates. Reminder dispatch is cron + Brevo, not this UI.
+
+Companion analyzer patch (this agent could not push `metusa-deal-analyzer`,
+GitHub 403): apply `patches/metusa-deal-analyzer-compliance-p0.patch` on
+that repo (`git am` from repo root) so dashboard/property reads return
+JSON 503 with a migration hint instead of an unhandled 500, health exposes
+`storeProbe.ready`, and the blueprint is exempt from the 50/hour shared-IP
+limit.
 
 ---
 

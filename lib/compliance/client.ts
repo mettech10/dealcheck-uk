@@ -52,6 +52,18 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
 }
 
+async function readJsonOrThrow<T>(
+  res: Response,
+  fallback: string,
+): Promise<T> {
+  const body = await parseJson<{ message?: string; error?: string } & T>(res)
+  if (!res.ok) {
+    const detail = body.message || body.error
+    throw new Error(detail || `${fallback} (HTTP ${res.status})`)
+  }
+  return body as T
+}
+
 export async function liveFetch(
   path: string,
   init: RequestInit = {},
@@ -74,8 +86,10 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
       ? `?propertyId=${encodeURIComponent(propertyId)}`
       : ""
     const res = await liveFetch(`/obligations${qs}`, {}, fetcher)
-    if (!res.ok) throw new Error("Failed to load obligations from the analyzer")
-    const body = await parseJson<{ obligations?: BeObligation[] }>(res)
+    const body = await readJsonOrThrow<{ obligations?: BeObligation[] }>(
+      res,
+      "Failed to load obligations from the analyzer",
+    )
     return body.obligations ?? []
   }
 
@@ -85,8 +99,10 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
       {},
       fetcher,
     )
-    if (!res.ok) throw new Error("Failed to load property obligations")
-    const body = await parseJson<{ obligations?: BeObligation[] }>(res)
+    const body = await readJsonOrThrow<{ obligations?: BeObligation[] }>(
+      res,
+      "Failed to load property obligations",
+    )
     return composePropertyFile(property, body.obligations ?? [])
   }
 
@@ -106,19 +122,19 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
       },
       fetcher,
     )
-    if (!res.ok) {
-      const err = await parseJson<{ message?: string }>(res)
-      throw new Error(err.message || "Failed to create obligation")
-    }
-    const body = await parseJson<{ obligation: BeObligation }>(res)
+    const body = await readJsonOrThrow<{ obligation: BeObligation }>(
+      res,
+      "Failed to create obligation",
+    )
     return body.obligation
   }
 
   return {
     async getCatalogue() {
       const res = await liveFetch("/catalogue", {}, fetcher)
-      if (!res.ok) throw new Error("Failed to load catalogue")
-      return mapCatalogueResponse(await parseJson(res))
+      return mapCatalogueResponse(
+        await readJsonOrThrow(res, "Failed to load catalogue"),
+      )
     },
 
     async getSettings() {
@@ -126,8 +142,10 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
         liveFetch("/catalogue", {}, fetcher),
         liveFetch("/reminders", {}, fetcher),
       ])
-      if (!catRes.ok) throw new Error("Failed to load reminder catalogue")
-      const catBody = await parseJson(catRes)
+      const catBody = await readJsonOrThrow(
+        catRes,
+        "Failed to load reminder catalogue",
+      )
       const reminders = remRes.ok
         ? (await parseJson<{ reminders?: BeReminder[] }>(remRes)).reminders ?? []
         : []
@@ -159,8 +177,10 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
         fetcher,
       )
       if (res.status === 404) return null
-      if (!res.ok) throw new Error("Failed to load compliance file")
-      const body = await parseJson<{ propertyId?: string; obligations?: BeObligation[] }>(res)
+      const body = await readJsonOrThrow<{
+        propertyId?: string
+        obligations?: BeObligation[]
+      }>(res, "Failed to load compliance file")
       const property: PropertyRef = {
         propertyId,
         address: propertyId,
@@ -174,8 +194,10 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
 
     async getDashboard(properties) {
       const res = await liveFetch("/dashboard", {}, fetcher)
-      if (!res.ok) throw new Error("Failed to load compliance dashboard")
-      const body = await parseJson<BeDashboard>(res)
+      const body = await readJsonOrThrow<BeDashboard>(
+        res,
+        "Failed to load compliance dashboard",
+      )
       return composeDashboard(properties, body.obligations ?? [])
     },
 
@@ -194,7 +216,7 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
           { method: "PATCH", body: JSON.stringify({ notes: patch.notes }) },
           fetcher,
         )
-        if (!res.ok) throw new Error("Failed to update obligation")
+        await readJsonOrThrow(res, "Failed to update obligation")
       }
       const property: PropertyRef = {
         propertyId,
@@ -226,7 +248,7 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
           },
           fetcher,
         )
-        if (!res.ok) throw new Error("Failed to save certificate dates")
+        await readJsonOrThrow(res, "Failed to save certificate dates")
       }
       if (input.file) {
         const fd = new FormData()
@@ -236,7 +258,7 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
           { method: "POST", body: fd },
           fetcher,
         )
-        if (!res.ok) throw new Error("Failed to upload evidence")
+        await readJsonOrThrow(res, "Failed to upload evidence")
       }
       const property: PropertyRef = {
         propertyId,
@@ -260,8 +282,10 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
         liveFetch("/dashboard", {}, fetcher),
         liveFetch("/reminders?status=pending", {}, fetcher),
       ])
-      if (!dashRes.ok) throw new Error("Failed to load calendar")
-      const dash = await parseJson<BeDashboard>(dashRes)
+      const dash = await readJsonOrThrow<BeDashboard>(
+        dashRes,
+        "Failed to load calendar",
+      )
       const reminders = remRes.ok
         ? (await parseJson<{ reminders?: BeReminder[] }>(remRes)).reminders ?? []
         : dash.upcomingReminders ?? []

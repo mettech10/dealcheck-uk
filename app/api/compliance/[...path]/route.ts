@@ -2,7 +2,7 @@
  * BFF proxy for the Compliance Cockpit.
  *
  * Forwards `/api/compliance/<path>` to the Flask analyzer
- * `${ANALYZER_API_URL || ANALYZER_URL || BACKEND_API_URL}/v1/compliance/<path>`
+ * `${ANALYZER_API_URL || NEXT_PUBLIC_ANALYZER_API_URL || BACKEND_API_URL}/v1/compliance/<path>`
  * with the caller's Supabase JWT.
  *
  * Flask is the only store for signed-in production/preview users.
@@ -10,19 +10,17 @@
  * (`X-Compliance-Source: unavailable` with no stub write).
  */
 
+import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import {
+  accessTokenFromCookieList,
+  bearerFromAuthorization,
+  firstAccessToken,
+} from "@/lib/compliance/accessToken"
+import { complianceUpstreamUrl } from "@/lib/compliance/analyzerUrl"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
-
-function analyzerBase(): string {
-  return (
-    process.env.ANALYZER_API_URL ||
-    process.env.ANALYZER_URL ||
-    process.env.BACKEND_API_URL ||
-    ""
-  ).replace(/\/$/, "")
-}
 
 function sourceHeaders(source: "live" | "unavailable"): HeadersInit {
   return {
@@ -38,7 +36,10 @@ function unavailable(message: string, status = 502) {
   )
 }
 
-async function sessionContext() {
+async function sessionContext(request: Request) {
+  const incomingBearer = bearerFromAuthorization(
+    request.headers.get("authorization"),
+  )
   const supabase = await createClient()
   const {
     data: { user },
@@ -48,11 +49,17 @@ async function sessionContext() {
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  return { user, accessToken: session?.access_token ?? null }
+  const cookieStore = await cookies()
+  const accessToken = firstAccessToken(
+    session?.access_token,
+    incomingBearer,
+    accessTokenFromCookieList(cookieStore.getAll()),
+  )
+  return { user, accessToken }
 }
 
 async function proxy(request: Request, path: string[]): Promise<NextResponse> {
-  const auth = await sessionContext()
+  const auth = await sessionContext(request)
   const upstreamPath = path.join("/")
   const isPublic = upstreamPath === "catalogue" || upstreamPath === "health"
 
@@ -60,13 +67,19 @@ async function proxy(request: Request, path: string[]): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const backend = analyzerBase()
-  if (!backend) {
-    return unavailable("ANALYZER_API_URL / BACKEND_API_URL is not configured")
+  if (auth && !auth.accessToken && !isPublic) {
+    return NextResponse.json(
+      {
+        error: "missing_access_token",
+        message:
+          "Signed in, but no Supabase access token was available to call Flask /v1/compliance. Sign out and back in, then retry.",
+      },
+      { status: 401 },
+    )
   }
 
   const url = new URL(request.url)
-  const target = `${backend}/v1/compliance/${upstreamPath}${url.search}`
+  const target = complianceUpstreamUrl(upstreamPath, url.search)
 
   const headers = new Headers()
   if (auth?.accessToken) {

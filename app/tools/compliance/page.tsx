@@ -88,12 +88,14 @@ export default function ComplianceCockpitPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(new Date())
   const [busy, setBusy] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const refs = useMemo(() => properties.map(toPropertyRef), [properties])
 
   const refresh = useCallback(async () => {
     if (!api) return
     setBusy(true)
+    setLoadError(null)
     try {
       const from = toIsoDate(addDays(new Date(), -30))
       const to = toIsoDate(addDays(new Date(), 366))
@@ -107,7 +109,10 @@ export default function ComplianceCockpitPage() {
       setEvents(cal)
     } catch (err) {
       console.error("[compliance]", err)
-      toast.error("Failed to load compliance data")
+      const message =
+        err instanceof Error ? err.message : "Failed to load compliance data"
+      setLoadError(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -197,6 +202,18 @@ export default function ComplianceCockpitPage() {
       </div>
 
       <ComplianceDisclaimerBanner />
+
+      {loadError && (
+        <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+          <AlertTriangle className="mt-0.5 size-4 text-destructive" />
+          <div className="flex flex-1 flex-col gap-2">
+            <p className="text-foreground">{loadError}</p>
+            <Button size="sm" variant="outline" onClick={() => void refresh()}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
 
       {source === "stub" && (
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
