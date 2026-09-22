@@ -7,7 +7,7 @@
  * Outputs: year-1 after-tax, cumulative, NPV, break-even, soft lean only.
  * Dual lenses: entity retained vs owner extracted.
  * Sticky disclaimer: educational only, not advice.
- * Wired to POST /v1/ltd-co/compare (proxies Flask BE calc API; local fallback).
+ * Wired to POST /v1/ltd-co/compare (proxies Flask BE calc API; fail-closed).
  * E&NI-first; Scotland/Wales is a flag only.
  * Broker mode is structure-only (unavailable slots). No screener / MTD /
  * compliance / licensing.
@@ -56,13 +56,17 @@ import {
   LTD_CO_DISCLAIMER,
   LTD_CO_DISCLAIMER_WALL,
   LTD_CO_TAX_YEAR,
+  validateLtdCoFormFields,
   type CalculatorMode,
   type LtdCoCompareInput,
   type LtdCoCompareResult,
+  type LtdCoRequiredField,
   type LeanSide,
   type UkRegion,
 } from "@/lib/ltdCoCompare"
 import type { LtdCoCalcSource } from "@/lib/ltdCoBackend"
+
+type CompareErrorKind = "validation" | "unavailable"
 
 const DISCLAIMER_STORAGE_KEY = "metalyzi.ltd-co.disclaimer-v1"
 
@@ -102,6 +106,7 @@ export type LtdCoCalculatorProps = {
   initialUnderstood: boolean
   initialResult: LtdCoCompareResult | null
   initialError?: string | null
+  initialErrorKind?: CompareErrorKind | null
   initialSource?: LtdCoCalcSource | null
   initialMode?: CalculatorMode
   initialLens?: Lens
@@ -144,6 +149,7 @@ export function PersonalVsLtdCalculator({
   initialUnderstood,
   initialResult,
   initialError = null,
+  initialErrorKind = null,
   initialSource = null,
   initialMode = "landlord",
   initialLens = "retained",
@@ -159,6 +165,19 @@ export function PersonalVsLtdCalculator({
   const [calcSource, setCalcSource] = useState<LtdCoCalcSource | null>(initialSource)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
+  const [errorKind, setErrorKind] = useState<CompareErrorKind | null>(
+    initialError ? (initialErrorKind ?? "unavailable") : null,
+  )
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<LtdCoRequiredField, string>>
+  >(() => {
+    if (initialErrorKind !== "validation") return {}
+    const issue = validateLtdCoFormFields({
+      ...fromDefaults(),
+      ...initialFields,
+    })
+    return issue ? { [issue.field]: issue.message } : {}
+  })
   const [attachedToDealId, setAttachedToDealId] = useState<string | null>(null)
   const [dealLabel, setDealLabel] = useState<string | null>(null)
   const [prefillReady, setPrefillReady] = useState(!dealId)
@@ -166,12 +185,33 @@ export function PersonalVsLtdCalculator({
 
   const setField = <K extends keyof FormFields>(key: K, value: FormFields[K]) => {
     setFields((prev) => ({ ...prev, [key]: value }))
+    if (key !== "annualGrossRent" && key !== "purchasePrice") return
+    const field: LtdCoRequiredField =
+      key === "annualGrossRent" ? "annualGrossRent" : "purchasePrice"
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
   }
 
   const runCompare = useCallback(
     async (nextFields: FormFields, nextMode: CalculatorMode) => {
+      const invalid = validateLtdCoFormFields(nextFields)
+      if (invalid) {
+        setLoading(false)
+        setResult(null)
+        setCalcSource(null)
+        setError(invalid.message)
+        setErrorKind("validation")
+        setFieldErrors({ [invalid.field]: invalid.message })
+        return
+      }
       setLoading(true)
       setError(null)
+      setErrorKind(null)
+      setFieldErrors({})
       try {
         const res = await fetch("/v1/ltd-co/compare", {
           method: "POST",
@@ -184,13 +224,21 @@ export function PersonalVsLtdCalculator({
           attachedToDealId?: string | null
           source?: LtdCoCalcSource
           error?: string
+          reason?: CompareErrorKind
         } | null
         if (!res.ok || !json?.ltdCoCompare || json.source !== "backend") {
           setResult(null)
           setCalcSource(null)
+          const kind: CompareErrorKind =
+            json?.reason === "validation" || res.status === 400
+              ? "validation"
+              : "unavailable"
+          setErrorKind(kind)
           setError(
             json?.error ||
-              "The calc API is unavailable. Figures are not estimated locally — retry when the service is back.",
+              (kind === "validation"
+                ? "Enter the required fields to compare structures."
+                : "The calc API is unavailable. Figures are not estimated locally — retry when the service is back."),
           )
           return
         }
@@ -200,6 +248,7 @@ export function PersonalVsLtdCalculator({
       } catch {
         setResult(null)
         setCalcSource(null)
+        setErrorKind("unavailable")
         setError(
           "The calc API is unavailable. Figures are not estimated locally — retry when the service is back.",
         )
@@ -286,6 +335,7 @@ export function PersonalVsLtdCalculator({
   useEffect(() => {
     if (!prefillReady || !disclaimerAccepted) return
     if (initialResult || initialError) return
+    if (validateLtdCoFormFields(fields)) return
     void runCompare(fields, mode)
     // Initial run only — later runs are explicit via Compare / Retry.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -406,12 +456,16 @@ export function PersonalVsLtdCalculator({
                 label="Purchase price"
                 hint="Used by the calc API for SDLT / capital (year 0)"
                 value={fields.purchasePrice}
+                error={fieldErrors.purchasePrice}
+                required
                 onChange={(v) => setField("purchasePrice", v)}
               />
               <PoundField
                 id="annualGrossRent"
                 label="Gross rent"
                 value={fields.annualGrossRent}
+                error={fieldErrors.annualGrossRent}
+                required
                 onChange={(v) => setField("annualGrossRent", v)}
               />
               <PoundField
@@ -573,7 +627,12 @@ export function PersonalVsLtdCalculator({
                   </>
                 )}
               </Button>
-              {error && (
+              {error && errorKind === "validation" && (
+                <p id="ltd-co-validation-error" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+              {error && errorKind !== "validation" && (
                 <p id="ltd-co-backend-error" className="text-sm text-destructive">
                   {error}
                 </p>
@@ -583,7 +642,14 @@ export function PersonalVsLtdCalculator({
         </div>
 
         <div className="flex flex-col gap-4 lg:col-span-3">
-          {error && (
+          {error && errorKind === "validation" && (
+            <Alert id="ltd-co-validation-banner" variant="destructive">
+              <AlertTriangle />
+              <AlertTitle>Missing required field</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {error && errorKind === "unavailable" && (
             <Alert id="ltd-co-backend-error-banner" variant="destructive">
               <AlertTriangle />
               <AlertTitle>Calc API unavailable</AlertTitle>
@@ -1037,17 +1103,25 @@ function PoundField({
   label,
   hint,
   value,
+  error,
+  required,
   onChange,
 }: {
   id: string
   label: string
   hint?: string
   value: string
+  error?: string
+  required?: boolean
   onChange: (v: string) => void
 }) {
+  const errorId = `${id}-error`
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label}
+        {required ? <span className="text-destructive"> *</span> : null}
+      </Label>
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
           £
@@ -1059,10 +1133,20 @@ function PoundField({
           inputMode="decimal"
           className="pl-7"
           value={value}
+          required={required}
+          aria-invalid={error ? true : undefined}
+          aria-required={required || undefined}
+          aria-describedby={error ? errorId : undefined}
           onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
         />
       </div>
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      {error ? (
+        <p id={errorId} className="text-[11px] text-destructive">
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="text-[11px] text-muted-foreground">{hint}</p>
+      ) : null}
     </div>
   )
 }

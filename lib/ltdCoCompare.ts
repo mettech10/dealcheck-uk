@@ -709,3 +709,79 @@ export function ltdCoPrefillFromDeal(args: {
     annualFinanceCosts: gbp(args.annualMortgageCost ?? 0),
   }
 }
+
+/** Fail-closed input gate — compare must not lean on empty/zero required fields. */
+export type LtdCoRequiredField = "annualGrossRent" | "purchasePrice"
+
+export type LtdCoValidationIssue = {
+  field: LtdCoRequiredField
+  message: string
+}
+
+export const LTD_CO_GROSS_RENT_REQUIRED =
+  "Enter Gross rent to compare structures."
+export const LTD_CO_PURCHASE_PRICE_REQUIRED =
+  "Enter Purchase price to compare structures."
+
+export function parseLtdCoAmount(raw: string): number | null {
+  const trimmed = String(raw).replace(/,/g, "").trim()
+  if (trimmed === "") return null
+  const n = Number(trimmed)
+  return Number.isFinite(n) ? n : null
+}
+
+function requiredPositive(
+  value: number | null,
+  field: LtdCoRequiredField,
+  emptyMessage: string,
+): LtdCoValidationIssue | null {
+  if (value === null || !Number.isFinite(value)) {
+    return { field, message: emptyMessage }
+  }
+  if (value <= 0) {
+    return { field, message: emptyMessage }
+  }
+  return null
+}
+
+/**
+ * Required economics for a live compare. Gross rent and purchase price must
+ * be present and greater than zero. Empty, NaN and 0 are all invalid —
+ * they must not produce figures or a soft lean.
+ */
+export function validateLtdCoRequiredFields(values: {
+  annualGrossRent: number | null
+  purchasePrice: number | null
+}): LtdCoValidationIssue | null {
+  return (
+    requiredPositive(
+      values.annualGrossRent,
+      "annualGrossRent",
+      LTD_CO_GROSS_RENT_REQUIRED,
+    ) ??
+    requiredPositive(
+      values.purchasePrice,
+      "purchasePrice",
+      LTD_CO_PURCHASE_PRICE_REQUIRED,
+    )
+  )
+}
+
+export function validateLtdCoCompareInput(
+  input: Pick<LtdCoCompareInput, "deal">,
+): LtdCoValidationIssue | null {
+  return validateLtdCoRequiredFields({
+    annualGrossRent: input.deal.annualGrossRent,
+    purchasePrice: input.deal.purchasePrice,
+  })
+}
+
+export function validateLtdCoFormFields(fields: {
+  annualGrossRent: string
+  purchasePrice: string
+}): LtdCoValidationIssue | null {
+  return validateLtdCoRequiredFields({
+    annualGrossRent: parseLtdCoAmount(fields.annualGrossRent),
+    purchasePrice: parseLtdCoAmount(fields.purchasePrice),
+  })
+}
