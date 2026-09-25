@@ -6,7 +6,8 @@
  * Auth is already confirmed by the server page (same cookie path as
  * /account). This island only mints tokens via GET /api/v1/screener/token
  * — never createBrowserClient().auth.getSession(), which cannot see
- * HttpOnly cookies and previously bounced signed-in users to /login.
+ * HttpOnly cookies. Invalid redirect_uri is a local error only; nothing
+ * here calls signOut or writes auth cookies.
  */
 
 import { useMemo, useState } from "react"
@@ -16,6 +17,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
   buildExtensionConnectHash,
+  connectRedirectError,
   isSafeExtensionRedirect,
   screenerConnectLoginPath,
   type ScreenerConnectTokens,
@@ -41,27 +43,30 @@ export function ConnectClient({
 
   const connect = async () => {
     setError(null)
-    if (!safeRedirect) {
-      setError(
-        redirectUri
-          ? "This page was opened with an invalid extension redirect URL."
-          : "Open this page from the Deal Screener extension to finish connecting.",
-      )
+    const redirectError = connectRedirectError(redirectUri)
+    if (redirectError || !safeRedirect) {
+      setError(redirectError || "This page was opened with an invalid extension redirect URL.")
       return
     }
 
     setStatus("redirecting")
     try {
       const res = await fetch("/api/v1/screener/token", { credentials: "include" })
-      if (res.status === 401) {
-        router.replace(screenerConnectLoginPath(redirectUri))
-        return
-      }
       const body = (await res.json().catch(() => ({}))) as ScreenerConnectTokens & {
         error?: string
       }
+      if (res.status === 401) {
+        // Truly anonymous. Do not call signOut and do not write cookies;
+        // just send them to login. Token mint never clears the session.
+        router.replace(screenerConnectLoginPath(redirectUri))
+        return
+      }
       if (!res.ok || !body.access_token) {
-        setError(body.error || "No session")
+        setError(
+          body.error === "session_token_missing"
+            ? "You are still signed in, but the session token could not be read. Refresh and try again."
+            : body.error || "No session",
+        )
         setStatus("error")
         return
       }

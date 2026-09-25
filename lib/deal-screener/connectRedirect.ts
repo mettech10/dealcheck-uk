@@ -42,6 +42,20 @@ export function screenerConnectLoginPath(redirectUri?: string | null): string {
   return `/login?returnTo=${encodeURIComponent(screenerConnectPath(redirectUri))}`
 }
 
+/**
+ * UI-only gate. Invalid / missing redirect_uri is an error string —
+ * never a sign-out and never a navigation to the untrusted URL.
+ */
+export function connectRedirectError(redirectUri: string): string | null {
+  if (!redirectUri) {
+    return "Open this page from the Deal Screener extension to finish connecting."
+  }
+  if (!isSafeExtensionRedirect(redirectUri)) {
+    return "This page was opened with an invalid extension redirect URL."
+  }
+  return null
+}
+
 /** Hash fragment consumed by the extension (`parseHashTokens`). Never query string. */
 export function buildExtensionConnectHash(tokens: ScreenerConnectTokens): string {
   return new URLSearchParams({

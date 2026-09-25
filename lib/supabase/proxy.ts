@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { mergeAuthCookieOptions } from '@/lib/supabase/cookieOptions'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -26,18 +27,10 @@ export async function updateSession(request: NextRequest) {
           // sameSite: 'lax' (not 'strict') — strict drops the session
           // cookie on cross-site top-level navigations (e.g. the OAuth
           // round-trip back from supabase.co), leaving users
-          // logged-out after a successful sign-in. Must stay in sync
-          // with lib/supabase/server.ts and app/auth/callback/route.ts
-          // — if any one of these writes strict, every other code path
-          // gets clobbered on the next session refresh.
-          const secureCookieOptions = {
-            path: '/',
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax' as const,
-          }
+          // logged-out after a successful sign-in. mergeAuthCookieOptions
+          // keeps Supabase maxAge: 0 so chunk deletions actually delete.
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, { ...options, ...secureCookieOptions }),
+            supabaseResponse.cookies.set(name, value, mergeAuthCookieOptions(options)),
           )
         },
       },

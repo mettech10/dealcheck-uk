@@ -9,6 +9,7 @@ import {
   SCHEMA_VERSION,
   applyDomFallbacks,
   buildExtensionConnectHash,
+  connectRedirectError,
   buildHandoffRequest,
   collectFromPageModel,
   computeScreenMetrics,
@@ -471,6 +472,17 @@ describe("/screener/connect redirect allowlist + login returnTo", () => {
     expect(isSafeExtensionRedirect("https://abc.chromiumapp.org/")).toBe(false)
     expect(isSafeExtensionRedirect("/screener/connect")).toBe(false)
     expect(isSafeExtensionRedirect("")).toBe(false)
+  })
+
+  test("invalid redirect_uri is a Connect error only — never an external hop or sign-out", () => {
+    const evil = "https://evil.example.com/callback"
+    expect(isSafeExtensionRedirect(evil)).toBe(false)
+    expect(connectRedirectError(evil)).toMatch(/invalid extension redirect URL/)
+    expect(connectRedirectError("")).toMatch(/Open this page from the Deal Screener/)
+    expect(connectRedirectError(good)).toBeNull()
+    // Login returnTo stays on-origin even when the untrusted URI is present
+    expect(screenerConnectLoginPath(evil).startsWith("/login?returnTo=")).toBe(true)
+    expect(screenerConnectLoginPath(evil)).not.toContain("https://evil.example.com")
   })
 
   test("login bounce preserves redirect_uri inside returnTo (same encoding as /account-style gate)", () => {
