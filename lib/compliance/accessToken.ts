@@ -7,8 +7,10 @@
  *      getSession() token (getUser() can succeed via refresh while
  *      getSession() still has the old access_token).
  *   2. Flask /auth/v1/user rejected a valid user JWT because its apikey
- *      was the anon key / the user token itself — /v1/deals uses the
- *      service role as apikey. That is a BE fix.
+ *      was the anon key, missing, or the user token itself. MTD live QA
+ *      hit the same pattern (`/api/mtd/token` 200, `/api/mtd/businesses`
+ *      401 Unauthorised). /v1/deals uses the service role as apikey.
+ *      That is a BE fix (503 if unconfigured; never user token as apikey).
  *
  * Only `role=authenticated` access tokens are forwarded. Cookie parsing
  * matches lib/mtd/session.ts (chunked sb-*-auth-token, base64- prefix).
