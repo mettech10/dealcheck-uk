@@ -88,7 +88,8 @@ describe("mapBeStatus", () => {
     expect(mapBeStatus("valid")).toBe("green")
     expect(mapBeStatus("due_soon")).toBe("amber")
     expect(mapBeStatus("overdue")).toBe("red")
-    expect(mapBeStatus("unknown")).toBe("red")
+    expect(mapBeStatus("not_applicable")).toBe("na")
+    expect(mapBeStatus("unknown")).toBe("amber")
   })
 })
 
@@ -144,5 +145,95 @@ describe("composePropertyFile / composeDashboard", () => {
     expect(dash.properties[0].lights.LIC_HMO).toBe("na")
     expect(dash.properties[1].lights.LIC_HMO).toBe("green")
     expect(dash.summary.properties).toBe(2)
+  })
+
+  test("QA r4: Missing is required+no record; licences unknown/N/A are excluded", () => {
+    const now = new Date(2026, 8, 25, 12)
+    const obligations: BeObligation[] = [
+      {
+        id: "gas",
+        propertyId: btl.propertyId,
+        code: "GAS",
+        status: "valid",
+        issuedOn: "2026-09-01",
+        expiresOn: "2027-09-01",
+        evidence: [],
+      },
+      {
+        id: "eicr",
+        propertyId: btl.propertyId,
+        code: "EICR",
+        status: "overdue",
+        issuedOn: "2021-06-01",
+        expiresOn: "2026-06-01",
+        evidence: [],
+      },
+      {
+        id: "epc",
+        propertyId: btl.propertyId,
+        code: "EPC",
+        status: "due_soon",
+        issuedOn: "2016-11-15",
+        expiresOn: "2026-11-15",
+        evidence: [],
+      },
+    ]
+    const dash = composeDashboard([btl], obligations, now)
+    const file = composePropertyFile(btl, obligations, now)
+    const unlogged = file.obligations.filter(
+      (o) => o.applicability === "required" && !o.issuedOn && o.evidence.length === 0,
+    )
+    expect(unlogged.map((o) => o.code)).toEqual(["DEP", "HTR"])
+    expect(dash.summary.missing).toBe(2)
+    expect(dash.properties[0].missingCount).toBe(2)
+    expect(dash.summary.overdue).toBe(1)
+    expect(dash.properties[0].overdueCount).toBe(1)
+    expect(dash.summary.unknown).toBe(1)
+    expect(file.obligations.find((o) => o.code === "LIC_SEL")?.applicability).toBe(
+      "unknown",
+    )
+    expect(file.obligations.find((o) => o.code === "LIC_HMO")?.applicability).toBe(
+      "not_applicable",
+    )
+  })
+
+  test("persisted N/A is green/neutral and not Missing", () => {
+    const now = new Date(2026, 8, 25, 12)
+    const file = composePropertyFile(
+      btl,
+      [
+        {
+          id: "gas-na",
+          propertyId: btl.propertyId,
+          code: "GAS",
+          status: "not_applicable",
+          applicability: "not_applicable",
+          applicabilityReason: "no gas supply",
+          issuedOn: null,
+          evidence: [],
+        },
+      ],
+      now,
+    )
+    const gas = file.obligations.find((o) => o.code === "GAS")
+    expect(gas?.status).toBe("na")
+    expect(gas?.applicability).toBe("not_applicable")
+    const dash = composeDashboard(
+      [btl],
+      [
+        {
+          id: "gas-na",
+          propertyId: btl.propertyId,
+          code: "GAS",
+          status: "not_applicable",
+          applicability: "not_applicable",
+          applicabilityReason: "no gas supply",
+        },
+      ],
+      now,
+    )
+    // GAS is N/A; remaining required-without-record: EICR, EPC, DEP, HTR
+    expect(dash.summary.missing).toBe(4)
+    expect(dash.properties[0].missingCount).toBe(4)
   })
 })

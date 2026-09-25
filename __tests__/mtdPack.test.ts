@@ -115,6 +115,7 @@ describe("Next does not own the MTD ledger write path", () => {
     const src = readFileSync("app/api/mtd/[...path]/route.ts", "utf8")
     expect(src).toContain("flaskMtdUrl")
     expect(src).toContain("getMtdAuth")
+    expect(src).toContain("forceRefresh")
     expect(src).not.toContain("mtd_ledger_entries")
     expect(src).toContain("hmrcSubmit: false")
   })

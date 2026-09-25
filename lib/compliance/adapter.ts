@@ -15,6 +15,7 @@ import {
 import {
   countByLight,
   daysUntil,
+  isMissingObligation,
   lightsMap,
   overallStatus,
 } from "./status"
@@ -79,6 +80,8 @@ export interface BeObligation {
   issuedOn?: string | null
   expiresOn?: string | null
   notes?: string | null
+  applicability?: string | null
+  applicabilityReason?: string | null
   createdAt?: string | null
   updatedAt?: string | null
   reminders?: BeReminder[]
@@ -105,9 +108,24 @@ export function mapBeStatus(status: string | null | undefined): TrafficLight {
       return "amber"
     case "overdue":
       return "red"
+    case "not_applicable":
+      return "na"
+    case "unknown":
+      return "amber"
     default:
       return "red"
   }
+}
+
+function mapBeApplicability(
+  raw: string | null | undefined,
+  fallback: ObligationState["applicability"],
+): ObligationState["applicability"] {
+  const value = String(raw || "").trim().toLowerCase().replace(/-/g, "_")
+  if (value === "not_applicable" || value === "na") return "not_applicable"
+  if (value === "unknown" || value === "check") return "unknown"
+  if (value === "required" || value === "applicable") return "required"
+  return fallback
 }
 
 export function mapCatalogueItem(raw: unknown): ObligationDefinition | null {
@@ -198,15 +216,23 @@ export function mapObligationToState(
   const expiresOn = item.expiresOn || null
   const issuedOn = item.issuedOn || null
   const evidence = (item.evidence ?? []).map((ev) => mapEvidence(ev, code))
+  const applicability = mapBeApplicability(item.applicability, "required")
+  const status =
+    applicability === "not_applicable"
+      ? "na"
+      : applicability === "unknown"
+        ? "amber"
+        : mapBeStatus(item.status)
   return {
     code,
     instanceId: item.id,
-    applicability: "required",
+    applicability,
+    applicabilityReason: item.applicabilityReason || null,
     notes: item.notes || null,
     issuedOn,
     expiresOn,
     evidence,
-    status: mapBeStatus(item.status),
+    status,
     daysUntilExpiry: expiresOn ? daysUntil(expiresOn, now) : null,
     latestExpiry: expiresOn,
   }
@@ -295,15 +321,21 @@ export function composeDashboard(
       overallStatus: file.overallStatus,
       lights: lightsMap(file),
       overdueCount: file.obligations.filter(
-        (o) => o.status === "red" && o.daysUntilExpiry != null && o.daysUntilExpiry < 0,
+        (o) =>
+          o.applicability !== "not_applicable" &&
+          o.applicability !== "unknown" &&
+          o.status === "red" &&
+          o.daysUntilExpiry != null &&
+          o.daysUntilExpiry < 0,
       ).length,
-      dueSoonCount: file.obligations.filter((o) => o.status === "amber").length,
-      missingCount: file.obligations.filter(
+      dueSoonCount: file.obligations.filter(
         (o) =>
           o.applicability === "required" &&
-          !o.issuedOn &&
-          o.evidence.length === 0,
+          o.status === "amber" &&
+          o.daysUntilExpiry != null &&
+          o.daysUntilExpiry >= 0,
       ).length,
+      missingCount: file.obligations.filter((o) => isMissingObligation(o)).length,
     })),
     source: "live",
   }

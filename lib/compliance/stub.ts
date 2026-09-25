@@ -269,7 +269,7 @@ export function createStubClient(opts: {
             (o) => o.status === "amber" && o.daysUntilExpiry != null && o.daysUntilExpiry >= 0,
           ).length,
           missingCount: file.obligations.filter(
-            (o) => o.applicability === "required" && o.evidence.length === 0,
+            (o) => o.applicability === "required" && !o.issuedOn && o.evidence.length === 0,
           ).length,
         })),
         source: "stub",
@@ -288,6 +288,10 @@ export function createStubClient(opts: {
             {
               ...row,
               applicability: patch.applicability ?? row.applicability,
+              applicabilityReason:
+                patch.applicabilityReason === undefined
+                  ? row.applicabilityReason
+                  : patch.applicabilityReason,
               notes: patch.notes === undefined ? row.notes : patch.notes,
             },
             { now, warnDays },

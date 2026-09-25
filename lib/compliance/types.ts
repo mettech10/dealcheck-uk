@@ -69,6 +69,8 @@ export interface ObligationState {
   /** Flask obligation instance id. Null until POST /obligations. */
   instanceId?: string | null
   applicability: Applicability
+  /** Required when GAS is not_applicable (e.g. no gas supply). */
+  applicabilityReason?: string | null
   notes: string | null
   issuedOn?: string | null
   expiresOn?: string | null
@@ -107,6 +109,8 @@ export interface ComplianceDashboard {
     overdue: number
     dueSoon: number
     missing: number
+    /** Licence / other rows whose applicability is check/unknown. */
+    unknown: number
   }
   properties: PropertyComplianceSummary[]
   source: "live" | "stub" | "unavailable"
@@ -148,6 +152,7 @@ export interface UploadEvidenceInput {
 
 export interface PatchObligationInput {
   applicability?: Applicability
+  applicabilityReason?: string | null
   notes?: string | null
 }
 

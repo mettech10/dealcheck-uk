@@ -2,11 +2,16 @@
  * Server-side MTD auth: verify the user, then recover a Supabase JWT
  * so the BFF can call Flask `/v1/mtd/*` with Bearer.
  *
- * Live QA P0: `/api/mtd/token` returned 401 when `getUser()` succeeded
- * but `getSession()` had no access_token. That looked like "signed out"
- * on /mtd even though /analyse was authenticated. Only a missing user
- * is anonymous; a signed-in user without a JWT is a token error.
+ * Cookie reads use createReadOnlyClient (#108). Only refreshSession writes.
+ * Expired / near-expiry access tokens are refreshed before forwarding.
  */
+
+import {
+  accessTokenNeedsRefresh,
+  firstUserAccessToken,
+  isUserAccessToken,
+} from "@/lib/compliance/accessToken"
+import { refreshUserAccessToken } from "@/lib/supabase/refreshAccessToken"
 
 export type CookiePair = { name: string; value: string }
 
@@ -37,7 +42,12 @@ function tokenFromParsed(parsed: unknown): string | null {
 /** Reconstruct a Supabase access token from sb-*-auth-token cookies (incl. chunks). */
 export function accessTokenFromSbCookies(cookies: CookiePair[]): string | null {
   const chunks = cookies
-    .filter((c) => AUTH_TOKEN_COOKIE.test(c.name) && !c.name.includes("code-verifier"))
+    .filter(
+      (c) =>
+        AUTH_TOKEN_COOKIE.test(c.name) &&
+        !c.name.includes("code-verifier") &&
+        c.value,
+    )
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   if (!chunks.length) return null
 
@@ -66,11 +76,12 @@ export type MtdAuth =
   | { status: "signed_in"; userId: string; email: string | null; accessToken: string }
   | { status: "token_missing"; userId: string; email: string | null }
 
-export async function getMtdAuth(): Promise<MtdAuth> {
-  const { createClient } = await import("@/lib/supabase/server")
+export async function getMtdAuth(opts: { forceRefresh?: boolean } = {}): Promise<MtdAuth> {
+  const { createReadOnlyClient } = await import("@/lib/supabase/server")
   const { cookies } = await import("next/headers")
+  const { sessionFromSbCookies } = await import("@/lib/supabase/sessionCookies")
 
-  const supabase = await createClient()
+  const supabase = await createReadOnlyClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -79,16 +90,24 @@ export async function getMtdAuth(): Promise<MtdAuth> {
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  let accessToken = session?.access_token || null
+  const cookieStore = await cookies()
+  const cookieSession = sessionFromSbCookies(cookieStore.getAll())
 
-  if (!accessToken) {
-    const cookieStore = await cookies()
-    accessToken = accessTokenFromSbCookies(cookieStore.getAll())
-  }
+  let accessToken = firstUserAccessToken(
+    session?.access_token,
+    cookieSession?.access_token,
+    accessTokenFromSbCookies(cookieStore.getAll()),
+  )
 
-  if (!accessToken) {
-    const { data } = await supabase.auth.refreshSession()
-    accessToken = data.session?.access_token || null
+  const shouldRefresh =
+    opts.forceRefresh || !accessToken || accessTokenNeedsRefresh(accessToken)
+
+  if (shouldRefresh) {
+    const refreshed = await refreshUserAccessToken()
+    if (refreshed) accessToken = refreshed
+    else if (accessToken && (!isUserAccessToken(accessToken) || accessTokenNeedsRefresh(accessToken, 0))) {
+      accessToken = null
+    }
   }
 
   if (!accessToken) {
