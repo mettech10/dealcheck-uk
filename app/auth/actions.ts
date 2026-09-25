@@ -4,19 +4,7 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/brevo-email"
-
-/**
- * Whitelist a returnTo path to relative URLs only — never let a caller
- * push us to an external host (open-redirect protection). Anything that
- * doesn't start with a single "/" (and isn't "//something") falls back
- * to the default landing page.
- */
-function safeReturnTo(raw: string | null | undefined, fallback = "/analyse"): string {
-  if (!raw) return fallback
-  if (!raw.startsWith("/")) return fallback
-  if (raw.startsWith("//")) return fallback // protocol-relative external
-  return raw
-}
+import { safeReturnTo } from "@/lib/auth/returnTo"
 
 export async function signInWithEmail(formData: FormData) {
   const supabase = await createClient()
