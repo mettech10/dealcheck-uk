@@ -248,13 +248,9 @@ properties → open a file → add GAS with issuedOn → dashboard overdue/valid
 updates. MTD: `/api/me` 200 + `/api/mtd/token` 200 + `/api/mtd/businesses`
 200 (not 401 `Unauthorised`). Reminder dispatch is cron + Brevo, not this UI.
 
-Companion analyzer patches (this agent could not push `metusa-deal-analyzer`,
-GitHub 403 last time):
-
-- `patches/metusa-deal-analyzer-compliance-p0.patch` — store probe / embeds (merged as BE #97 if already applied).
-- `patches/metusa-deal-analyzer-compliance-auth.patch` — shared GoTrue helper:
-  service-role apikey, 503 if unconfigured, never user token as apikey,
-  `auth` readiness on `/v1/compliance/health` and `/v1/mtd/health`.
+Analyzer auth companion is merged as
+[metusa-deal-analyzer#98](https://github.com/mettech10/metusa-deal-analyzer/pull/98)
+(store probe was #97). No FE patch file is required.
 
 ```bash
 curl -s https://metusa-deal-analyzer.onrender.com/v1/compliance/health | jq '{status, storeProbe, auth}'

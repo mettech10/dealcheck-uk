@@ -93,6 +93,7 @@ describe("access token recovery", () => {
       accessTokenFromCookieList([
         { name: "sb-abcdxyz-auth-token.0", value: encoded.slice(0, mid) },
         { name: "sb-abcdxyz-auth-token.1", value: encoded.slice(mid) },
+        { name: "sb-abcdxyz-auth-token.2", value: "" },
       ]),
     ).toBe(ACCESS)
   })

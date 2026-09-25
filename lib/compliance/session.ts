@@ -2,6 +2,11 @@
  * Server-side Compliance auth, same recovery as MTD (`lib/mtd/session.ts`)
  * plus a getUser(jwt) check so we never forward a token our own Supabase
  * already rejects.
+ *
+ * Cookie reads use createReadOnlyClient so getUser()/getSession() cannot
+ * persist empty maxAge:0 chunk deletions as 7-day cookies (#108).
+ * refreshSession() uses the writable client, which keeps Supabase's
+ * maxAge via mergeAuthCookieOptions.
  */
 
 import {
@@ -22,10 +27,13 @@ export const COMPLIANCE_TOKEN_MISSING_MESSAGE =
 export async function getComplianceAuth(
   request?: Request,
 ): Promise<ComplianceAuth> {
-  const { createClient } = await import("@/lib/supabase/server")
+  const { createClient, createReadOnlyClient } = await import(
+    "@/lib/supabase/server"
+  )
   const { cookies } = await import("next/headers")
+  const { sessionFromSbCookies } = await import("@/lib/supabase/sessionCookies")
 
-  const supabase = await createClient()
+  const supabase = await createReadOnlyClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -38,10 +46,12 @@ export async function getComplianceAuth(
     data: { session },
   } = await supabase.auth.getSession()
   const cookieStore = await cookies()
+  const cookieSession = sessionFromSbCookies(cookieStore.getAll())
 
   let accessToken = firstUserAccessToken(
     session?.access_token,
     incoming,
+    cookieSession?.access_token,
     accessTokenFromCookieList(cookieStore.getAll()),
   )
 
@@ -51,7 +61,8 @@ export async function getComplianceAuth(
   }
 
   if (!accessToken) {
-    const { data } = await supabase.auth.refreshSession()
+    const writable = await createClient()
+    const { data } = await writable.auth.refreshSession()
     const refreshed = data.session?.access_token || null
     accessToken = isUserAccessToken(refreshed) ? refreshed : null
   }

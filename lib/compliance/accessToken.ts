@@ -108,7 +108,12 @@ const AUTH_TOKEN_COOKIE = /^(sb-.*-auth-token)(?:\.\d+)?$/
 
 export function accessTokenFromCookieList(cookies: CookiePair[]): string | null {
   const chunks = cookies
-    .filter((c) => AUTH_TOKEN_COOKIE.test(c.name) && !c.name.includes("code-verifier"))
+    .filter(
+      (c) =>
+        AUTH_TOKEN_COOKIE.test(c.name) &&
+        !c.name.includes("code-verifier") &&
+        c.value,
+    )
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
   if (!chunks.length) return null
 
