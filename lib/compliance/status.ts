@@ -2,10 +2,13 @@
  * Pure traffic-light + calendar derivation for the Compliance Cockpit.
  *
  * Rules (England MVP):
- *   na     — marked not applicable
- *   red    — required and missing, or latest evidence expired
- *   amber  — applicability unknown, or expires within the warn window
- *   green  — required, evidence present, and (if dated) expiry beyond warn window
+ *   na     — marked not applicable (neutral; excluded from Missing/Overdue)
+ *   red    — required and no record, or latest evidence expired
+ *   amber  — applicability unknown (own “To check” count), or expires soon
+ *   green  — required, a record exists, and (if dated) expiry beyond warn window
+ *
+ * Missing = required + applicable + no record (no issuedOn and no evidence).
+ * Unknown/check licence rows are not Missing.
  *
  * Property overall = worst of its applicable rows (na ignored).
  * unknown counts as amber so “check the council” stays visible.
@@ -81,6 +84,29 @@ export function latestEvidence(obligation: Pick<ObligationState, "evidence">) {
   })[0]
 }
 
+/** A logged certificate (dates and/or uploaded file) counts as a record. */
+export function hasObligationRecord(
+  row: Pick<ObligationState, "issuedOn" | "evidence">,
+): boolean {
+  return Boolean(row.issuedOn) || row.evidence.length > 0
+}
+
+/**
+ * Missing tile: required + applicable + no record.
+ * Excludes not-applicable and check/unknown licence items.
+ */
+export function isMissingObligation(
+  row: Pick<ObligationState, "applicability" | "issuedOn" | "evidence">,
+): boolean {
+  return row.applicability === "required" && !hasObligationRecord(row)
+}
+
+export function isUnknownCheck(
+  row: Pick<ObligationState, "applicability">,
+): boolean {
+  return row.applicability === "unknown"
+}
+
 export function deriveObligationStatus(
   obligation: Pick<ObligationState, "applicability" | "evidence">,
   opts: { now?: Date; warnDays?: number } = {},
@@ -152,6 +178,7 @@ export function countByLight(files: PropertyComplianceFile[]): {
   overdue: number
   dueSoon: number
   missing: number
+  unknown: number
 } {
   let green = 0
   let amber = 0
@@ -159,6 +186,7 @@ export function countByLight(files: PropertyComplianceFile[]): {
   let overdue = 0
   let dueSoon = 0
   let missing = 0
+  let unknown = 0
   for (const file of files) {
     const overall = overallStatus(file)
     if (overall === "green") green += 1
@@ -166,7 +194,11 @@ export function countByLight(files: PropertyComplianceFile[]): {
     else if (overall === "red") red += 1
     for (const row of file.obligations) {
       if (row.applicability === "not_applicable") continue
-      if (row.applicability === "required" && row.evidence.length === 0) missing += 1
+      if (isUnknownCheck(row)) {
+        unknown += 1
+        continue
+      }
+      if (isMissingObligation(row)) missing += 1
       if (row.status === "red" && row.daysUntilExpiry != null && row.daysUntilExpiry < 0) {
         overdue += 1
       }
@@ -175,7 +207,7 @@ export function countByLight(files: PropertyComplianceFile[]): {
       }
     }
   }
-  return { green, amber, red, overdue, dueSoon, missing }
+  return { green, amber, red, overdue, dueSoon, missing, unknown }
 }
 
 export function lightsMap(

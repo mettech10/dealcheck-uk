@@ -64,6 +64,18 @@ export function isUserAccessToken(token: string | null | undefined): boolean {
   return true
 }
 
+/** True when the JWT is missing, expired, or within `skewMs` of expiry. */
+export function accessTokenNeedsRefresh(
+  token: string | null | undefined,
+  skewMs = 120_000,
+): boolean {
+  if (!isUserAccessToken(token)) return true
+  const payload = decodeJwtPayload(token!)
+  const exp = Number(payload?.exp)
+  if (!Number.isFinite(exp)) return false
+  return exp * 1000 <= Date.now() + skewMs
+}
+
 function tokenFromParsed(parsed: unknown): string | null {
   if (!parsed || typeof parsed !== "object") return null
   const row = parsed as Record<string, unknown>

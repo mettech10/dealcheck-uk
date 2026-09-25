@@ -5,16 +5,17 @@
  *
  * Cookie reads use createReadOnlyClient so getUser()/getSession() cannot
  * persist empty maxAge:0 chunk deletions as 7-day cookies (#108).
- * refreshSession() uses the writable client, which keeps Supabase's
- * maxAge via mergeAuthCookieOptions.
+ * refreshSession() is the only cookie write (mergeAuthCookieOptions).
  */
 
 import {
   accessTokenFromCookieList,
+  accessTokenNeedsRefresh,
   bearerFromAuthorization,
   firstUserAccessToken,
   isUserAccessToken,
 } from "./accessToken"
+import { refreshUserAccessToken } from "@/lib/supabase/refreshAccessToken"
 
 export type ComplianceAuth =
   | { status: "anon" }
@@ -26,10 +27,9 @@ export const COMPLIANCE_TOKEN_MISSING_MESSAGE =
 
 export async function getComplianceAuth(
   request?: Request,
+  opts: { forceRefresh?: boolean } = {},
 ): Promise<ComplianceAuth> {
-  const { createClient, createReadOnlyClient } = await import(
-    "@/lib/supabase/server"
-  )
+  const { createReadOnlyClient } = await import("@/lib/supabase/server")
   const { cookies } = await import("next/headers")
   const { sessionFromSbCookies } = await import("@/lib/supabase/sessionCookies")
 
@@ -55,16 +55,28 @@ export async function getComplianceAuth(
     accessTokenFromCookieList(cookieStore.getAll()),
   )
 
-  if (accessToken) {
-    const checked = await supabase.auth.getUser(accessToken)
-    if (checked.error || !checked.data.user) accessToken = null
+  const shouldRefresh =
+    opts.forceRefresh || !accessToken || accessTokenNeedsRefresh(accessToken)
+
+  if (shouldRefresh) {
+    const refreshed = await refreshUserAccessToken()
+    if (refreshed) accessToken = refreshed
+    else if (accessToken && !isUserAccessToken(accessToken)) accessToken = null
+    else if (accessToken && accessTokenNeedsRefresh(accessToken, 0)) {
+      accessToken = null
+    }
   }
 
-  if (!accessToken) {
-    const writable = await createClient()
-    const { data } = await writable.auth.refreshSession()
-    const refreshed = data.session?.access_token || null
-    accessToken = isUserAccessToken(refreshed) ? refreshed : null
+  if (accessToken) {
+    const checked = await supabase.auth.getUser(accessToken)
+    if (checked.error || !checked.data.user) {
+      if (!opts.forceRefresh) {
+        const retried = await refreshUserAccessToken()
+        accessToken = retried
+      } else {
+        accessToken = null
+      }
+    }
   }
 
   if (!accessToken) {

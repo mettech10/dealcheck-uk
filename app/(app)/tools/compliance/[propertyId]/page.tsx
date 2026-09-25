@@ -220,15 +220,22 @@ export default function PropertyCompliancePage() {
                   liveStore={source === "live"}
                   onApplicability={async (applicability) => {
                     if (!api) return
-                    if (source === "live" && applicability !== "required") {
-                      toast.error(
-                        "Applicability is not stored on Flask. Not-applicable is not persisted.",
+                    let applicabilityReason: string | undefined
+                    if (applicability === "not_applicable" && row.code === "GAS") {
+                      const reason = window.prompt(
+                        "Why is gas safety not applicable? e.g. no gas supply",
+                        row.applicabilityReason || "no gas supply",
                       )
-                      return
+                      if (!reason || reason.trim().length < 3) {
+                        toast.error("GAS not-applicable needs a reason (e.g. no gas supply)")
+                        return
+                      }
+                      applicabilityReason = reason.trim()
                     }
                     try {
                       const next = await api.patchObligation(propertyId, row.code, {
                         applicability,
+                        applicabilityReason,
                       })
                       setFile(next)
                       toast.success(`${row.code} updated`)
@@ -329,7 +336,7 @@ function ObligationRow({
             <Select
               value={row.applicability}
               onValueChange={(v) => onApplicability(v as Applicability)}
-              disabled={disabled || liveStore}
+              disabled={disabled}
             >
               <SelectTrigger size="sm" className="w-[200px]">
                 <SelectValue />
@@ -340,11 +347,15 @@ function ObligationRow({
                 <SelectItem value="not_applicable">Not applicable</SelectItem>
               </SelectContent>
             </Select>
-            {liveStore && (
+            {row.applicability === "not_applicable" && row.applicabilityReason ? (
               <span className="text-[11px] text-muted-foreground">
-                Flask has no applicability field; N/A is not persisted.
+                Reason: {row.applicabilityReason}
               </span>
-            )}
+            ) : row.code === "GAS" ? (
+              <span className="text-[11px] text-muted-foreground">
+                N/A only with a reason (e.g. no gas supply).
+              </span>
+            ) : null}
           </div>
 
           <div className="text-right text-xs text-muted-foreground">
@@ -362,8 +373,13 @@ function ObligationRow({
                   </span>
                 )}
               </div>
-            ) : row.applicability === "required" ? (
+            ) : row.applicability === "required" && !row.issuedOn ? (
               <div>No certificate logged</div>
+            ) : row.issuedOn ? (
+              <div>
+                Issued{" "}
+                <span className="font-medium text-foreground">{row.issuedOn}</span>
+              </div>
             ) : null}
           </div>
 

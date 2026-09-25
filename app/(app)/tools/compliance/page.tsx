@@ -340,13 +340,14 @@ function DashboardTab({
   const s = dashboard?.summary
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-7">
         <StatTile label="Properties" value={String(s?.properties ?? 0)} />
         <StatTile label="Compliant" value={String(s?.green ?? 0)} tone="green" />
         <StatTile label="Due soon / check" value={String(s?.amber ?? 0)} tone="amber" />
         <StatTile label="Action needed" value={String(s?.red ?? 0)} tone="red" />
         <StatTile label="Overdue certs" value={String(s?.overdue ?? 0)} tone="red" />
         <StatTile label="Missing" value={String(s?.missing ?? 0)} tone="amber" />
+        <StatTile label="To check" value={String(s?.unknown ?? 0)} tone="amber" />
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

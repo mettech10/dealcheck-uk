@@ -51,9 +51,9 @@ and is **not** called from this frontend.
 | GET | `/v1/compliance/health` | Optional probe |
 | GET | `/v1/compliance/dashboard` | Traffic-light roll-up (`?propertyId=` optional) |
 | GET | `/v1/compliance/obligations` | List (`?propertyId=&code=&status=`) |
-| POST | `/v1/compliance/obligations` | Create instance `{ propertyId, code, issuedOn?, expiresOn?, notes? }` |
+| POST | `/v1/compliance/obligations` | Create instance `{ propertyId, code, issuedOn?, expiresOn?, notes?, applicability?, applicabilityReason? }` |
 | GET | `/v1/compliance/obligations/:id` | Single instance |
-| PATCH | `/v1/compliance/obligations/:id` | Update dates / notes |
+| PATCH | `/v1/compliance/obligations/:id` | Update dates / notes / applicability |
 | DELETE | `/v1/compliance/obligations/:id` | Unused in MVP UI |
 | GET | `/v1/compliance/properties/:propertyId/obligations` | Property file |
 | POST | `/v1/compliance/obligations/:id/evidence` | Multipart `file` or JSON `{filename, contentType, dataBase64}` |
@@ -100,7 +100,11 @@ legal note, expiry model stay FE copy). Traffic lights map Flask status:
 | `overdue` | red |
 
 Missing instance + default N/A (e.g. LIC_HMO on BTL) → grey `na`.
-Missing required instance → red.
+Missing = **required + applicable + no record** (no `issuedOn` and no
+evidence). Check/unknown licence rows are a separate **To check** count,
+not Missing. A dated certificate without a file is a record, not Missing.
+Not-applicable is neutral and excluded from Missing/Overdue/reminders.
+GAS N/A requires `applicabilityReason` (e.g. `no gas supply`).
 
 ---
 
@@ -250,7 +254,10 @@ updates. MTD: `/api/me` 200 + `/api/mtd/token` 200 + `/api/mtd/businesses`
 
 Analyzer auth companion is merged as
 [metusa-deal-analyzer#98](https://github.com/mettech10/metusa-deal-analyzer/pull/98)
-(store probe was #97). No FE patch file is required.
+(store probe was #97). Applicability persistence is
+`patches/metusa-deal-analyzer-compliance-applicability.patch`.
+Run `supabase/migrations/20260925_compliance_obligation_applicability.sql`
+on the production Supabase project (same as auth), then redeploy Flask.
 
 ```bash
 curl -s https://metusa-deal-analyzer.onrender.com/v1/compliance/health | jq '{status, storeProbe, auth}'

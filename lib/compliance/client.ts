@@ -202,18 +202,26 @@ function createLiveClient(fetcher: typeof fetch = fetch): ComplianceApi {
     },
 
     async patchObligation(propertyId, code, patch: PatchObligationInput) {
-      if (patch.applicability && patch.applicability !== "required") {
-        throw new Error(
-          "Applicability is not a Flask field. Not-applicable is not stored on the analyzer.",
-        )
-      }
       const instance = await ensureInstance(propertyId, code, {
         notes: patch.notes ?? "",
+        applicability: patch.applicability,
+        applicabilityReason: patch.applicabilityReason ?? "",
       })
-      if (patch.notes != null) {
+      if (
+        patch.notes != null ||
+        patch.applicability != null ||
+        patch.applicabilityReason != null
+      ) {
         const res = await liveFetch(
           `/obligations/${encodeURIComponent(instance.id)}`,
-          { method: "PATCH", body: JSON.stringify({ notes: patch.notes }) },
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              notes: patch.notes,
+              applicability: patch.applicability,
+              applicabilityReason: patch.applicabilityReason,
+            }),
+          },
           fetcher,
         )
         await readJsonOrThrow(res, "Failed to update obligation")

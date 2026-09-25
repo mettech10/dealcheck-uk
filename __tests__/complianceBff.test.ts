@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import {
   accessTokenFromCookieList,
+  accessTokenNeedsRefresh,
   bearerFromAuthorization,
   firstUserAccessToken,
   isUserAccessToken,
@@ -36,6 +37,18 @@ const ANON = jwt({
   role: "anon",
   sub: "anon",
   exp: Math.floor(Date.now() / 1000) + 3600,
+})
+
+describe("compliance BFF refresh", () => {
+  test("route refreshes near-expiry tokens and retries upstream 401", async () => {
+    const { readFileSync } = await import("node:fs")
+    const src = readFileSync("app/api/compliance/[...path]/route.ts", "utf8")
+    expect(src).toContain("forceRefresh")
+    expect(src).toContain("401")
+    const session = readFileSync("lib/compliance/session.ts", "utf8")
+    expect(session).toContain("createReadOnlyClient")
+    expect(session).toContain("refreshUserAccessToken")
+  })
 })
 
 describe("resolveComplianceAnalyzerUrl", () => {
@@ -96,6 +109,17 @@ describe("access token recovery", () => {
         { name: "sb-abcdxyz-auth-token.2", value: "" },
       ]),
     ).toBe(ACCESS)
+  })
+
+  test("flags expired and near-expiry tokens for server-side refresh", () => {
+    const soon = jwt({
+      role: "authenticated",
+      sub: "11111111-1111-4111-8111-111111111111",
+      exp: Math.floor(Date.now() / 1000) + 30,
+    })
+    expect(accessTokenNeedsRefresh(EXPIRED)).toBe(true)
+    expect(accessTokenNeedsRefresh(soon, 120_000)).toBe(true)
+    expect(accessTokenNeedsRefresh(ACCESS, 120_000)).toBe(false)
   })
 
   test("does not treat refresh_token as the access token", () => {

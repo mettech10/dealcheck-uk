@@ -1,0 +1,525 @@
+From 2bbd2eda43119bdcbd2444d0b5c1828acc06f870 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 25 Sep 2026 20:35:30 +0000
+Subject: [PATCH] feat(compliance): persist applicability and skip N/A
+ reminders
+
+Add required | not_applicable | unknown on obligation instances.
+GAS N/A requires a reason (e.g. no gas supply); EICR/EPC cannot be N/A.
+N/A rows get no reminder stubs and dispatch skips them.
+---
+ compliance/applicability.py                   |  70 +++++++++++
+ compliance/blueprint.py                       |  16 +++
+ compliance/store.py                           | 100 +++++++++++++--
+ docs/compliance-api.md                        |   8 +-
+ ...25_compliance_obligation_applicability.sql |  27 ++++
+ tests/test_compliance_applicability.py        | 118 ++++++++++++++++++
+ 6 files changed, 325 insertions(+), 14 deletions(-)
+ create mode 100644 compliance/applicability.py
+ create mode 100644 supabase/migrations/20260925_compliance_obligation_applicability.sql
+ create mode 100644 tests/test_compliance_applicability.py
+
+diff --git a/compliance/applicability.py b/compliance/applicability.py
+new file mode 100644
+index 0000000..115c94f
+--- /dev/null
++++ b/compliance/applicability.py
+@@ -0,0 +1,70 @@
++"""Applicability for obligation instances.
++
++Values: ``required`` | ``not_applicable`` | ``unknown``.
++``applicable`` is accepted as an alias of ``required``.
++
++Statutory safety: GAS may be not-applicable only with a reason
++(e.g. "no gas supply"). EICR and EPC cannot be marked N/A.
++"""
++
++from __future__ import annotations
++
++APPLICABILITIES = ("required", "not_applicable", "unknown")
++
++# England PRS: electrical + EPC always apply to a rented home.
++NA_FORBIDDEN = frozenset({"EICR", "EPC"})
++# GAS N/A is allowed only with a reason (no gas supply).
++NA_REASON_REQUIRED = frozenset({"GAS"})
++
++_ALIASES = {
++    "applicable": "required",
++    "required": "required",
++    "not_applicable": "not_applicable",
++    "not-applicable": "not_applicable",
++    "n_a": "not_applicable",
++    "na": "not_applicable",
++    "unknown": "unknown",
++    "check": "unknown",
++    "check_unknown": "unknown",
++}
++
++
++def normalize_applicability(value) -> str:
++    raw = str(value or "required").strip().lower().replace(" ", "_")
++    mapped = _ALIASES.get(raw)
++    if mapped is None:
++        raise ValueError(
++            "applicability must be required, not_applicable, or unknown"
++        )
++    return mapped
++
++
++def normalize_reason(value) -> str:
++    return " ".join(str(value or "").split())
++
++
++def validate_applicability(
++    code: str,
++    applicability: str,
++    reason: str = "",
++) -> tuple[str, str]:
++    """Return (applicability, reason). Raises ValueError on statutory breach."""
++    code = (code or "").strip().upper()
++    app = normalize_applicability(applicability)
++    why = normalize_reason(reason)
++    if app != "not_applicable":
++        return app, why if app == "not_applicable" else (why if why else "")
++
++    if code in NA_FORBIDDEN:
++        raise ValueError(
++            f"{code} cannot be marked not applicable — it applies to rented homes"
++        )
++    if code in NA_REASON_REQUIRED and len(why) < 3:
++        raise ValueError(
++            "GAS not-applicable needs a reason (e.g. 'no gas supply')"
++        )
++    return app, why
++
++
++def suppresses_reminders(applicability: str) -> bool:
++    return normalize_applicability(applicability) == "not_applicable"
+diff --git a/compliance/blueprint.py b/compliance/blueprint.py
+index c09a02b..6981303 100644
+--- a/compliance/blueprint.py
++++ b/compliance/blueprint.py
+@@ -188,6 +188,10 @@ def create_obligation():
+             issued_on=body.get("issuedOn") or body.get("issued_on"),
+             expires_on=body.get("expiresOn") or body.get("expires_on"),
+             notes=body.get("notes") or "",
++            applicability=body.get("applicability") or "required",
++            applicability_reason=(
++                body.get("applicabilityReason") or body.get("applicability_reason") or ""
++            ),
+             as_of=_as_of_from_request(),
+         )
+     except store.ComplianceStoreError:
+@@ -393,6 +397,18 @@ def dispatch_reminders():
+     queued_weekly = []
+     for rem in due:
+         obligation = rem.get("obligation") or {}
++        if (obligation.get("applicability") or "required") == "not_applicable":
++            store.mark_reminder(rem["id"], status="skipped", last_error="not_applicable")
++            dispatched.append({
++                "id": rem["id"],
++                "status": "skipped",
++                "delivered": False,
++                "skipped": True,
++                "offsetCode": rem.get("offsetCode"),
++                "obligationId": rem.get("obligationId"),
++                "message": "not_applicable",
++            })
++            continue
+         result = send_reminder_email(
+             user_id=rem.get("userId") or "",
+             obligation=obligation,
+diff --git a/compliance/store.py b/compliance/store.py
+index 997779f..a01a8cf 100644
+--- a/compliance/store.py
++++ b/compliance/store.py
+@@ -16,6 +16,10 @@ from typing import Optional
+ 
+ import requests
+ 
++from compliance.applicability import (
++    suppresses_reminders,
++    validate_applicability,
++)
+ from compliance.catalogue import CATALOGUE_CODES, default_expires_on
+ from compliance.reminders import (
+     DEFAULT_CHANNEL,
+@@ -211,15 +215,23 @@ def _public_obligation(
+ ) -> dict:
+     expires = _parse_date(row.get("expires_on"))
+     issued = _parse_date(row.get("issued_on"))
+-    status = compute_status(
+-        expires, issued, as_of=_as_of(as_of), code=row.get("code"),
+-    )
++    applicability = row.get("applicability") or "required"
++    if applicability == "not_applicable":
++        status = "not_applicable"
++    elif applicability == "unknown":
++        status = "unknown"
++    else:
++        status = compute_status(
++            expires, issued, as_of=_as_of(as_of), code=row.get("code"),
++        )
+     return {
+         "id": row["id"],
+         "userId": row["user_id"],
+         "propertyId": row["property_id"],
+         "code": row["code"],
+         "status": status,
++        "applicability": applicability,
++        "applicabilityReason": row.get("applicability_reason") or "",
+         "issuedOn": row.get("issued_on"),
+         "expiresOn": row.get("expires_on"),
+         "notes": row.get("notes") or "",
+@@ -253,6 +265,8 @@ def _mem_evidence_for(obligation_id: str) -> list[dict]:
+ 
+ 
+ def _seed_reminders(obligation: dict, as_of: Optional[date]) -> list[dict]:
++    if suppresses_reminders(obligation.get("applicability") or "required"):
++        return []
+     stubs = build_reminder_stubs(
+         _parse_date(obligation.get("expires_on")),
+         obligation["code"],
+@@ -300,6 +314,8 @@ def create_obligation(
+     issued_on=None,
+     expires_on=None,
+     notes: str = "",
++    applicability: str = "required",
++    applicability_reason: str = "",
+     as_of=None,
+ ) -> dict:
+     code = (code or "").strip().upper()
+@@ -316,6 +332,7 @@ def create_obligation(
+     expires = _parse_date(expires_on)
+     if expires is None:
+         expires = default_expires_on(code, issued)
++    app, reason = validate_applicability(code, applicability, applicability_reason)
+ 
+     now = _now_iso()
+     row = {
+@@ -326,6 +343,8 @@ def create_obligation(
+         "issued_on": issued.isoformat() if issued else None,
+         "expires_on": expires.isoformat() if expires else None,
+         "notes": notes or "",
++        "applicability": app,
++        "applicability_reason": reason,
+         "created_at": now,
+         "updated_at": now,
+     }
+@@ -410,6 +429,34 @@ def update_obligation(user_id: str, obligation_id: str, fields: dict, as_of=None
+         if code not in CATALOGUE_CODES:
+             raise ValueError(f"Unknown catalogue code: {code}")
+         allowed["code"] = code
++    if (
++        "applicability" in fields
++        or "applicabilityReason" in fields
++        or "applicability_reason" in fields
++    ):
++        existing_code = None
++        if supabase_configured():
++            current = _sb_get_obligation(user_id, obligation_id, as_of=as_of)
++            existing_code = (current or {}).get("code")
++        else:
++            current = _OBLIGATIONS.get(obligation_id)
++            existing_code = (current or {}).get("code")
++        code = allowed.get("code") or existing_code or ""
++        raw_app = fields.get("applicability")
++        if raw_app is None and current:
++            raw_app = (
++                current.get("applicability")
++                if isinstance(current, dict)
++                else "required"
++            )
++        raw_reason = fields.get("applicabilityReason", fields.get("applicability_reason"))
++        if raw_reason is None and isinstance(current, dict):
++            raw_reason = current.get("applicabilityReason") or current.get(
++                "applicability_reason"
++            ) or ""
++        app, reason = validate_applicability(code, raw_app or "required", raw_reason or "")
++        allowed["applicability"] = app
++        allowed["applicability_reason"] = reason
+ 
+     if supabase_configured():
+         return _sb_update_obligation(user_id, obligation_id, allowed, as_of=as_of)
+@@ -424,6 +471,16 @@ def update_obligation(user_id: str, obligation_id: str, fields: dict, as_of=None
+             and "expires_on" not in allowed
+             and row.get("expires_on") is None
+         )
++        became_na = (
++            "applicability" in allowed
++            and allowed["applicability"] == "not_applicable"
++            and row.get("applicability") != "not_applicable"
++        )
++        left_na = (
++            "applicability" in allowed
++            and allowed["applicability"] != "not_applicable"
++            and row.get("applicability") == "not_applicable"
++        )
+         row.update(allowed)
+         if issued_only:
+             derived = default_expires_on(row["code"], _parse_date(row.get("issued_on")))
+@@ -431,7 +488,7 @@ def update_obligation(user_id: str, obligation_id: str, fields: dict, as_of=None
+                 row["expires_on"] = derived.isoformat()
+                 expires_changed = True
+         row["updated_at"] = _now_iso()
+-        if expires_changed:
++        if expires_changed or became_na or left_na:
+             _replace_unsent_reminders(row, as_of)
+         reminders = _mem_reminders_for(obligation_id)
+         return _public_obligation(row, reminders, _mem_evidence_for(obligation_id), as_of=as_of)
+@@ -648,6 +705,8 @@ def _row_from_sb(data: dict) -> dict:
+         "issued_on": data.get("issued_on"),
+         "expires_on": data.get("expires_on"),
+         "notes": data.get("notes") or "",
++        "applicability": data.get("applicability") or "required",
++        "applicability_reason": data.get("applicability_reason") or "",
+         "created_at": data.get("created_at"),
+         "updated_at": data.get("updated_at"),
+     }
+@@ -693,6 +752,8 @@ def _sb_create_obligation(row: dict, as_of=None) -> dict:
+             "issued_on": row["issued_on"],
+             "expires_on": row["expires_on"],
+             "notes": row["notes"],
++            "applicability": row.get("applicability") or "required",
++            "applicability_reason": row.get("applicability_reason") or "",
+         },
+         headers=_sb_headers("return=representation"),
+     )
+@@ -701,8 +762,12 @@ def _sb_create_obligation(row: dict, as_of=None) -> dict:
+     saved = resp.json()
+     saved = saved[0] if isinstance(saved, list) else saved
+     row = _row_from_sb(saved)
+-    stubs = build_reminder_stubs(
+-        _parse_date(row.get("expires_on")), row["code"], as_of=_as_of(as_of),
++    stubs = (
++        []
++        if suppresses_reminders(row.get("applicability") or "required")
++        else build_reminder_stubs(
++            _parse_date(row.get("expires_on")), row["code"], as_of=_as_of(as_of),
++        )
+     )
+     reminder_rows = []
+     if stubs:
+@@ -808,7 +873,13 @@ def _sb_update_obligation(user_id, obligation_id, allowed, as_of=None):
+     if resp.status_code not in (200, 204):
+         _raise_store_failure(resp, "compliance_obligations")
+     expires_changed = "expires_on" in allowed
+-    if expires_changed:
++    became_na = allowed.get("applicability") == "not_applicable"
++    left_na = (
++        "applicability" in allowed
++        and allowed["applicability"] != "not_applicable"
++        and (existing or {}).get("applicability") == "not_applicable"
++    )
++    if expires_changed or became_na or left_na:
+         _sb(
+             "DELETE",
+             "compliance_reminders",
+@@ -819,11 +890,16 @@ def _sb_update_obligation(user_id, obligation_id, allowed, as_of=None):
+             headers=_sb_headers(),
+         )
+         updated = _sb_get_obligation(user_id, obligation_id, as_of=as_of) or existing
+-        stubs = build_reminder_stubs(
+-            _parse_date(updated.get("expiresOn")),
+-            updated["code"],
+-            as_of=_as_of(as_of),
+-        )
++        if suppresses_reminders(
++            allowed.get("applicability") or updated.get("applicability") or "required"
++        ):
++            stubs = []
++        else:
++            stubs = build_reminder_stubs(
++                _parse_date(updated.get("expiresOn")),
++                updated["code"],
++                as_of=_as_of(as_of),
++            )
+         if stubs:
+             payload = [{
+                 "obligation_id": obligation_id,
+diff --git a/docs/compliance-api.md b/docs/compliance-api.md
+index b363eab..0401d38 100644
+--- a/docs/compliance-api.md
++++ b/docs/compliance-api.md
+@@ -6,6 +6,10 @@ Local tests use `X-User-Id`. Reminder dispatch uses `X-Cron-Secret`
+ 
+ Catalogue codes: `GAS`, `EICR`, `EPC`, `DEP`, `HTR`, `LIC_HMO`, `LIC_SEL`.
+ Status engine: `valid` | `due_soon` | `overdue` (due-soon window = 90 days).
++Applicability (persisted): `required` | `not_applicable` | `unknown`.
++`applicable` is accepted as an alias of `required`. GAS may be
++`not_applicable` only with `applicabilityReason` (e.g. `no gas supply`).
++EICR and EPC cannot be N/A. N/A rows get no reminder stubs.
+ Reminders: T-90, T-60, T-30, T-14, T-7, T-0, overdue (+1 day), then **weekly
+ while still overdue**. Backend seeds `channel=email`. `channel=in_app` is a
+ supported stub value for the frontend; dispatch does not email those rows.
+@@ -38,8 +42,8 @@ No route renames. The Next.js page is `/tools/compliance`; the backend is:
+ |---|---|
+ | GET | `/v1/compliance/catalogue` (`items` and `catalogue` are the same list) |
+ | GET | `/v1/compliance/dashboard` |
+-| GET/POST | `/v1/compliance/obligations` |
+-| GET/PATCH/DELETE | `/v1/compliance/obligations/<id>` |
++| GET/POST | `/v1/compliance/obligations` (`applicability`, `applicabilityReason`) |
++| GET/PATCH/DELETE | `/v1/compliance/obligations/<id>` (PATCH can set applicability) |
+ | GET | `/v1/compliance/properties/<propertyId>/obligations` |
+ | GET | `/v1/compliance/reminders` |
+ | POST | `/v1/compliance/reminders/dispatch` (cron) |
+diff --git a/supabase/migrations/20260925_compliance_obligation_applicability.sql b/supabase/migrations/20260925_compliance_obligation_applicability.sql
+new file mode 100644
+index 0000000..bcd72fe
+--- /dev/null
++++ b/supabase/migrations/20260925_compliance_obligation_applicability.sql
+@@ -0,0 +1,27 @@
++-- Persist applicability on compliance obligation instances.
++-- required | not_applicable | unknown. GAS N/A is enforced in Flask
++-- (reason required). Reminders must not fire for not_applicable rows.
++
++alter table public.compliance_obligations
++  add column if not exists applicability text not null default 'required';
++
++alter table public.compliance_obligations
++  add column if not exists applicability_reason text not null default '';
++
++do $$
++begin
++  if not exists (
++    select 1
++    from pg_constraint
++    where conname = 'compliance_obligations_applicability_check'
++  ) then
++    alter table public.compliance_obligations
++      add constraint compliance_obligations_applicability_check
++      check (applicability in ('required', 'not_applicable', 'unknown'));
++  end if;
++end $$;
++
++comment on column public.compliance_obligations.applicability is
++  'required | not_applicable | unknown. unknown = check with the council (licences).';
++comment on column public.compliance_obligations.applicability_reason is
++  'Required when GAS is not_applicable (e.g. no gas supply).';
+diff --git a/tests/test_compliance_applicability.py b/tests/test_compliance_applicability.py
+new file mode 100644
+index 0000000..f696718
+--- /dev/null
++++ b/tests/test_compliance_applicability.py
+@@ -0,0 +1,118 @@
++"""Applicability persistence, statutory GAS reason, no N/A reminders."""
++
++import os
++import sys
++from pathlib import Path
++
++os.environ.setdefault("FLASK_ENV", "testing")
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT))
++
++import pytest
++from flask import Flask
++
++from compliance.applicability import validate_applicability
++from compliance.blueprint import bp
++from compliance.store import create_obligation, reset_memory_store, update_obligation
++
++
++@pytest.fixture(autouse=True)
++def _memory():
++    reset_memory_store()
++    yield
++    reset_memory_store()
++
++
++@pytest.fixture
++def client():
++    app = Flask(__name__)
++    app.config["TESTING"] = True
++    app.register_blueprint(bp)
++    return app.test_client()
++
++
++def test_gas_na_requires_reason():
++    with pytest.raises(ValueError, match="reason"):
++        validate_applicability("GAS", "not_applicable", "")
++    app, reason = validate_applicability("GAS", "not_applicable", "no gas supply")
++    assert app == "not_applicable"
++    assert "gas" in reason.lower()
++
++
++def test_eicr_cannot_be_na():
++    with pytest.raises(ValueError, match="cannot be marked not applicable"):
++        validate_applicability("EICR", "not_applicable", "n/a")
++
++
++def test_applicable_alias_is_required():
++    app, _ = validate_applicability("DEP", "applicable", "")
++    assert app == "required"
++
++
++def test_create_na_gas_persists_and_skips_reminders():
++    row = create_obligation(
++        "user-1",
++        property_id="11111111-1111-4111-8111-111111111111",
++        code="GAS",
++        issued_on="2026-09-01",
++        applicability="not_applicable",
++        applicability_reason="no gas supply",
++    )
++    assert row["applicability"] == "not_applicable"
++    assert row["status"] == "not_applicable"
++    assert row["applicabilityReason"] == "no gas supply"
++    assert row["reminders"] == []
++
++
++def test_patch_na_via_api(client):
++    created = create_obligation(
++        "user-1",
++        property_id="11111111-1111-4111-8111-111111111111",
++        code="DEP",
++        issued_on="2026-09-01",
++    )
++    assert created["reminders"] == []  # DEP has no auto expiry
++    res = client.patch(
++        f"/v1/compliance/obligations/{created['id']}",
++        headers={"X-User-Id": "user-1"},
++        json={"applicability": "not_applicable"},
++    )
++    assert res.status_code == 200, res.get_data(as_text=True)
++    body = res.get_json()["obligation"]
++    assert body["applicability"] == "not_applicable"
++    assert body["status"] == "not_applicable"
++
++
++def test_patch_gas_na_without_reason_is_400(client):
++    created = create_obligation(
++        "user-1",
++        property_id="11111111-1111-4111-8111-111111111111",
++        code="GAS",
++        issued_on="2026-09-01",
++    )
++    res = client.patch(
++        f"/v1/compliance/obligations/{created['id']}",
++        headers={"X-User-Id": "user-1"},
++        json={"applicability": "not_applicable"},
++    )
++    assert res.status_code == 400
++    assert "reason" in res.get_json()["message"].lower()
++
++
++def test_update_to_na_clears_pending_reminders():
++    row = create_obligation(
++        "user-1",
++        property_id="11111111-1111-4111-8111-111111111111",
++        code="GAS",
++        issued_on="2026-09-01",
++        expires_on="2027-09-01",
++    )
++    assert any(r["status"] == "pending" for r in row["reminders"])
++    updated = update_obligation(
++        "user-1",
++        row["id"],
++        {"applicability": "not_applicable", "applicabilityReason": "no gas supply"},
++    )
++    assert updated["status"] == "not_applicable"
++    assert updated["reminders"] == []
+-- 
+2.43.0
+

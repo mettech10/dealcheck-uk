@@ -47,7 +47,7 @@ async function proxy(request: Request, path: string[]): Promise<NextResponse> {
     return jsonError("Invalid MTD path", 400)
   }
 
-  const auth = await getMtdAuth()
+  let auth = await getMtdAuth()
   if (auth.status === "anon") {
     return jsonError("Unauthorized", 401)
   }
@@ -66,27 +66,42 @@ async function proxy(request: Request, path: string[]): Promise<NextResponse> {
   const upstreamPath = `/${path.join("/")}${incoming.search}`
   const target = flaskMtdUrl(upstreamPath)
 
-  const headers = new Headers()
-  headers.set("Authorization", `Bearer ${auth.accessToken}`)
-  headers.set("Accept", request.headers.get("Accept") || "*/*")
-  headers.set("X-User-Id", auth.userId)
-  if (auth.email) headers.set("X-User-Email", auth.email)
-
   const method = request.method.toUpperCase()
   const contentType = request.headers.get("content-type")
   let body: ArrayBuffer | undefined
   if (method !== "GET" && method !== "HEAD") {
     body = await request.arrayBuffer()
-    if (contentType) headers.set("Content-Type", contentType)
+  }
+
+  const buildHeaders = (token: string, userId: string, email: string | null) => {
+    const headers = new Headers()
+    headers.set("Authorization", `Bearer ${token}`)
+    headers.set("Accept", request.headers.get("Accept") || "*/*")
+    headers.set("X-User-Id", userId)
+    if (email) headers.set("X-User-Email", email)
+    if (body && contentType) headers.set("Content-Type", contentType)
+    return headers
   }
 
   try {
-    const upstream = await fetch(target, {
+    let upstream = await fetch(target, {
       method,
-      headers,
+      headers: buildHeaders(auth.accessToken, auth.userId, auth.email),
       body,
       cache: "no-store",
     })
+    if (upstream.status === 401) {
+      const retried = await getMtdAuth({ forceRefresh: true })
+      if (retried.status === "signed_in") {
+        auth = retried
+        upstream = await fetch(target, {
+          method,
+          headers: buildHeaders(retried.accessToken, retried.userId, retried.email),
+          body,
+          cache: "no-store",
+        })
+      }
+    }
     const remapped = remapUpstreamMtdStatus(upstream.status)
     if (remapped.code) {
       return jsonError(remapped.error || remapped.code, remapped.clientStatus, {
