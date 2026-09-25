@@ -17,6 +17,7 @@ import {
   Trash2,
   Upload,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react"
 import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { ComplianceDisclaimerBanner } from "@/components/compliance/disclaimer-banner"
@@ -67,6 +68,7 @@ export default function PropertyCompliancePage() {
 
   const [file, setFile] = useState<PropertyComplianceFile | null>(null)
   const [busy, setBusy] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [uploadCode, setUploadCode] = useState<ObligationCode | null>(null)
 
   const ref = useMemo(
@@ -77,11 +79,15 @@ export default function PropertyCompliancePage() {
   const loadFile = useCallback(async () => {
     if (!api || !ref) return
     setBusy(true)
+    setLoadError(null)
     try {
       const next = await api.upsertProperty(ref)
       setFile(next)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load file")
+      const message =
+        err instanceof Error ? err.message : "Failed to load property obligations"
+      setLoadError(message)
+      toast.error(message)
     } finally {
       setBusy(false)
     }
@@ -188,8 +194,22 @@ export default function PropertyCompliancePage() {
 
           <ComplianceDisclaimerBanner compact />
 
-          {busy && !file ? (
+          {loadError && (
+            <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 text-destructive" />
+              <div className="flex flex-1 flex-col gap-2">
+                <p className="text-foreground">{loadError}</p>
+                <Button size="sm" variant="outline" onClick={() => void loadFile()}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {busy && !file && !loadError ? (
             <div className="text-sm text-muted-foreground">Opening file…</div>
+          ) : loadError && !file ? (
+            null
           ) : (
             <div className="flex flex-col gap-3">
               {(file?.obligations ?? []).map((row) => (

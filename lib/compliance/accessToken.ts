@@ -1,11 +1,22 @@
 /**
- * Recover the Supabase access token for Flask /v1/compliance.
+ * Recover a *user access* JWT for Flask /v1/compliance.
  *
- * @supabase/ssr getUser() can succeed from cookies while getSession()
- * returns no access_token (chunked / base64 cookies, Next Route Handler
- * vs Edge proxy refresh). Flask ignores X-User-Id outside tests, so a
- * missing Bearer is a hard 401 on dashboard + property obligations.
+ * Live QA r3: Flask returned "Invalid or expired token" after we started
+ * forwarding *a* Bearer. Two ways that happens:
+ *   1. We forwarded a refresh token, truncated cookie, or expired
+ *      getSession() token (getUser() can succeed via refresh while
+ *      getSession() still has the old access_token).
+ *   2. Flask /auth/v1/user rejected a valid user JWT because its apikey
+ *      was the anon key, missing, or the user token itself. MTD live QA
+ *      hit the same pattern (`/api/mtd/token` 200, `/api/mtd/businesses`
+ *      401 Unauthorised). /v1/deals uses the service role as apikey.
+ *      That is a BE fix (503 if unconfigured; never user token as apikey).
+ *
+ * Only `role=authenticated` access tokens are forwarded. Cookie parsing
+ * matches lib/mtd/session.ts (chunked sb-*-auth-token, base64- prefix).
  */
+
+export type CookiePair = { name: string; value: string }
 
 export function bearerFromAuthorization(
   header: string | null | undefined,
@@ -16,77 +27,110 @@ export function bearerFromAuthorization(
   return token || null
 }
 
-export function parseSupabaseAccessToken(raw: string): string | null {
-  let text = raw.trim()
-  if (!text) return null
-  if (text.startsWith("base64-")) {
-    try {
-      text = Buffer.from(text.slice(7), "base64").toString("utf8")
-    } catch {
-      return null
-    }
-  }
+export function looksLikeJwt(value: string): boolean {
+  const parts = value.split(".")
+  return parts.length === 3 && parts[0].startsWith("eyJ")
+}
+
+export function decodeJwtPayload(
+  token: string,
+): Record<string, unknown> | null {
+  if (!looksLikeJwt(token)) return null
   try {
-    const parsed = JSON.parse(text) as unknown
-    return tokenFromUnknown(parsed)
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")
+    const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4)
+    const json = Buffer.from(padded, "base64").toString("utf8")
+    const parsed = JSON.parse(json) as unknown
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : null
   } catch {
     return null
   }
 }
 
-function tokenFromUnknown(parsed: unknown): string | null {
-  if (!parsed) return null
-  if (typeof parsed === "string") {
-    return parsed.startsWith("eyJ") ? parsed : parseSupabaseAccessToken(parsed)
-  }
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      const found = tokenFromUnknown(item)
-      if (found) return found
+/** True only for a Supabase *user access* JWT, not a refresh token or anon key. */
+export function isUserAccessToken(token: string | null | undefined): boolean {
+  const value = (token || "").trim()
+  if (!looksLikeJwt(value)) return false
+  const payload = decodeJwtPayload(value)
+  if (!payload) return false
+  const role = String(payload.role || "")
+  if (role !== "authenticated" && role !== "service_role") return false
+  const sub = payload.sub || payload.user_id
+  if (typeof sub !== "string" || !sub) return false
+  const exp = Number(payload.exp)
+  if (Number.isFinite(exp) && exp * 1000 <= Date.now() - 5_000) return false
+  return true
+}
+
+function tokenFromParsed(parsed: unknown): string | null {
+  if (!parsed || typeof parsed !== "object") return null
+  const row = parsed as Record<string, unknown>
+  const nested =
+    row.currentSession && typeof row.currentSession === "object"
+      ? (row.currentSession as Record<string, unknown>)
+      : row
+  const token = nested.access_token || nested.accessToken
+  return typeof token === "string" && token.length > 0 ? token : null
+}
+
+function decodeBase64Json(raw: string): unknown {
+  const stripped = raw.startsWith("base64-") ? raw.slice("base64-".length) : raw
+  const json = Buffer.from(stripped, "base64").toString("utf8")
+  return JSON.parse(json)
+}
+
+export function parseSupabaseAccessToken(raw: string): string | null {
+  const text = raw.trim()
+  if (!text) return null
+  if (looksLikeJwt(text) && isUserAccessToken(text)) return text
+
+  if (text.startsWith("base64-") || text.startsWith("eyJ")) {
+    try {
+      const fromB64 = tokenFromParsed(decodeBase64Json(text))
+      if (fromB64 && isUserAccessToken(fromB64)) return fromB64
+    } catch {
+      /* fall through */
     }
+  }
+
+  try {
+    const fromJson = tokenFromParsed(JSON.parse(text))
+    if (fromJson && isUserAccessToken(fromJson)) return fromJson
+  } catch {
     return null
   }
-  if (typeof parsed === "object") {
-    const rec = parsed as Record<string, unknown>
-    if (typeof rec.access_token === "string" && rec.access_token) {
-      return rec.access_token
-    }
-    if (rec.session) return tokenFromUnknown(rec.session)
-    if (rec.currentSession) return tokenFromUnknown(rec.currentSession)
-  }
   return null
 }
 
-const AUTH_COOKIE =
-  /^(?:sb|supabase)-[a-z0-9-]+-auth-token(?:\.(\d+))?$/i
+const AUTH_TOKEN_COOKIE = /^(sb-.*-auth-token)(?:\.\d+)?$/
 
-export function accessTokenFromCookieList(
-  cookies: Array<{ name: string; value: string }>,
-): string | null {
-  const grouped = new Map<string, { idx: number; value: string }[]>()
-  for (const cookie of cookies) {
-    const match = AUTH_COOKIE.exec(cookie.name)
-    if (!match) continue
-    const base = cookie.name.replace(/\.\d+$/, "")
-    const idx = match[1] ? Number(match[1]) : 0
-    const list = grouped.get(base) ?? []
-    list.push({ idx, value: cookie.value })
-    grouped.set(base, list)
-  }
-  for (const list of grouped.values()) {
-    list.sort((a, b) => a.idx - b.idx)
-    const token = parseSupabaseAccessToken(list.map((part) => part.value).join(""))
-    if (token) return token
-  }
-  return null
+export function accessTokenFromCookieList(cookies: CookiePair[]): string | null {
+  const chunks = cookies
+    .filter(
+      (c) =>
+        AUTH_TOKEN_COOKIE.test(c.name) &&
+        !c.name.includes("code-verifier") &&
+        c.value,
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  if (!chunks.length) return null
+
+  const combined = chunks.map((c) => c.value).join("")
+  if (!combined) return null
+  return parseSupabaseAccessToken(combined)
 }
 
-export function firstAccessToken(
+export function firstUserAccessToken(
   ...candidates: Array<string | null | undefined>
 ): string | null {
   for (const candidate of candidates) {
     const token = (candidate || "").trim()
-    if (token) return token
+    if (isUserAccessToken(token)) return token
   }
   return null
 }
+
+/** @deprecated use firstUserAccessToken — kept so older tests compile if imported */
+export const firstAccessToken = firstUserAccessToken

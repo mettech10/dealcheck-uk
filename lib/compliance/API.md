@@ -205,31 +205,61 @@ Vercel (dealcheck-uk):
    `METUSA_API_URL`, `BACKEND_API_URL`, `NEXT_PUBLIC_BACKEND_API_URL`.
 2. `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` (JWT cookie).
 
-Render (metusa-deal-analyzer):
+Render (metusa-deal-analyzer) — **exact keys to set or check**
+(do not invent values; copy from the same Supabase project that issues
+the browser cookie `sb-lftlugydvvcjtujalzwh-auth-token`):
 
-1. `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`
-2. `SUPABASE_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Flask JWT check)
-3. `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` (writes; do not use anon here)
-4. Optional reminders: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `COMPLIANCE_CRON_SECRET`
-5. Preview CORS: `CORS_ALLOWED_ORIGINS` comma-separated if not metalyzi.co.uk
+1. `SUPABASE_URL` (alias `NEXT_PUBLIC_SUPABASE_URL`)
+   Must be `https://lftlugydvvcjtujalzwh.supabase.co`. After the BE
+   patch, health `auth.supabaseHost` must equal
+   `lftlugydvvcjtujalzwh.supabase.co`. `storeProbe.ready=true` only
+   proves *a* URL + service-role key can reach PostgREST — not that
+   the URL is this project.
+2. `SUPABASE_SERVICE_KEY` (alias `SUPABASE_SERVICE_ROLE_KEY`)
+   Service role. Used for store writes **and** `GET /auth/v1/user`
+   `apikey` (same as `/v1/deals`). Health `auth.apikeySource` must be
+   `"service"` and `auth.ready` true. `storeProbe.ready=true` already
+   implies this key exists on Render.
+3. `SUPABASE_ANON_KEY` (alias `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+   Optional fallback apikey **only**. Must be the project's anon /
+   publishable key — **not** the JWT secret and **never** the user
+   access token. Live MTD `_auth()` omitted `apikey` when this was
+   unset; live compliance sent the user JWT as `apikey`. Both become
+   GoTrue 401. After the patch, missing both service and anon keys is
+   HTTP **503** `auth not configured (missing anon key)` instead of
+   an ambiguous 401. Flask does not use `SUPABASE_JWT_SECRET` or JWKS.
+4. Optional reminders: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`,
+   `COMPLIANCE_CRON_SECRET`
+5. Preview CORS: `CORS_ALLOWED_ORIGINS` comma-separated if not
+   metalyzi.co.uk
 
 Supabase (same project as auth):
 
 1. Apply `supabase/migrations/20260914_compliance_cockpit.sql`
 2. Apply `supabase/migrations/20260921_compliance_cockpit_grants.sql`
 3. Confirm `GET https://metusa-deal-analyzer.onrender.com/v1/compliance/health`
-   has `storeProbe.ready: true` (not only `store: "supabase"`).
+   has `storeProbe.ready: true` (not only `store: "supabase"`) **and**
+   `auth.ready: true`, `auth.apikeySource: "service"`,
+   `auth.supabaseHost: "lftlugydvvcjtujalzwh.supabase.co"`.
+4. Confirm `GET /v1/mtd/health` reports the same `auth` object.
 
 Retest: sign in → `/tools/compliance` dashboard counts match portfolio
 properties → open a file → add GAS with issuedOn → dashboard overdue/valid
-updates. Reminder dispatch is cron + Brevo, not this UI.
+updates. MTD: `/api/me` 200 + `/api/mtd/token` 200 + `/api/mtd/businesses`
+200 (not 401 `Unauthorised`). Reminder dispatch is cron + Brevo, not this UI.
 
-Companion analyzer patch (this agent could not push `metusa-deal-analyzer`,
-GitHub 403): apply `patches/metusa-deal-analyzer-compliance-p0.patch` on
-that repo (`git am` from repo root) so dashboard/property reads return
-JSON 503 with a migration hint instead of an unhandled 500, health exposes
-`storeProbe.ready`, and the blueprint is exempt from the 50/hour shared-IP
-limit.
+Analyzer auth companion is merged as
+[metusa-deal-analyzer#98](https://github.com/mettech10/metusa-deal-analyzer/pull/98)
+(store probe was #97). No FE patch file is required.
+
+```bash
+curl -s https://metusa-deal-analyzer.onrender.com/v1/compliance/health | jq '{status, storeProbe, auth}'
+curl -s https://metusa-deal-analyzer.onrender.com/v1/mtd/health | jq '{status, auth}'
+```
+
+`auth.apikeySource` must be `"service"`. `"none"` is a 503 after this
+patch. A 401 after `auth.ready=true` means GoTrue still rejected the
+Bearer — almost always `supabaseHost` ≠ `lftlugydvvcjtujalzwh.supabase.co`.
 
 ---
 
