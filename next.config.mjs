@@ -68,6 +68,9 @@ const nextConfig = {
       // other tools live under /tools/*. Keep bookmarks working.
       { source: '/tools/mtd', destination: '/mtd', permanent: true },
       { source: '/tools/mtd/:path*', destination: '/mtd/:path*', permanent: true },
+      // Marketing aliases — canonical sign-up is /signup (query string is kept).
+      { source: '/register', destination: '/signup', permanent: true },
+      { source: '/sign-up', destination: '/signup', permanent: true },
     ]
   },
   // Security headers
