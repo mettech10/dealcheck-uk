@@ -7,14 +7,20 @@
  */
 import { usePathname } from "next/navigation"
 import { Footer } from "@/components/landing/footer"
+import { useAppShell } from "@/components/app-shell-context"
 
 const HIDE_ON_PREFIXES = ["/v2"]
 
 export function ConditionalFooter() {
   const pathname = usePathname()
+  const { active } = useAppShell()
   const hidden = HIDE_ON_PREFIXES.some(
     (p) => pathname === p || pathname?.startsWith(`${p}/`),
   )
   if (hidden) return null
-  return <Footer />
+  return (
+    <div className={active ? "lg:pl-[228px] print:pl-0" : undefined}>
+      <Footer />
+    </div>
+  )
 }

@@ -7,6 +7,7 @@ import { ConditionalAnalytics } from '@/components/conditional-analytics'
 import CrispChat from '@/components/CrispChat'
 import BetaBanner from '@/components/BetaBanner'
 import { ReferralCapture } from '@/components/referral-capture'
+import { AppShellProvider } from '@/components/app-shell-context'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import './globals.css'
 
@@ -98,16 +99,18 @@ export default function RootLayout({
           storageKey="metalyzi-theme"
           disableTransitionOnChange
         >
-          <BetaBanner />
-          <div className="flex-1">
-            {children}
-          </div>
-          <ConditionalFooter />
-          <CookieConsent />
-          <ReferralCapture />
-          <ConditionalAnalytics />
-          <CrispChat />
-          <SpeedInsights />
+          <AppShellProvider>
+            <BetaBanner />
+            <div className="flex-1">
+              {children}
+            </div>
+            <ConditionalFooter />
+            <CookieConsent />
+            <ReferralCapture />
+            <ConditionalAnalytics />
+            <CrispChat />
+            <SpeedInsights />
+          </AppShellProvider>
         </ThemeProvider>
       </body>
     </html>
