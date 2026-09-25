@@ -23,8 +23,13 @@ import type {
 async function parseJson(res: Response) {
   const json = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const err = new Error((json as { error?: string }).error || `Request failed (${res.status})`)
-    ;(err as Error & { status: number }).status = res.status
+    const body = json as { error?: string; code?: string }
+    const err = new Error(body.error || `Request failed (${res.status})`) as Error & {
+      status: number
+      code?: string
+    }
+    err.status = res.status
+    if (body.code) err.code = body.code
     throw err
   }
   return json

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { Building2 } from "lucide-react"
 import { toast } from "sonner"
@@ -9,7 +9,8 @@ import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Toaster } from "@/components/ui/sonner"
 import { MtdDisclaimerBanner } from "./disclaimer-banner"
 import { MtdSubnav } from "./subnav"
-import { analyzerApiUrl, analyzerUnreachableMessage } from "@/lib/mtd/config"
+import { analyzerApiUrl } from "@/lib/mtd/config"
+import { messageForEnsureFailure } from "@/lib/mtd/errors"
 import { ensureBusiness } from "@/lib/mtd/client"
 import { MtdBusinessProvider } from "@/lib/mtd/workspace-context"
 import type { FlaskBusiness } from "@/lib/mtd/types"
@@ -37,6 +38,14 @@ export function MtdWorkspaceShell({
   const [state, setState] = useState<"loading" | "anon" | "error" | "ready">("loading")
   const [error, setError] = useState<string | null>(null)
   const [business, setBusiness] = useState<FlaskBusiness | null>(null)
+  const [retryTick, setRetryTick] = useState(0)
+
+  const retry = useCallback(() => {
+    setError(null)
+    setBusiness(null)
+    setState("loading")
+    setRetryTick((n) => n + 1)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -59,13 +68,14 @@ export function MtdWorkspaceShell({
         setState("ready")
       } catch (e) {
         if (cancelled) return
-        const status = (e as Error & { status?: number }).status
-        if (status === 401) {
-          setState("anon")
-          return
-        }
-        const msg =
-          e instanceof Error ? e.message : analyzerUnreachableMessage(analyzerApiUrl())
+        // /api/me already confirmed the session. A Flask 401/503 here is
+        // upstream auth or config — never the Sign in gate.
+        const fields = e as Error & { status?: number; code?: string }
+        const msg = messageForEnsureFailure({
+          status: fields.status,
+          code: fields.code,
+          message: fields instanceof Error ? fields.message : undefined,
+        })
         toast.error(msg)
         setError(msg)
         setState("error")
@@ -74,7 +84,7 @@ export function MtdWorkspaceShell({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [retryTick])
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-10">
@@ -110,6 +120,11 @@ export function MtdWorkspaceShell({
         <div className="flex flex-col gap-4 pt-6">
           <h1 className="text-2xl font-bold">MTD Pack</h1>
           <p className="text-sm text-muted-foreground">{error}</p>
+          <div>
+            <Button type="button" onClick={retry}>
+              Retry
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             Ledger writes go to Flask via same-origin{" "}
             <code className="rounded bg-muted px-1.5 py-0.5">/api/mtd/*</code> (BFF) →{" "}

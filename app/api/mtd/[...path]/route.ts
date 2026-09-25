@@ -16,6 +16,7 @@ import {
   analyzerUnreachableMessage,
   flaskMtdUrl,
 } from "@/lib/mtd/config"
+import { remapUpstreamMtdStatus } from "@/lib/mtd/errors"
 import { getMtdAuth, MTD_TOKEN_MISSING_MESSAGE } from "@/lib/mtd/session"
 
 export const runtime = "nodejs"
@@ -86,13 +87,19 @@ async function proxy(request: Request, path: string[]): Promise<NextResponse> {
       body,
       cache: "no-store",
     })
+    const remapped = remapUpstreamMtdStatus(upstream.status)
+    if (remapped.code) {
+      return jsonError(remapped.error || remapped.code, remapped.clientStatus, {
+        code: remapped.code,
+      })
+    }
     const buf = await upstream.arrayBuffer()
     const responseHeaders = new Headers(NO_STORE)
     const upstreamType = upstream.headers.get("content-type")
     if (upstreamType) responseHeaders.set("Content-Type", upstreamType)
     const disposition = upstream.headers.get("Content-Disposition")
     if (disposition) responseHeaders.set("Content-Disposition", disposition)
-    return new NextResponse(buf, { status: upstream.status, headers: responseHeaders })
+    return new NextResponse(buf, { status: remapped.clientStatus, headers: responseHeaders })
   } catch (err) {
     console.warn("[mtd] flask proxy failed:", err)
     return jsonError(analyzerUnreachableMessage(source.url), 502, {
