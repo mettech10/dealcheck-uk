@@ -2,7 +2,8 @@
 
 import { formatGbpFromPence } from "@/lib/mtd/money"
 import { kindLabel } from "@/lib/mtd/categories"
-import { incomeExpenseFromTotals, snapshotCategoryRows } from "@/lib/mtd/snapshot"
+import { entryCountLabel } from "@/lib/mtd/copy"
+import { incomeExpenseFromTotals, propertyNetFromEntries, snapshotCategoryRows } from "@/lib/mtd/snapshot"
 import type { FlaskQuarterPack } from "@/lib/mtd/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -137,14 +138,14 @@ export function PackSummary({
             <Accordion type="multiple" className="w-full">
               {properties.map((slice) => {
                 const sliceEntries = entries.filter((e) => e.propertyId === slice.id)
-                const slicePence = sliceEntries.reduce((sum, e) => sum + e.amountPence, 0)
+                const sliceNet = propertyNetFromEntries(sliceEntries).net
                 return (
                   <AccordionItem key={slice.id} value={slice.id}>
                     <AccordionTrigger className="text-sm">
                       <span className="flex w-full flex-wrap items-center justify-between gap-2 pr-3">
                         <span>{slice.label}</span>
                         <span className="tabular-nums text-muted-foreground">
-                          {sliceEntries.length} entries · {formatGbpFromPence(slicePence)}
+                          {entryCountLabel(sliceEntries.length)} · Net {formatGbpFromPence(sliceNet)}
                         </span>
                       </span>
                     </AccordionTrigger>

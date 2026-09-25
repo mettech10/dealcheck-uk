@@ -1,13 +1,63 @@
 import { readFileSync } from "node:fs"
 import { describe, expect, test } from "vitest"
 import { MTD_DISCLAIMER } from "@/lib/mtd/disclaimer"
-import { incomeExpenseFromTotals, snapshotCategoryRows } from "@/lib/mtd/snapshot"
+import { entryCountLabel } from "@/lib/mtd/copy"
+import { csvPreviewNewCount, csvPreviewRowStatus } from "@/lib/mtd/csv-preview"
+import { incomeExpenseFromTotals, propertyNetFromEntries, snapshotCategoryRows } from "@/lib/mtd/snapshot"
 import type { FlaskPackSnapshot } from "@/lib/mtd/types"
 
 describe("Flask pack snapshot display (not a Next ledger SoT)", () => {
   test("disclaimer matches Flask copy", () => {
     expect(MTD_DISCLAIMER).toContain("does not submit")
     expect(MTD_DISCLAIMER).toContain("HMRC")
+  })
+
+  test("entryCountLabel pluralises", () => {
+    expect(entryCountLabel(0)).toBe("0 entries")
+    expect(entryCountLabel(1)).toBe("1 entry")
+    expect(entryCountLabel(7)).toBe("7 entries")
+  })
+
+  test("per-property net is income minus allowable expenses, excluding residential finance", () => {
+    const entries = [
+      { categoryCode: "uk_rent_income", amountPence: 260000 },
+      { categoryCode: "repairs_and_maintenance", amountPence: 22400 },
+      { categoryCode: "residential_finance_costs", amountPence: 80000 },
+    ]
+    const grossAbs = entries.reduce((sum, e) => sum + e.amountPence, 0)
+    expect(grossAbs).toBe(362400)
+    const { net } = propertyNetFromEntries(entries)
+    expect(net).toBe(237600)
+  })
+
+  test("pack summary renders Net + pluralised entry count", () => {
+    const src = readFileSync("components/mtd/pack-summary.tsx", "utf8")
+    expect(src).toContain("propertyNetFromEntries")
+    expect(src).toContain("entryCountLabel")
+    expect(src).toContain("Net {formatGbpFromPence(sliceNet)}")
+    expect(src).not.toContain("reduce((sum, e) => sum + e.amountPence")
+  })
+
+  test("csv preview flags already-imported rows instead of Ready", () => {
+    expect(
+      csvPreviewRowStatus({
+        rowNumber: 2,
+        valid: true,
+        errors: [],
+        alreadyImported: true,
+        mapped: { categoryCode: "uk_rent_income", amountPence: 100 },
+      }),
+    ).toBe("Already imported")
+    expect(
+      csvPreviewRowStatus({
+        rowNumber: 3,
+        valid: true,
+        errors: [],
+        alreadyImported: false,
+        mapped: {},
+      }),
+    ).toBe("Ready")
+    expect(csvPreviewNewCount({ validCount: 4, alreadyImportedCount: 4 })).toBe(0)
   })
 
   test("income/expense totals exclude residential finance from expenses", () => {
