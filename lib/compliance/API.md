@@ -207,9 +207,9 @@ Vercel (dealcheck-uk):
 
 Render (metusa-deal-analyzer):
 
-1. `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL`
-2. `SUPABASE_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Flask JWT check)
-3. `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` (writes; do not use anon here)
+1. `SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_URL` — **same project** as Vercel `NEXT_PUBLIC_SUPABASE_URL` (the one that issues the browser JWT).
+2. `SUPABASE_SERVICE_KEY` or `SUPABASE_SERVICE_ROLE_KEY` — store writes **and** `/auth/v1/user` apikey (same as `/v1/deals`). Health `auth.apikeySource` should be `"service"`.
+3. Optional: `SUPABASE_ANON_KEY` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` as a fallback apikey **only if it is the project's anon/publishable key**. Never put the JWT secret (`SUPABASE_JWT_SECRET` / Dashboard → API → JWT Secret) in `SUPABASE_ANON_KEY`. Flask does not use `SUPABASE_JWT_SECRET` or JWKS.
 4. Optional reminders: `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `COMPLIANCE_CRON_SECRET`
 5. Preview CORS: `CORS_ALLOWED_ORIGINS` comma-separated if not metalyzi.co.uk
 
@@ -224,12 +224,17 @@ Retest: sign in → `/tools/compliance` dashboard counts match portfolio
 properties → open a file → add GAS with issuedOn → dashboard overdue/valid
 updates. Reminder dispatch is cron + Brevo, not this UI.
 
-Companion analyzer patch (this agent could not push `metusa-deal-analyzer`,
-GitHub 403): apply `patches/metusa-deal-analyzer-compliance-p0.patch` on
-that repo (`git am` from repo root) so dashboard/property reads return
-JSON 503 with a migration hint instead of an unhandled 500, health exposes
-`storeProbe.ready`, and the blueprint is exempt from the 50/hour shared-IP
-limit.
+Companion analyzer patches (this agent could not push `metusa-deal-analyzer`,
+GitHub 403 last time):
+
+- `patches/metusa-deal-analyzer-compliance-p0.patch` — store probe / embeds (merged as BE #97 if already applied).
+- `patches/metusa-deal-analyzer-compliance-auth.patch` — `/auth/v1/user` apikey = service role like `/v1/deals`.
+
+```bash
+curl -s https://metusa-deal-analyzer.onrender.com/v1/compliance/health | jq '{status, storeProbe, auth}'
+```
+
+`auth.apikeySource` must be `"service"`. `"none"` or a wrong anon key is the r3 401.
 
 ---
 
