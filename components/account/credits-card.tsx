@@ -13,7 +13,7 @@
 
 import { Sparkles, Zap, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { BuyUpgradeButtons } from "@/app/account/buttons"
+import { BuyUpgradeButtons } from "@/app/(app)/account/buttons"
 
 interface CreditsCardProps {
   isUnlimited: boolean

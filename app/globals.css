@@ -546,3 +546,14 @@ body[data-ltd-co-disclaimer-wall] .crisp-client {
   display: none !important;
 }
 
+/* Signed-in tools rail — keep it out of printed deal reports. */
+@media print {
+  [data-app-shell] {
+    padding-left: 0 !important;
+  }
+  [data-app-rail-aside],
+  [data-app-menu] {
+    display: none !important;
+  }
+}
+

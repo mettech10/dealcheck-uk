@@ -18,6 +18,8 @@
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { openSupportChat } from "@/lib/crisp-context"
+import { useAppShell } from "@/components/app-shell-context"
+import { cn } from "@/lib/utils"
 
 const SHOW_ON_PREFIXES = [
   "/analyse",
@@ -33,6 +35,7 @@ function shouldShow(pathname: string | null): boolean {
 
 export default function BetaBanner() {
   const pathname = usePathname()
+  const { active } = useAppShell()
   // `null` = haven't read localStorage yet (don't render anything,
   // avoids flash of banner + hydration mismatch). `true` / `false`
   // = known state.
@@ -67,7 +70,10 @@ export default function BetaBanner() {
   return (
     <div
       role="status"
-      className="flex h-9 items-center justify-center gap-3 border-b border-primary/30 bg-emerald-50 px-4 text-[13px] text-muted-foreground dark:bg-emerald-950"
+      className={cn(
+        "flex h-9 items-center justify-center gap-3 border-b border-primary/30 bg-emerald-50 px-4 text-[13px] text-muted-foreground dark:bg-emerald-950",
+        active && "max-lg:pl-14 lg:ml-[228px]",
+      )}
     >
       <span className="flex items-center gap-2">
         <span aria-hidden>🚀</span>
