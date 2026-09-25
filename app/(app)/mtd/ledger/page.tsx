@@ -27,6 +27,7 @@ import {
   listLedger,
 } from "@/lib/mtd/client"
 import { getCategory } from "@/lib/mtd/categories"
+import { entryCountLabel } from "@/lib/mtd/copy"
 import { formatGbpFromPence } from "@/lib/mtd/money"
 import { useMtdBusiness } from "@/lib/mtd/workspace-context"
 import type { FlaskLedgerEntry, FlaskMtdProperty, PortfolioProperty } from "@/lib/mtd/types"
@@ -260,7 +261,7 @@ function LedgerInner() {
             </SelectContent>
           </Select>
         </div>
-        <p className="text-xs text-muted-foreground">{visibleEntries.length} entries · Flask /v1/mtd</p>
+        <p className="text-xs text-muted-foreground">{entryCountLabel(visibleEntries.length)} · Flask /v1/mtd</p>
       </div>
 
       <Card>

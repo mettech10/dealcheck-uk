@@ -12,6 +12,16 @@ export function incomeExpenseFromTotals(totals: Record<string, number> | undefin
   return { income, expenses, net: income - expenses }
 }
 
+export function propertyNetFromEntries(
+  entries: Array<{ categoryCode: string; amountPence: number }>,
+) {
+  const totals: Record<string, number> = {}
+  for (const entry of entries) {
+    totals[entry.categoryCode] = (totals[entry.categoryCode] || 0) + entry.amountPence
+  }
+  return incomeExpenseFromTotals(totals)
+}
+
 export function snapshotCategoryRows(snapshot?: FlaskPackSnapshot) {
   const totals = snapshot?.periodTotalsPence || {}
   return SA105_CATEGORIES.map((c) => ({

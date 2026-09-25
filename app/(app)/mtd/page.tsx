@@ -16,6 +16,7 @@ import {
 } from "@/lib/mtd/client"
 import { getCategory } from "@/lib/mtd/categories"
 import { formatGbpFromPence } from "@/lib/mtd/money"
+import { entryCountLabel } from "@/lib/mtd/copy"
 import { incomeExpenseFromTotals } from "@/lib/mtd/snapshot"
 import { isDateInPeriod, quarterFromDate, quarterPeriod } from "@/lib/mtd/taxYear"
 import { useMtdBusiness } from "@/lib/mtd/workspace-context"
@@ -88,7 +89,7 @@ function OverviewBody() {
         <Kpi
           label={period?.label ?? "Current quarter"}
           value={formatGbpFromPence(net)}
-          sub={`${periodEntries.length} entries · ${taxYear} · Flask ledger`}
+          sub={`${entryCountLabel(periodEntries.length)} · ${taxYear} · Flask ledger`}
         />
         <Kpi label="Income this quarter" value={formatGbpFromPence(income)} />
         <Kpi

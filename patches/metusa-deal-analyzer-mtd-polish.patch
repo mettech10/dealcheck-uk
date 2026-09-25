@@ -1,0 +1,643 @@
+From 4ba1e6bcd6ed95b9d18108308fd96c5fb97b1f31 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 25 Sep 2026 20:35:09 +0000
+Subject: [PATCH] fix(mtd): wrap pack PDF disclaimer and humanise
+ export/preview
+
+Word-wrap the quarter-pack PDF so the legal disclaimer is never cut
+mid-word and repeats on every page. Render SA105 labels and pounds
+instead of raw category codes/pence, keep residential finance (box
+44/45) visually separate as a tax reducer, add CSV pounds columns,
+and flag already-imported files/rows in CSV preview using the same
+sha256 + row fingerprint as commit.
+---
+ mtd/packs.py           | 152 +++++++++++++++++++++++++++++++++++++++--
+ mtd/pdf.py             | 143 ++++++++++++++++++++++++++++++++++----
+ mtd/service.py         |  70 +++++++++++--------
+ tests/test_mtd_pack.py |  99 ++++++++++++++++++++++++++-
+ 4 files changed, 416 insertions(+), 48 deletions(-)
+
+diff --git a/mtd/packs.py b/mtd/packs.py
+index 067884c..88418fc 100644
+--- a/mtd/packs.py
++++ b/mtd/packs.py
+@@ -14,6 +14,114 @@ DISCLAIMER = (
+     "It does not submit quarterly updates or a tax return to HMRC."
+ )
+ 
++RESIDENTIAL_FINANCE_PDF_NOTE = (
++    "Residential finance costs are a tax reducer, not a deductible expense. "
++    "They are excluded from working-papers net and reported on SA105 box 44 / 45, "
++    "separate from non-residential finance (box 26)."
++)
++
++
++def format_gbp_from_pence(pence: int) -> str:
++    n = int(pence or 0)
++    sign = "-" if n < 0 else ""
++    n = abs(n)
++    return f"{sign}£{n // 100:,}.{n % 100:02d}"
++
++
++def pounds_column(pence: int) -> str:
++    """Spreadsheet-friendly pounds (keep pence in a sibling column)."""
++    n = int(pence or 0)
++    sign = "-" if n < 0 else ""
++    n = abs(n)
++    return f"{sign}{n // 100}.{n % 100:02d}"
++
++
++def category_display_label(cat: dict[str, Any]) -> str:
++    name = str(cat.get("name") or cat.get("code") or "")
++    box = cat.get("sa105Box")
++    if box:
++        return f"{name} (box {box})"
++    return name
++
++
++def snapshot_to_pdf_lines(snapshot: dict[str, Any]) -> list[str]:
++    """Human-readable pack lines: pounds + SA105 labels, finance kept separate."""
++    period = snapshot.get("periodTotalsPence") or {}
++    ytd = snapshot.get("yearToDateTotalsPence") or {}
++    lines = [
++        snapshot.get("disclaimer") or DISCLAIMER,
++        "",
++        f"Business: {(snapshot.get('business') or {}).get('name')}",
++        (
++            f"Tax year: {snapshot.get('taxYear')}   "
++            f"Quarter: {snapshot.get('quarter')}   "
++            f"Basis: {snapshot.get('basis')}"
++        ),
++        f"Period: {snapshot.get('periodStart')} to {snapshot.get('periodEnd')}",
++        f"Deadline: {snapshot.get('filingDeadline')}",
++        "",
++        "SA105 category totals — period / year to date",
++    ]
++
++    def _append_kind(kind: str, heading: str) -> None:
++        cats = [c for c in CATEGORIES if c["kind"] == kind and not c.get("isResidentialFinance")]
++        rows = [
++            c
++            for c in cats
++            if int(period.get(c["code"], 0) or 0) or int(ytd.get(c["code"], 0) or 0)
++        ]
++        if not rows:
++            return
++        lines.append("")
++        lines.append(heading)
++        for cat in rows:
++            code = cat["code"]
++            lines.append(
++                f"{category_display_label(cat)}: "
++                f"{format_gbp_from_pence(period.get(code, 0))} / "
++                f"{format_gbp_from_pence(ytd.get(code, 0))}"
++            )
++
++    _append_kind("income", "Income")
++    _append_kind("income_adjustment", "Income adjustments")
++    _append_kind("expense", "Allowable expenses")
++    _append_kind("adjustment", "Adjustments")
++
++    finance_cats = [c for c in CATEGORIES if c.get("isResidentialFinance")]
++    finance_rows = [
++        c
++        for c in finance_cats
++        if int(period.get(c["code"], 0) or 0) or int(ytd.get(c["code"], 0) or 0)
++    ]
++    lines.append("")
++    lines.append("Residential finance (SA105 box 44 / 45)")
++    lines.append(RESIDENTIAL_FINANCE_PDF_NOTE)
++    if finance_rows:
++        for cat in finance_rows:
++            code = cat["code"]
++            lines.append(
++                f"{category_display_label(cat)}: "
++                f"{format_gbp_from_pence(period.get(code, 0))} / "
++                f"{format_gbp_from_pence(ytd.get(code, 0))}"
++            )
++    else:
++        lines.append("None recorded this period.")
++
++    rf = (snapshot.get("residentialFinance") or {}).get("period") or {}
++    lines.append(
++        "Residential finance total (excluded from profit): "
++        f"{format_gbp_from_pence(rf.get('totalPence', 0))}"
++    )
++    lines.append("")
++    lines.append(
++        "Working papers net (income minus allowable expenses, "
++        f"excluding residential finance): {format_gbp_from_pence(snapshot.get('periodNetPence', 0))}  "
++        f"YTD {format_gbp_from_pence(snapshot.get('yearToDateNetPence', 0))}"
++    )
++    lines.append(f"Entries in period: {snapshot.get('entryCount', 0)}")
++    lines.append("HMRC submit: no")
++    return lines
++
+ 
+ def _sum_by_category(entries: Iterable[LedgerEntry]) -> dict[str, int]:
+     totals = {c["code"]: 0 for c in CATEGORIES}
+@@ -140,31 +248,65 @@ def snapshot_to_csv(snapshot: dict[str, Any]) -> str:
+     writer.writerow(["periodStart", snapshot.get("periodStart")])
+     writer.writerow(["periodEnd", snapshot.get("periodEnd")])
+     writer.writerow([])
+-    writer.writerow(["section", "categoryCode", "periodPence", "yearToDatePence", "isResidentialFinance"])
++    writer.writerow(
++        [
++            "section",
++            "categoryCode",
++            "sa105Box",
++            "categoryName",
++            "periodPence",
++            "periodPounds",
++            "yearToDatePence",
++            "yearToDatePounds",
++            "isResidentialFinance",
++        ]
++    )
+     period = snapshot.get("periodTotalsPence") or {}
+     ytd = snapshot.get("yearToDateTotalsPence") or {}
+     for cat in CATEGORIES:
++        period_pence = int(period.get(cat["code"], 0) or 0)
++        ytd_pence = int(ytd.get(cat["code"], 0) or 0)
+         writer.writerow(
+             [
+                 cat["kind"],
+                 cat["code"],
+-                period.get(cat["code"], 0),
+-                ytd.get(cat["code"], 0),
++                cat.get("sa105Box") or "",
++                cat.get("name") or cat["code"],
++                period_pence,
++                pounds_column(period_pence),
++                ytd_pence,
++                pounds_column(ytd_pence),
+                 str(bool(cat.get("isResidentialFinance"))).lower(),
+             ]
+         )
+     writer.writerow([])
+     writer.writerow(["entries"])
+     writer.writerow(
+-        ["date", "propertyId", "categoryCode", "amountPence", "description", "counterparty", "source", "isResidentialFinance"]
++        [
++            "date",
++            "propertyId",
++            "categoryCode",
++            "sa105Box",
++            "amountPence",
++            "amountPounds",
++            "description",
++            "counterparty",
++            "source",
++            "isResidentialFinance",
++        ]
+     )
++    by_code = {c["code"]: c for c in CATEGORIES}
+     for entry in snapshot.get("entries") or []:
++        pence = int(entry.get("amountPence") or 0)
++        cat = by_code.get(str(entry.get("categoryCode") or ""), {})
+         writer.writerow(
+             [
+                 entry.get("date"),
+                 entry.get("propertyId") or "",
+                 entry.get("categoryCode"),
+-                entry.get("amountPence"),
++                cat.get("sa105Box") or "",
++                pence,
++                pounds_column(pence),
+                 entry.get("description") or "",
+                 entry.get("counterparty") or "",
+                 entry.get("source"),
+diff --git a/mtd/pdf.py b/mtd/pdf.py
+index acacb0b..863dae2 100644
+--- a/mtd/pdf.py
++++ b/mtd/pdf.py
+@@ -1,9 +1,19 @@
+-"""Minimal single-page PDF writer (no third-party dependency)."""
++"""Multi-page PDF writer with word wrap (no third-party dependency)."""
+ 
+ from __future__ import annotations
+ 
+ from typing import Iterable
+ 
++PAGE_WIDTH = 595
++PAGE_HEIGHT = 842
++LEFT = 50
++TITLE_Y = 800
++BODY_START_Y = 776
++BODY_BOTTOM_Y = 88
++LINE_HEIGHT = 14
++WRAP_WIDTH = 92
++FOOTER_WRAP_WIDTH = 100
++
+ 
+ def _escape(text: str) -> str:
+     return (
+@@ -16,26 +26,129 @@ def _escape(text: str) -> str:
+     )
+ 
+ 
+-def build_simple_pdf(title: str, lines: Iterable[str]) -> bytes:
+-    """Return a valid PDF 1.4 document with Helvetica text lines."""
+-    content_lines = [f"BT /F1 16 Tf 50 780 Td ({_escape(title)}) Tj ET"]
+-    y = 750
++def wrap_text(text: str, width: int = WRAP_WIDTH) -> list[str]:
++    """Word-wrap so legal copy is never cut mid-word."""
++    raw = (text or "").replace("\r", " ").replace("\n", " ").strip()
++    if not raw:
++        return [""]
++    words = raw.split()
++    lines: list[str] = []
++    current = ""
++    for word in words:
++        piece = word
++        if not current:
++            if len(piece) <= width:
++                current = piece
++                continue
++            while len(piece) > width:
++                lines.append(piece[:width])
++                piece = piece[width:]
++            current = piece
++            continue
++        candidate = f"{current} {piece}"
++        if len(candidate) <= width:
++            current = candidate
++            continue
++        lines.append(current)
++        if len(piece) <= width:
++            current = piece
++            continue
++        while len(piece) > width:
++            lines.append(piece[:width])
++            piece = piece[width:]
++        current = piece
++    if current:
++        lines.append(current)
++    return lines or [""]
++
++
++def _tj(font_size: int, x: int, y: int, text: str) -> str:
++    return f"BT /F1 {font_size} Tf {x} {y} Td ({_escape(text)}) Tj ET"
++
++
++def _page_content(
++    title: str,
++    body_lines: list[str],
++    *,
++    disclaimer: str | None,
++    page_number: int,
++    page_count: int,
++) -> str:
++    cmds = [_tj(16, LEFT, TITLE_Y, title)]
++    y = BODY_START_Y
++    for raw in body_lines:
++        cmds.append(_tj(10, LEFT, y, raw))
++        y -= LINE_HEIGHT
++    if disclaimer:
++        fy = 72
++        for line in wrap_text(disclaimer, FOOTER_WRAP_WIDTH):
++            cmds.append(_tj(8, LEFT, fy, line))
++            fy -= 10
++    cmds.append(_tj(8, LEFT, 36, f"Page {page_number} of {page_count}"))
++    return "\n".join(cmds)
++
++
++def build_simple_pdf(
++    title: str,
++    lines: Iterable[str],
++    *,
++    disclaimer: str | None = None,
++) -> bytes:
++    """Return a valid PDF 1.4 document. Lines wrap; disclaimer repeats on every page."""
++    wrapped: list[str] = []
+     for raw in lines:
+-        if y < 50:
+-            break
+-        content_lines.append(f"BT /F1 10 Tf 50 {y} Td ({_escape(str(raw)[:110])}) Tj ET")
+-        y -= 14
+-    stream = "\n".join(content_lines).encode("latin-1", errors="replace")
++        if raw is None:
++            continue
++        text = str(raw)
++        if text.strip() == "":
++            wrapped.append("")
++            continue
++        wrapped.extend(wrap_text(text, WRAP_WIDTH))
++
++    max_body_lines = max(1, (BODY_START_Y - BODY_BOTTOM_Y) // LINE_HEIGHT)
++    chunks: list[list[str]] = []
++    current: list[str] = []
++    for line in wrapped:
++        if len(current) >= max_body_lines:
++            chunks.append(current)
++            current = []
++        current.append(line)
++    if current or not chunks:
++        chunks.append(current)
++
++    page_count = len(chunks)
++    streams = [
++        _page_content(
++            title,
++            chunk,
++            disclaimer=disclaimer,
++            page_number=i + 1,
++            page_count=page_count,
++        ).encode("latin-1", errors="replace")
++        for i, chunk in enumerate(chunks)
++    ]
+ 
+     objects: list[bytes] = []
+     objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+-    objects.append(b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
++    page_obj_nums = [3 + 2 * i for i in range(page_count)]
++    font_obj = 3 + 2 * page_count
++    kids = " ".join(f"{n} 0 R" for n in page_obj_nums)
++    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {page_count} >>".encode("ascii"))
++
++    for i, stream in enumerate(streams):
++        contents_num = page_obj_nums[i] + 1
++        objects.append(
++            (
++                f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {PAGE_WIDTH} {PAGE_HEIGHT}] "
++                f"/Contents {contents_num} 0 R "
++                f"/Resources << /Font << /F1 {font_obj} 0 R >> >> >>"
++            ).encode("ascii")
++        )
++        objects.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
++
+     objects.append(
+-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+-        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>"
++        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+     )
+-    objects.append(b"<< /Length %d >>\nstream\n%s\nendstream" % (len(stream), stream))
+-    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+ 
+     out = bytearray(b"%PDF-1.4\n")
+     offsets = [0]
+diff --git a/mtd/service.py b/mtd/service.py
+index e2987bd..ca2a2d6 100644
+--- a/mtd/service.py
++++ b/mtd/service.py
+@@ -8,7 +8,7 @@ import uuid
+ from datetime import date, datetime, timedelta, timezone
+ from typing import Any
+ 
+-from mtd.categories import CATEGORIES, get_category
++from mtd.categories import get_category
+ from mtd.csv_import import preview_rows, row_fingerprint, sha256_text
+ from mtd.models import (
+     AuthContext,
+@@ -23,7 +23,7 @@ from mtd.models import (
+     api_dict,
+ )
+ from mtd.open_banking import OpenBankingNotAvailable, StubOpenBankingProvider
+-from mtd.packs import DISCLAIMER, build_snapshot, snapshot_to_csv
++from mtd.packs import DISCLAIMER, build_snapshot, snapshot_to_csv, snapshot_to_pdf_lines
+ from mtd.pdf import build_simple_pdf
+ from mtd.quarters import parse_tax_year_start, resolve_quarter, tax_year_label
+ from mtd.store import Conflict, InMemoryMtdStore, NotFound
+@@ -378,8 +378,43 @@ class MtdService:
+         known = {p.id for p in self.store.list_properties(ctx.org_id, business_id)}
+         known |= {p.property_id for p in self.store.list_properties(ctx.org_id, business_id) if p.property_id}
+         result = preview_rows(csv_text, known_property_ids=known if known else None)
+-        result["contentSha256"] = sha256_text(csv_text)
++        digest = sha256_text(csv_text)
++        result["contentSha256"] = digest
+         result["businessId"] = business_id
++        existing_file = self.store.get_import_by_hash(ctx.org_id, business_id, digest)
++        already_file = bool(existing_file and existing_file.status == "committed")
++        result["alreadyImportedFile"] = already_file
++        already_count = 0
++        for row in result["rows"]:
++            mapped = row.get("mapped") or {}
++            already = False
++            if already_file:
++                already = True
++            elif (
++                row.get("valid")
++                and mapped.get("date")
++                and mapped.get("categoryCode")
++                and mapped.get("amountPence") is not None
++            ):
++                fp = row_fingerprint(
++                    business_id=business_id,
++                    entry_date=mapped["date"],
++                    property_id=mapped.get("propertyId"),
++                    category_code=mapped["categoryCode"],
++                    amount_pence=mapped["amountPence"],
++                    description=mapped.get("description"),
++                    source_row=row["rowNumber"],
++                    content_sha256=digest,
++                )
++                existing_entry = self.store.get_entry_by_fingerprint(fp)
++                already = bool(existing_entry and existing_entry.voided_at is None)
++            row["alreadyImported"] = already
++            if already:
++                already_count += 1
++                warnings = list(row.get("warnings") or [])
++                warnings.append("already imported — Flask will skip this row on commit")
++                row["warnings"] = warnings
++        result["alreadyImportedCount"] = already_count
+         return result
+ 
+     def commit_import(
+@@ -551,31 +586,12 @@ class MtdService:
+             return snapshot_to_csv(pack.snapshot).encode("utf-8"), "text/csv; charset=utf-8", filename
+         if fmt == "pdf":
+             snap = pack.snapshot
+-            lines = [
+-                DISCLAIMER,
+-                f"Business: {snap.get('business', {}).get('name')}",
+-                f"Tax year: {snap.get('taxYear')}   Quarter: {snap.get('quarter')}   Basis: {snap.get('basis')}",
+-                f"Period: {snap.get('periodStart')} to {snap.get('periodEnd')}",
+-                f"Deadline: {snap.get('filingDeadline')}",
+-                "",
+-                "Category totals (pence)   period / YTD",
+-            ]
+-            period = snap.get("periodTotalsPence") or {}
+-            ytd = snap.get("yearToDateTotalsPence") or {}
+-            for cat in CATEGORIES:
+-                flag = " [residential finance]" if cat.get("isResidentialFinance") else ""
+-                lines.append(
+-                    f"{cat['code']}: {period.get(cat['code'], 0)} / {ytd.get(cat['code'], 0)}{flag}"
+-                )
+-            rf = (snap.get("residentialFinance") or {}).get("period") or {}
+-            lines.append("")
+-            lines.append(
+-                f"Residential finance (excluded from profit): {rf.get('totalPence', 0)} pence"
+-            )
+-            lines.append(f"Entries in period: {snap.get('entryCount', 0)}")
+-            lines.append("HMRC submit: no")
+             return (
+-                build_simple_pdf("Metalyzi MTD Quarter Pack", lines),
++                build_simple_pdf(
++                    "Metalyzi MTD Quarter Pack",
++                    snapshot_to_pdf_lines(snap),
++                    disclaimer=str(snap.get("disclaimer") or DISCLAIMER),
++                ),
+                 "application/pdf",
+                 filename,
+             )
+diff --git a/tests/test_mtd_pack.py b/tests/test_mtd_pack.py
+index 4d693a1..b8d9495 100644
+--- a/tests/test_mtd_pack.py
++++ b/tests/test_mtd_pack.py
+@@ -6,6 +6,7 @@ Uses a dedicated Flask app (does not import the deal-analyser app.py).
+ from __future__ import annotations
+ 
+ import json
++import re
+ from datetime import datetime, timedelta, timezone
+ from pathlib import Path
+ 
+@@ -14,7 +15,8 @@ from flask import Flask
+ 
+ from mtd.blueprint import configure_mtd, mtd_bp
+ from mtd.categories import CATEGORIES, RESIDENTIAL_FINANCE_CODES, is_residential_finance
+-from mtd.pdf import build_simple_pdf
++from mtd.packs import DISCLAIMER, RESIDENTIAL_FINANCE_PDF_NOTE, snapshot_to_pdf_lines
++from mtd.pdf import build_simple_pdf, wrap_text
+ from mtd.quarters import resolve_quarter, tax_year_for_date
+ from mtd.service import MtdService
+ from mtd.store import InMemoryMtdStore
+@@ -23,6 +25,20 @@ ROOT = Path(__file__).resolve().parent.parent
+ SAMPLE_CSV = (ROOT / "tests" / "fixtures" / "mtd_sample.csv").read_text(encoding="utf-8")
+ 
+ 
++def _pdf_strings(blob: bytes) -> str:
++    parts = re.findall(rb"\((?:\\.|[^\\)])*\) Tj", blob)
++    texts: list[str] = []
++    for part in parts:
++        inner = part[1:-4]  # drop "(" and ") Tj"
++        texts.append(
++            inner.decode("latin-1")
++            .replace("\\(", "(")
++            .replace("\\)", ")")
++            .replace("\\\\", "\\")
++        )
++    return "\n".join(texts)
++
++
+ def make_app(service: MtdService | None = None) -> Flask:
+     app = Flask(__name__)
+     app.config["TESTING"] = True
+@@ -228,6 +244,9 @@ def test_csv_preview_and_idempotent_commit(client):
+     pdata = preview.get_json()
+     assert pdata["readyToCommit"] is True
+     assert pdata["validCount"] == 4
++    assert pdata["alreadyImportedFile"] is False
++    assert pdata["alreadyImportedCount"] == 0
++    assert all(row["alreadyImported"] is False for row in pdata["rows"])
+     codes = {row["mapped"]["categoryCode"] for row in pdata["rows"]}
+     assert "residential_finance_costs" in codes
+     assert "repairs_and_maintenance" in codes
+@@ -254,6 +273,19 @@ def test_csv_preview_and_idempotent_commit(client):
+     assert sdata["idempotent"] is True
+     assert sdata["createdCount"] == 0
+ 
++    replay = client.post(
++        f"/v1/mtd/businesses/{biz['id']}/imports/preview",
++        headers=auth("alice"),
++        json={"csv": SAMPLE_CSV, "filename": "mtd_sample.csv"},
++    ).get_json()
++    assert replay["alreadyImportedFile"] is True
++    assert replay["alreadyImportedCount"] == 4
++    assert all(row["alreadyImported"] is True for row in replay["rows"])
++    assert all(
++        any("already imported" in w for w in (row.get("warnings") or []))
++        for row in replay["rows"]
++    )
++
+     ledger = client.get(
+         f"/v1/mtd/businesses/{biz['id']}/ledger", headers=auth("alice")
+     ).get_json()["entries"]
+@@ -343,12 +375,24 @@ def test_quarter_pack_immutable_snapshot_and_exports(client):
+     csv_body = csv_res.get_data(as_text=True)
+     assert "residential_finance_costs" in csv_body
+     assert "true" in csv_body.lower() or "residential" in csv_body.lower()
++    assert "periodPounds" in csv_body
++    assert "amountPounds" in csv_body
++    assert "1250.00" in csv_body
+ 
+     pdf_res = client.get(f"/v1/mtd/packs/{pack['id']}/export.pdf", headers=auth("alice"))
+     assert pdf_res.status_code == 200
+     pdf_bytes = pdf_res.get_data()
+     assert pdf_bytes.startswith(b"%PDF")
+     assert b"%%EOF" in pdf_bytes
++    pdf_text = _pdf_strings(pdf_bytes)
++    assert "tax return to HMRC" in pdf_text
++    assert DISCLAIMER.replace(" ", "") in pdf_text.replace(" ", "").replace("\n", "")
++    assert "Rents and other income from UK property" in pdf_text
++    assert "box 20" in pdf_text
++    assert "£1,250.00" in pdf_text
++    assert "tax reducer, not a deductible expense" in pdf_text
++    assert "box 44" in pdf_text
++    assert "uk_rent_income: 125000" not in pdf_text
+ 
+ 
+ def test_minimal_pdf_writer():
+@@ -357,6 +401,59 @@ def test_minimal_pdf_writer():
+     assert b"Helvetica" in blob
+ 
+ 
++def test_pdf_wraps_disclaimer_on_every_page():
++    wrapped = wrap_text(DISCLAIMER, 40)
++    assert len(wrapped) >= 2
++    assert " ".join(wrapped) == DISCLAIMER
++    assert not any(line.endswith(" t") for line in wrapped)
++
++    many = [f"line {i} with payable amount {i}" for i in range(80)]
++    blob = build_simple_pdf("Metalyzi MTD Quarter Pack", many, disclaimer=DISCLAIMER)
++    text = _pdf_strings(blob)
++    assert text.count("tax return to HMRC") >= 2
++    assert "Page 1 of" in text
++    assert "Page 2 of" in text
++    collapsed = " ".join(text.split())
++    assert DISCLAIMER in collapsed
++
++
++def test_snapshot_pdf_lines_use_pounds_and_sa105_boxes():
++    lines = snapshot_to_pdf_lines(
++        {
++            "disclaimer": DISCLAIMER,
++            "business": {"name": "Alice UK property"},
++            "taxYear": "2026-27",
++            "quarter": 1,
++            "basis": "standard",
++            "periodStart": "2026-04-06",
++            "periodEnd": "2026-07-05",
++            "filingDeadline": "2026-08-07",
++            "periodTotalsPence": {
++                "uk_rent_income": 285000,
++                "residential_finance_costs": 32000,
++            },
++            "yearToDateTotalsPence": {
++                "uk_rent_income": 285000,
++                "residential_finance_costs": 32000,
++            },
++            "periodNetPence": 285000,
++            "yearToDateNetPence": 285000,
++            "residentialFinance": {"period": {"totalPence": 32000}},
++            "entryCount": 2,
++        }
++    )
++    joined = "\n".join(lines)
++    assert DISCLAIMER in joined
++    assert "Rents and other income from UK property (box 20): £2,850.00 / £2,850.00" in joined
++    assert "Residential finance costs (box 44): £320.00 / £320.00" in joined
++    assert RESIDENTIAL_FINANCE_PDF_NOTE in joined
++    assert "uk_rent_income: 285000" not in joined
++    blob = build_simple_pdf("Metalyzi MTD Quarter Pack", lines, disclaimer=DISCLAIMER)
++    text = _pdf_strings(blob)
++    assert "£2,850.00" in text
++    assert "tax return to HMRC" in text
++
++
+ # ── share links ───────────────────────────────────────────────────────
+ def test_share_link_readonly_and_expiry(client, service: MtdService):
+     biz = _seeded_business(client)
+-- 
+2.43.0
+

@@ -27,6 +27,8 @@ import {
 } from "@/lib/mtd/client"
 import { requirePlatformPropertyId } from "@/lib/mtd/config"
 import { injectPropertyId } from "@/lib/mtd/csv"
+import { countNoun } from "@/lib/mtd/copy"
+import { csvPreviewNewCount, csvPreviewRowStatus } from "@/lib/mtd/csv-preview"
 import { formatGbpFromPence } from "@/lib/mtd/money"
 import type { FlaskCsvPreview, PortfolioProperty } from "@/lib/mtd/types"
 
@@ -50,6 +52,7 @@ export function CsvImportDialog({
   const [fallbackPropertyId, setFallbackPropertyId] = useState(defaultPropertyId || "")
   const [preview, setPreview] = useState<FlaskCsvPreview | null>(null)
   const [busy, setBusy] = useState(false)
+  const newRowCount = preview ? csvPreviewNewCount(preview) : 0
 
   useEffect(() => {
     if (defaultPropertyId && !fallbackPropertyId) setFallbackPropertyId(defaultPropertyId)
@@ -179,10 +182,26 @@ export function CsvImportDialog({
         </div>
 
         {filename && preview && (
-          <p className="text-xs text-muted-foreground">
-            {filename} · {preview.rowCount} rows · {preview.validCount} ready · {preview.invalidCount}{" "}
-            invalid
-          </p>
+          <div className="flex flex-col gap-1">
+            <p className="text-xs text-muted-foreground">
+              {filename} · {countNoun(preview.rowCount, "row")} · {preview.validCount} ready ·{" "}
+              {preview.invalidCount} invalid
+              {(preview.alreadyImportedCount ?? 0) > 0
+                ? ` · ${preview.alreadyImportedCount} already imported`
+                : ""}
+            </p>
+            {preview.alreadyImportedFile ? (
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                This file was already imported. Flask will skip matching rows (file sha256 + row
+                fingerprint).
+              </p>
+            ) : (preview.alreadyImportedCount ?? 0) > 0 ? (
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                {countNoun(preview.alreadyImportedCount ?? 0, "row")} already imported — they will be
+                skipped on commit.
+              </p>
+            ) : null}
+          </div>
         )}
 
         <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/50">
@@ -205,7 +224,16 @@ export function CsvImportDialog({
               </thead>
               <tbody>
                 {preview.rows.map((r) => (
-                  <tr key={r.rowNumber} className={r.valid ? "" : "bg-destructive/5"}>
+                  <tr
+                    key={r.rowNumber}
+                    className={
+                      !r.valid
+                        ? "bg-destructive/5"
+                        : r.alreadyImported
+                          ? "bg-amber-50 dark:bg-amber-950/30"
+                          : ""
+                    }
+                  >
                     <td className="px-2 py-1.5 tabular-nums">{r.rowNumber}</td>
                     <td className="px-2 py-1.5 tabular-nums">{r.mapped.date || "—"}</td>
                     <td className="px-2 py-1.5 tabular-nums">
@@ -215,7 +243,7 @@ export function CsvImportDialog({
                     </td>
                     <td className="px-2 py-1.5">{r.mapped.categoryCode || "—"}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">
-                      {r.valid ? "Ready" : r.errors.join("; ")}
+                      {csvPreviewRowStatus(r)}
                     </td>
                   </tr>
                 ))}
@@ -234,7 +262,9 @@ export function CsvImportDialog({
           >
             {busy
               ? "Importing…"
-              : `Commit ${preview?.validCount ?? 0} ${(preview?.validCount ?? 0) === 1 ? "row" : "rows"}`}
+              : preview?.alreadyImportedFile && newRowCount === 0
+                ? "Commit (already imported)"
+                : `Commit ${newRowCount} ${newRowCount === 1 ? "new row" : "new rows"}`}
           </Button>
         </div>
       </DialogContent>

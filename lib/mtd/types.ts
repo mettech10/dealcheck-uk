@@ -135,10 +135,15 @@ export interface FlaskCsvPreview {
   validCount: number
   invalidCount: number
   rowCount: number
+  alreadyImportedFile?: boolean
+  alreadyImportedCount?: number
+  contentSha256?: string
   rows: Array<{
     rowNumber: number
     valid: boolean
     errors: string[]
+    alreadyImported?: boolean
+    warnings?: string[]
     mapped: {
       date?: string
       categoryCode?: string
