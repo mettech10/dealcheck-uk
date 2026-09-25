@@ -17,31 +17,13 @@ import { signOut } from "@/app/auth/actions"
 import { CreditsPill } from "@/components/landing/credits-pill"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-import { isLicensingCheckerEnabled } from "@/lib/licensing/flag"
+import { toolsMenuItems } from "@/lib/nav/tools"
 
 interface NavbarProps {
   user?: { email?: string; name?: string } | null
 }
 
-interface ToolItem {
-  href: string
-  name: string
-}
-
-// Plain-text only — no icons, no descriptions, no badges.
-const TOOLS: ToolItem[] = [
-  { href: "/discovery",             name: "Deal Discovery" },
-  { href: "/tools/sdlt-calculator", name: "SDLT Calculator" },
-  { href: "/tools/personal-vs-ltd", name: "Personal vs Ltd Co" },
-  { href: "/tools/portfolio",       name: "Portfolio Tracker" },
-  { href: "/tools/compare",         name: "Deal Comparison" },
-  { href: "/tools/compliance",      name: "Compliance Cockpit" },
-  ...(isLicensingCheckerEnabled()
-    ? [{ href: "/tools/licensing-checker", name: "Licensing Checker" }]
-    : []),
-  // Canonical route is /mtd. /tools/mtd permanently redirects there.
-  { href: "/mtd",                    name: "MTD Pack" },
-]
+const TOOLS = toolsMenuItems()
 
 /** Map raw tier id from /api/usage to a friendly label + badge tone. */
 function tierMeta(tier: string | null): { label: string; tone: "teal" | "muted" | "amber" } {
@@ -72,7 +54,6 @@ export function Navbar({ user }: NavbarProps) {
   const [toolsOpen, setToolsOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement | null>(null)
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Desktop Account popover (replaces standalone Account link) ──
   const [accountOpen, setAccountOpen] = useState(false)
@@ -91,17 +72,6 @@ export function Navbar({ user }: NavbarProps) {
       .catch(() => setTierId("free"))
       .finally(() => setTierLoading(false))
   }, [accountOpen, user, tierId])
-
-  const cancelClose = () => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current)
-      closeTimer.current = null
-    }
-  }
-  const scheduleClose = () => {
-    cancelClose()
-    closeTimer.current = setTimeout(() => setToolsOpen(false), 150)
-  }
 
   // Click-outside close (Tools + Account popover)
   useEffect(() => {
@@ -140,8 +110,12 @@ export function Navbar({ user }: NavbarProps) {
   }, [])
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+    <header
+      className={`sticky top-0 overflow-visible border-b border-border/50 bg-background/80 backdrop-blur-xl ${
+        toolsOpen || accountOpen ? "z-[200]" : "z-50"
+      }`}
+    >
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between overflow-visible px-6">
         <Link href="/" className="flex items-center gap-2.5">
           {/* Navy logo in light mode, original teal logo in dark mode */}
           <Image
@@ -184,16 +158,21 @@ export function Navbar({ user }: NavbarProps) {
             Pricing
           </a>
 
-          {/* ── Tools dropdown ─────────────────────────────────── */}
-          <div className="relative">
+          {/* ── Tools dropdown ───────────────────────────────────
+              Click toggles; hover also opens. Do not close on mouseleave
+              (that hid the submenu at 1280×800 during live QA). Close via
+              click-outside, Escape, or choosing an item. */}
+          <div
+            className="relative overflow-visible"
+            onMouseEnter={() => setToolsOpen(true)}
+          >
             <button
               ref={triggerRef}
               type="button"
               onClick={() => setToolsOpen((v) => !v)}
-              onMouseEnter={() => { cancelClose(); setToolsOpen(true) }}
-              onMouseLeave={scheduleClose}
               aria-expanded={toolsOpen}
               aria-haspopup="menu"
+              aria-controls="tools-menu"
               className={`flex items-center gap-1 py-2 text-sm transition-colors hover:text-foreground ${
                 isToolsActive || toolsOpen ? "text-primary font-semibold" : "text-muted-foreground"
               }`}
@@ -208,28 +187,29 @@ export function Navbar({ user }: NavbarProps) {
 
             {toolsOpen && (
               <div
+                id="tools-menu"
                 ref={dropdownRef}
                 role="menu"
-                onMouseEnter={cancelClose}
-                onMouseLeave={scheduleClose}
-                className="absolute left-1/2 top-full z-[1000] mt-2 w-[220px] -translate-x-1/2 animate-tools-dropdown rounded-xl border border-border/60 bg-background p-2 shadow-2xl"
+                data-testid="tools-menu"
+                className="absolute left-1/2 top-full z-[1000] w-[220px] max-h-[min(70vh,28rem)] -translate-x-1/2 overflow-y-auto overflow-x-visible pt-2 animate-tools-dropdown"
               >
-                {/* Triangle pointer */}
-                <div
-                  aria-hidden
-                  className="absolute -top-1.5 left-1/2 size-3 -translate-x-1/2 rotate-45 border-l border-t border-border/60 bg-background"
-                />
-                {TOOLS.map((t) => (
-                  <Link
-                    key={t.href}
-                    href={t.href}
-                    role="menuitem"
-                    onClick={() => setToolsOpen(false)}
-                    className="block rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted/60"
-                  >
-                    {t.name}
-                  </Link>
-                ))}
+                <div className="rounded-xl border border-border/60 bg-background p-2 shadow-2xl">
+                  <div
+                    aria-hidden
+                    className="absolute top-0.5 left-1/2 size-3 -translate-x-1/2 rotate-45 border-l border-t border-border/60 bg-background"
+                  />
+                  {TOOLS.map((t) => (
+                    <Link
+                      key={t.href}
+                      href={t.href}
+                      role="menuitem"
+                      onClick={() => setToolsOpen(false)}
+                      className="block rounded-lg px-3 py-2.5 text-sm text-foreground transition-colors hover:bg-muted/60"
+                    >
+                      {t.name}
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -74,12 +74,20 @@ describe("Next does not own the MTD ledger write path", () => {
     expect(src).toContain("/api/me")
     expect(src).toContain("ensureBusiness")
     expect(src).not.toContain("getFlaskBearer")
+    expect(src).toContain("Retry")
+    expect(src).toContain("messageForEnsureFailure")
+    expect(src).toContain("never the Sign in gate")
+  })
+
+  test("BFF remaps upstream Flask 401 so the client does not see Unauthorised", () => {
+    const src = readFileSync("app/api/mtd/[...path]/route.ts", "utf8")
+    expect(src).toContain("remapUpstreamMtdStatus")
   })
 
   test("Tools nav canonical href is /mtd and /tools/mtd redirects", () => {
-    const nav = readFileSync("components/landing/navbar.tsx", "utf8")
-    expect(nav).toMatch(/href:\s*"\/mtd"/)
-    expect(nav).not.toMatch(/href:\s*"\/tools\/mtd"/)
+    const items = readFileSync("lib/nav/tools.ts", "utf8")
+    expect(items).toContain('href: "/mtd"')
+    expect(items).not.toContain('href: "/tools/mtd"')
     const cfg = readFileSync("next.config.mjs", "utf8")
     expect(cfg).toContain("source: '/tools/mtd'")
     expect(cfg).toContain("destination: '/mtd'")
