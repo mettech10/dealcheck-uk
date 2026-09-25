@@ -6,14 +6,16 @@
  * we redirect to the extension's chromiumapp.org URL with the Supabase
  * access token in the fragment (never the query string).
  *
- * Auth MUST use the server cookie client (same as /account). Session cookies
- * are HttpOnly, so createBrowserClient().auth.getSession() is always empty
- * here and previously forced a login bounce for users who were already
- * signed in on /account and /analyse.
+ * Auth MUST use a read-only server cookie client (same cookie path as
+ * /account, but setAll is a no-op). Session cookies are HttpOnly, so
+ * createBrowserClient().auth.getSession() is always empty. The writable
+ * server client must not run here: getUser()/redirect() was persisting
+ * empty chunk cookies and signing the user out of the whole site when
+ * they opened ?redirect_uri= (valid or not).
  */
 
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+import { createReadOnlyClient } from "@/lib/supabase/server"
 import { screenerConnectLoginPath } from "@/lib/deal-screener/connectRedirect"
 import { ConnectClient } from "./connect-client"
 
@@ -32,7 +34,7 @@ export default async function ScreenerConnectPage({
   const raw = await searchParams
   const redirectUri = first(raw.redirect_uri)
 
-  const supabase = await createClient()
+  const supabase = await createReadOnlyClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

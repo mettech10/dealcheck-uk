@@ -1,26 +1,17 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
+import { mergeAuthCookieOptions } from "@/lib/supabase/cookieOptions"
 
 /**
- * Secure Supabase server client with HttpOnly cookies
- * This prevents XSS attacks from stealing session tokens
+ * Secure Supabase server client with HttpOnly cookies.
+ *
+ * Cookie writes MUST go through mergeAuthCookieOptions so chunk deletions
+ * (`value=""`, `maxAge: 0`) are not persisted as empty 7-day cookies.
+ * That clobber signed users out of the whole site after /screener/connect
+ * called getUser()/getSession() in a Route Handler or a redirecting RSC.
  */
 export async function createClient() {
   const cookieStore = await cookies()
-
-  // Secure cookie options
-  const cookieOptions = {
-    path: '/',
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,  // ← CRITICAL: Prevents XSS access to cookies
-    // `lax`, not `strict` — `strict` strips the cookie on cross-site
-    // top-level navigations (e.g. the redirect from supabase.co back
-    // to our origin after Google OAuth), which left users logged out
-    // after a successful sign-in. `lax` keeps it for top-level
-    // navigations while still blocking it on cross-site XHR/iframe.
-    sameSite: 'lax' as const,
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  }
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -32,14 +23,37 @@ export async function createClient() {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value }) =>
-              cookieStore.set(name, value, cookieOptions),
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, mergeAuthCookieOptions(options)),
             )
           } catch {
             // The "setAll" method was called from a Server Component.
             // This can be ignored if you have proxy refreshing
             // user sessions.
           }
+        },
+      },
+    },
+  )
+}
+
+/**
+ * Same cookie read path, but never writes. Use on routes that must not
+ * rotate or clear the session (screener connect + token mint).
+ */
+export async function createReadOnlyClient() {
+  const cookieStore = await cookies()
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll() {
+          // Intentionally empty — do not clobber chunked session cookies.
         },
       },
     },
