@@ -12,6 +12,27 @@ export const UPSTREAM_AUTH_FAILED = "upstream_auth_failed"
 export const UPSTREAM_AUTH_FAILED_MESSAGE =
   "MTD service couldn't verify your session. Try again shortly."
 
+/**
+ * Flask refuses MTD writes (503 `storage_unavailable`) when its database
+ * is unreachable or unconfigured, rather than accepting records it would
+ * lose. The raw Flask text is operator-facing, so users get this instead.
+ */
+export const STORAGE_UNAVAILABLE = "storage_unavailable"
+
+export const STORAGE_UNAVAILABLE_MESSAGE =
+  "Your MTD records can't be saved right now, so nothing was changed. Please try again shortly."
+
+/** User-facing message for a failed MTD request. */
+export function userMessageForMtdError(
+  status: number,
+  code: string | undefined,
+  raw: string | undefined,
+): string {
+  if (code === STORAGE_UNAVAILABLE) return STORAGE_UNAVAILABLE_MESSAGE
+  if (typeof raw === "string" && raw.trim()) return raw
+  return `Request failed (${status})`
+}
+
 export type MtdErrorFields = {
   status?: number
   code?: string
@@ -47,6 +68,7 @@ export function messageForEnsureFailure(err: MtdErrorFields): string {
   if (err.code === UPSTREAM_AUTH_FAILED || err.status === 401) {
     return UPSTREAM_AUTH_FAILED_MESSAGE
   }
+  if (err.code === STORAGE_UNAVAILABLE) return STORAGE_UNAVAILABLE_MESSAGE
   if (typeof err.message === "string" && err.message.trim()) return err.message
   return UPSTREAM_AUTH_FAILED_MESSAGE
 }
