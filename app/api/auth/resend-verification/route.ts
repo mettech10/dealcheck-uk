@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendVerificationEmail } from "@/lib/brevo-email"
 import { NextResponse } from "next/server"
+import { verificationUrl } from "@/lib/auth/verification-url"
 
 /**
  * POST /api/auth/resend-verification
@@ -88,8 +89,9 @@ export async function POST(request: Request) {
       return NextResponse.json(GENERIC_OK)
     }
 
-    const verificationUrl = data.properties.action_link
-    const sent = await sendVerificationEmail(normalised, verificationUrl)
+    // action_link uses Supabase's implicit flow, returning fragment tokens
+    // that our server callback cannot read. Match the initial signup flow.
+    const sent = await sendVerificationEmail(normalised, verificationUrl(origin, data.properties.hashed_token))
     if (!sent) {
       console.error("[Resend Verification] Brevo send failed for", normalised)
     }
