@@ -211,12 +211,12 @@ Vercel (dealcheck-uk):
 
 Render (metusa-deal-analyzer) — **exact keys to set or check**
 (do not invent values; copy from the same Supabase project that issues
-the browser cookie `sb-lftlugydvvcjtujalzwh-auth-token`):
+the browser cookie `sb-lftlugydvvctjujalzwh-auth-token`):
 
 1. `SUPABASE_URL` (alias `NEXT_PUBLIC_SUPABASE_URL`)
-   Must be `https://lftlugydvvcjtujalzwh.supabase.co`. After the BE
+   Must be `https://lftlugydvvctjujalzwh.supabase.co`. After the BE
    patch, health `auth.supabaseHost` must equal
-   `lftlugydvvcjtujalzwh.supabase.co`. `storeProbe.ready=true` only
+   `lftlugydvvctjujalzwh.supabase.co`. `storeProbe.ready=true` only
    proves *a* URL + service-role key can reach PostgREST — not that
    the URL is this project.
 2. `SUPABASE_SERVICE_KEY` (alias `SUPABASE_SERVICE_ROLE_KEY`)
@@ -244,7 +244,7 @@ Supabase (same project as auth):
 3. Confirm `GET https://metusa-deal-analyzer.onrender.com/v1/compliance/health`
    has `storeProbe.ready: true` (not only `store: "supabase"`) **and**
    `auth.ready: true`, `auth.apikeySource: "service"`,
-   `auth.supabaseHost: "lftlugydvvcjtujalzwh.supabase.co"`.
+   `auth.supabaseHost: "lftlugydvvctjujalzwh.supabase.co"`.
 4. Confirm `GET /v1/mtd/health` reports the same `auth` object.
 
 Retest: sign in → `/tools/compliance` dashboard counts match portfolio
@@ -266,7 +266,7 @@ curl -s https://metusa-deal-analyzer.onrender.com/v1/mtd/health | jq '{status, a
 
 `auth.apikeySource` must be `"service"`. `"none"` is a 503 after this
 patch. A 401 after `auth.ready=true` means GoTrue still rejected the
-Bearer — almost always `supabaseHost` ≠ `lftlugydvvcjtujalzwh.supabase.co`.
+Bearer — almost always `supabaseHost` ≠ `lftlugydvvctjujalzwh.supabase.co`.
 
 ---
 
