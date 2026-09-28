@@ -20,13 +20,16 @@
 
 export const LTD_CO_TAX_YEAR = "2026/27"
 
+/** Year 1 uses 2026/27; from year 2 the April 2027 property income rates apply. */
+export const LTD_CO_RATES_LABEL = "2026/27 → 2027/28+"
+
 export const LTD_CO_DISCLAIMER =
-  "Educational illustration only — not tax, legal or financial advice. Figures use England & Northern Ireland 2026/27 rates and a simplified model. Always take regulated advice before changing how a property is owned."
+  "Educational illustration only — not tax, legal or financial advice. Figures use England & Northern Ireland rates — 2026/27 for year 1, then 2027/28 (property income taxed at 22/42/47%) — and a simplified model. Always take regulated advice before changing how a property is owned."
 
 export const LTD_CO_DISCLAIMER_WALL = [
   "This tool is an educational illustration of after-tax cash for a residential landlord holding a property personally versus in a limited company.",
   "It is not tax advice, legal advice, financial advice, or a recommendation to change ownership structure.",
-  "Rates are England & Northern Ireland 2026/27. Scotland and Wales are flagged only — they are not modelled as separate tax systems here.",
+  "Rates are England & Northern Ireland: 2026/27 for year 1, then 2027/28 from year 2, when property income is taxed at 22/42/47% and mortgage interest relief rises to 22%. Scotland and Wales are flagged only — they are not modelled as separate tax systems here.",
   "Outputs are a soft lean only (which structure left more after tax in this model). The tool will never tell you to incorporate, or to do anything now.",
   "Always take regulated advice from a qualified accountant or tax adviser before acting.",
 ] as const

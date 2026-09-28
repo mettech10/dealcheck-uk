@@ -220,6 +220,49 @@ describe("toBackendComparePayload / mapBackendCompareToUi", () => {
   })
 })
 
+describe("NPV basis is the same on every lens", () => {
+  test("personal, retained and extracted NPVs all include the year-0 acquisition", () => {
+    const be = {
+      paths: {
+        A: { years: [{ year: 0, cashToIndividual: -50000 }, { year: 1, cashToIndividual: 1000 }] },
+        B: {
+          years: [
+            { year: 0, cashToIndividual: -50165 },
+            { year: 1, cashToIndividual: 800, companyCashBeforeExtract: 1200 },
+          ],
+        },
+      },
+    }
+    const input = {
+      ...DEFAULT_LTD_CO_INPUT,
+      horizon: { ...DEFAULT_LTD_CO_INPUT.horizon, discountRatePercent: 0 },
+    }
+    const m = mapBackendCompareToUi(be, input)
+    expect(m.personal.npv).toBe(-49000)
+    expect(m.retained.npv).toBe(-48965)
+    expect(m.extracted.npv).toBe(-49365)
+  })
+
+  test("retained NPV stays on the Flask basis when Flask supplies path NPVs", () => {
+    const be = {
+      paths: {
+        A: { years: [{ year: 0, cashToIndividual: -62500 }, { year: 1, cashToIndividual: 450 }] },
+        B: {
+          years: [
+            { year: 0, cashToIndividual: -62665 },
+            { year: 1, cashToIndividual: 395, companyCashBeforeExtract: 487 },
+          ],
+        },
+      },
+      npv: { pathA: -62071, pathB: -62289 },
+    }
+    const m = mapBackendCompareToUi(be, DEFAULT_LTD_CO_INPUT)
+    // Previously retained was operating-only (~+£464) beside a -£62k personal NPV.
+    expect(m.retained.npv).toBeLessThan(-60000)
+    expect(Math.abs(m.retained.npv - m.extracted.npv)).toBeLessThan(1000)
+  })
+})
+
 describe("disclaimer wall copy", () => {
   test("never tells the user to incorporate", () => {
     const blob = LTD_CO_DISCLAIMER_WALL.join(" ").toLowerCase()

@@ -230,6 +230,14 @@ export function mapBackendCompareToUi(
   const devolved = region === "scotland" || region === "wales"
   const disclaimers = be.metadata?.disclaimers ?? []
 
+  // Every NPV includes the year-0 acquisition (deposit, SDLT, fees), like the
+  // Flask NPVs. The retained lens has no Flask NPV, so it is built the same
+  // way here — mixing it with an operating-only NPV made Ltd look ~£60k better.
+  const year0Cash = (path?: BePath) =>
+    (path?.years ?? []).find((y) => y.year === 0)?.cashToIndividual ?? 0
+  const npvWithAcquisition = (path: BePath | undefined, cashflows: number[]) =>
+    gbp(year0Cash(path) + npvOf(cashflows, input.horizon.discountRatePercent))
+
   return {
     taxYear: LTD_CO_TAX_YEAR,
     mode: input.mode === "broker" ? "broker" : "landlord",
@@ -247,12 +255,12 @@ export function mapBackendCompareToUi(
       ...disclaimers,
       "Path A = hold personally (Section 24). Path B = buy in a limited company.",
       "Entity-retained lens uses company cash after corporation tax, before dividends. Owner-extracted lens uses cash paid out as dividends.",
-      "NPV from the calc API includes acquisition (year 0). Year-1 and cumulative figures above are operating years only.",
+      "NPV includes the acquisition (year 0: deposit, stamp duty, fees) on every lens. Year-1 and cumulative figures above are operating years only.",
     ],
     personal: {
       year1AfterTax: rows[0]?.personalAfterTax ?? 0,
       cumulative: personalCum,
-      npv: gbp(be.npv?.pathA ?? npvOf(personalCf, input.horizon.discountRatePercent)),
+      npv: gbp(be.npv?.pathA ?? npvWithAcquisition(be.paths?.A, personalCf)),
       breakEvenYear: null,
       lean: "personal",
       copy: "Personal holding is the baseline on both lenses.",
@@ -261,7 +269,7 @@ export function mapBackendCompareToUi(
     retained: {
       year1AfterTax: rows[0]?.ltdRetainedAfterTax ?? 0,
       cumulative: retainedCum,
-      npv: npvOf(retainedCf, input.horizon.discountRatePercent),
+      npv: npvWithAcquisition(be.paths?.B, retainedCf),
       breakEvenYear: breakEvenYear(
         rows.map((r) => r.ltdRetainedCumulative),
         rows.map((r) => r.personalCumulative),
@@ -273,7 +281,7 @@ export function mapBackendCompareToUi(
     extracted: {
       year1AfterTax: rows[0]?.ltdExtractedAfterTax ?? 0,
       cumulative: extractedCum,
-      npv: gbp(be.npv?.pathB ?? npvOf(extractedCf, input.horizon.discountRatePercent)),
+      npv: gbp(be.npv?.pathB ?? npvWithAcquisition(be.paths?.B, extractedCf)),
       breakEvenYear: extractedBreakEven,
       lean: extractedFromMeta,
       copy: sanitizeLean(
