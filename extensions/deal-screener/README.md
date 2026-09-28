@@ -22,7 +22,7 @@ The popup opens Flask’s returned `deepLinkPath` on metalyzi.co.uk (`/analyse?d
 
 1. You open a Rightmove listing (`rightmove.co.uk/properties/{id}`) and click the extension.
 2. The popup previews address / price / beds (no photos — photos stay off).
-3. You type monthly rent (never scraped) and pick a strategy.
+3. Rent is pre-filled with the district median for that bedroom count (VOA private rental statistics, else PropertyData) once you're connected, shown with its source and range. Edit it if you know the actual rent. Rent is never scraped from the listing.
 4. Client-side rules: max price, min beds, min gross yield, min simple cashflow, strategy allow-list → **Pass / Fail**.
 5. **Open in Metalyzi** `POST`s Flask `{be}/v1/deals` as `source: screener`, `schemaVersion: 1`, photos stripped:
    - listing fields: `listingUrl` (alias `sourceUrl`), `priceGbp`, `rentPcmGbp` (required), `bedrooms` (alias `beds`)
@@ -37,6 +37,7 @@ Captured listings are **display-and-discard**: they live in the popup only. Clos
 
 - No background crawling, no search-results scrape, no other portals in this MVP
 - No full analyser maths (simple yield = rent×12/price; simple cashflow = rent − 75% LTV interest-only at 5%)
+- No address-level rent valuation: the pre-filled rent is a district median
 - No public Web Store publish
 - No Next.js `screener_deals` table and no Next create-path into deals
 - No MTD / compliance / ltd-co / licensing in this MVP
