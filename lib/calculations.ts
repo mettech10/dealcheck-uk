@@ -1,4 +1,5 @@
 import type { PropertyFormData, CalculationResults, YearProjection, BuyerType } from "./types"
+import { calculateDevelopment } from "./developmentCalculations"
 
 /**
  * Non-residential / mixed-use SDLT bands (England/NI).
@@ -297,11 +298,6 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   // (SDLT, TDC, equity, yields=0, no monthly cashflow) so downstream code
   // never has to null-check.
   if (data.investmentType === "development") {
-    // Lazy import to avoid a circular (developmentCalculations imports
-    // calculateSDLT from this file).
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { calculateDevelopment } =
-      require("./developmentCalculations") as typeof import("./developmentCalculations")
     const dev = calculateDevelopment(data)
     const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
       data.purchasePrice,

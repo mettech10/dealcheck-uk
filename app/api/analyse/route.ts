@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { canonicalAnalysis } from "@/lib/canonical-analysis"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
@@ -272,14 +273,14 @@ export async function POST(req: Request) {
 
     // ── Manual mode: run AI analysis on submitted property data ─────────────
     if (mode === "manual") {
-      const { propertyData, calculationResults } = body
-
-      if (!propertyData?.purchasePrice) {
+      const canonical = canonicalAnalysis(body)
+      if (!canonical.success) {
         return NextResponse.json(
-          { error: "purchasePrice is required" },
+          { error: canonical.error },
           { status: 400 }
         )
       }
+      const { propertyData, calculationResults } = canonical
 
       // Get the authenticated user for the usage gate + email threading.
       const supabase = await createClient()
@@ -405,19 +406,6 @@ export async function POST(req: Request) {
         () => ({}),
       )
 
-      // STEP 1 — record this analysis into the intelligence tables.
-      // Fire-and-forget; must never block or fail the user's response.
-      if (userId) {
-        recordAnalysisToIntelligence(userId, postcodeStr, strategyId, propertyData, {
-          grossYield: calculationResults?.grossYield,
-          monthlyCashflow: calculationResults?.monthlyCashFlow,
-          dealScore: calculationResults?.dealScore,
-          capitalRecoveredPct: calculationResults?.capitalRecoveredPct,
-          article4Active: !!(article4Engine?.isArticle4 || article4Engine?.status === "active"),
-        }).catch((e) =>
-          console.error("[intelligence] pipeline error:", e instanceof Error ? e.message : e),
-        )
-      }
 
       // Flask /ai-analyze expects flat camelCase property fields directly in
       // the request body, not nested under propertyData.
@@ -581,6 +569,16 @@ export async function POST(req: Request) {
       }
 
       // Flask returns { success: true, results: { ...metrics, ai_verdict, ... } }
+      // Record only successful analyses, using server-calculated totals.
+      if (userId) {
+        await recordAnalysisToIntelligence(userId, postcodeStr, strategyId, { ...propertyData }, {
+          grossYield: calculationResults.grossYield,
+          monthlyCashflow: calculationResults.monthlyCashFlow,
+          dealScore: data.results?.deal_score,
+          capitalRecoveredPct: calculationResults.brrrrCapitalRecycledPct,
+          article4Active: !!(article4Engine?.isArticle4 || article4Engine?.status === "active"),
+        }).catch((e) => console.error("[intelligence] pipeline error:", e instanceof Error ? e.message : e))
+      }
       // page.tsx expects { structured: { ... } } and calls formatAnalysisResults()
       // on the structured object to render the text view.
       //
