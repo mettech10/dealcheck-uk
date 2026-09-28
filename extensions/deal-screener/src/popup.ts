@@ -30,6 +30,17 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 
 let collected: CollectedRightmovePage | null = null
 let listing: NormalisedListingV1 | null = null
+/** True while the rent box holds our estimate rather than the user's figure. */
+let rentIsEstimate = false
+
+interface RentEstimateResponse {
+  estimate: {
+    monthlyRent: number
+    low: number | null
+    high: number | null
+    basis: string
+  } | null
+}
 
 function money(n: number): string {
   return `£${Math.round(n).toLocaleString("en-GB")}`
@@ -146,6 +157,53 @@ function render() {
   $<HTMLButtonElement>("open").disabled = !canOpen
 }
 
+function setRentHint(text: string) {
+  const hint = $("rent-hint")
+  hint.hidden = !text
+  hint.textContent = text
+}
+
+/**
+ * Pre-fill rent from the district median (VOA, else PropertyData) so the
+ * rules can run straight away. Rent is never scraped from the listing, and
+ * a figure the user typed is never overwritten.
+ */
+async function prefillRent() {
+  if (!collected) return
+  if (monthlyRent() != null && !rentIsEstimate) return
+  const postcode = [collected.outcode, collected.incode].filter(Boolean).join(" ")
+  if (!postcode) {
+    setRentHint("No postcode on this listing, so enter the rent yourself.")
+    return
+  }
+  const session = await getSession()
+  if (!session?.accessToken) {
+    setRentHint("Connect Metalyzi to pre-fill an area rent estimate.")
+    return
+  }
+  const params = new URLSearchParams({ postcode })
+  if (collected.bedrooms != null) params.set("beds", String(collected.bedrooms))
+  try {
+    const res = await fetch(`${await getAppOrigin()}/api/v1/screener/rent-estimate?${params}`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    })
+    const json = (await res.json().catch(() => ({ estimate: null }))) as RentEstimateResponse
+    const e = res.ok ? json.estimate : null
+    if (!e) {
+      setRentHint("No area rent data for this postcode, so enter the rent yourself.")
+      return
+    }
+    if (monthlyRent() != null && !rentIsEstimate) return // user typed meanwhile
+    $<HTMLInputElement>("rent").value = String(e.monthlyRent)
+    rentIsEstimate = true
+    const range = e.low && e.high ? ` Typical range ${money(e.low)}–${money(e.high)}.` : ""
+    setRentHint(`Estimate: ${e.basis}.${range} Edit if you know the actual rent.`)
+    render()
+  } catch {
+    setRentHint("Couldn't load an area estimate, so enter the rent yourself.")
+  }
+}
+
 async function capture() {
   showStatus("Capturing listing…", "info")
   const result = (await chrome.runtime.sendMessage({
@@ -165,6 +223,7 @@ async function capture() {
     "info",
   )
   render()
+  await prefillRent()
 }
 
 async function refreshAuthPill() {
@@ -194,6 +253,7 @@ async function onConnect() {
     await connectAccount()
     await refreshAuthPill()
     showStatus("Connected to your Metalyzi account.", "info")
+    await prefillRent()
   } catch (err) {
     showStatus(err instanceof Error ? err.message : String(err), "error")
   }
@@ -282,7 +342,12 @@ async function boot() {
   $<HTMLInputElement>("backend-origin").value = await getBackendOrigin()
   await refreshAuthPill()
 
-  $("rent").addEventListener("input", render)
+  $("rent").addEventListener("input", () => {
+    // The user's own figure replaces the estimate.
+    rentIsEstimate = false
+    setRentHint("")
+    render()
+  })
   $("strategy").addEventListener("change", render)
   for (const id of [
     "rule-max-price",
