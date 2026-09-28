@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { canonicalAnalysis } from "@/lib/canonical-analysis"
+import { finalizeAnalysis } from "@/lib/finalize-analysis"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { checkArticle4 } from "@/lib/article4-service"
@@ -569,6 +570,7 @@ export async function POST(req: Request) {
       }
 
       // Flask returns { success: true, results: { ...metrics, ai_verdict, ... } }
+      data.results = finalizeAnalysis(propertyData, calculationResults, data.results ?? {})
       // Record only successful analyses, using server-calculated totals.
       if (userId) {
         await recordAnalysisToIntelligence(userId, postcodeStr, strategyId, { ...propertyData }, {

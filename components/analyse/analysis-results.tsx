@@ -1655,7 +1655,7 @@ export function AnalysisResults({
   // backend single-axis dealScore + verdictLabel. Computed client-side so
   // it can see Article 4 / benchmark / comparables alongside form inputs.
   const scoreResult: ScoreResult = useMemo(
-    () => scoreDeal(buildScoringInput(data, results, backendData ?? undefined)),
+    () => backendData?.canonical_score ?? scoreDeal(buildScoringInput(data, results, backendData ?? undefined)),
     [data, results, backendData],
   )
   const dealScore = scoreResult.total
@@ -2518,6 +2518,7 @@ export function AnalysisResults({
           {verdictHeadline && (
             <p className="text-sm font-medium text-foreground">{verdictHeadline}</p>
           )}
+          {backendData?.ai_validation_note && <p className="text-sm text-warning">{backendData.ai_validation_note}</p>}
           <div>
             {backendData?.ai_verdict ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
