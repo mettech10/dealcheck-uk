@@ -31,9 +31,9 @@ export function Footer() {
           <div>
             <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground/70">Platform</h4>
             <ul className="space-y-2">
-              <li><a href="#features" className={linkClass}>Features</a></li>
-              <li><a href="#how-it-works" className={linkClass}>How It Works</a></li>
-              <li><a href="#pricing" className={linkClass}>Pricing</a></li>
+              <li><a href="/#features" className={linkClass}>Features</a></li>
+              <li><a href="/#how-it-works" className={linkClass}>How It Works</a></li>
+              <li><a href="/#pricing" className={linkClass}>Pricing</a></li>
               <li><Link href="/analyse" className={linkClass}>Analyse a Deal</Link></li>
               <li><Link href="/tools/compliance" className={linkClass}>Compliance Cockpit</Link></li>
               <li><Link href="/tools/personal-vs-ltd" className={linkClass}>Personal vs Ltd Co</Link></li>
