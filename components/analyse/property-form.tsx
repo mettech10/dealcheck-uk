@@ -5,13 +5,12 @@ import { useForm, Controller, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { FormField, FieldInput as Input, FieldSelectTrigger as SelectTrigger } from "./form-field"
 import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, Link2, Info, Trash2, Plus, X } from "lucide-react"
@@ -212,29 +211,6 @@ interface PropertyFormProps {
   defaultValues?: Partial<PropertyFormData>
   prefilled?: boolean
   sqftSource?: string // "listing" | "epc" | undefined
-}
-
-function FormField({
-  label,
-  error,
-  children,
-  hint,
-}: {
-  label: string
-  error?: string
-  children: React.ReactNode
-  hint?: string
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-sm text-foreground">{label}</Label>
-      {children}
-      {hint && !error && (
-        <span className="text-xs text-muted-foreground">{hint}</span>
-      )}
-      {error && <span className="text-xs text-destructive">{error}</span>}
-    </div>
-  )
 }
 
 export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sqftSource }: PropertyFormProps) {
