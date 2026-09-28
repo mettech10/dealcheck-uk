@@ -282,6 +282,13 @@ function calculateProjection(
 /**
  * Run full analysis calculations
  */
+export function calculateInvestmentSDLT(price: number, buyerType: BuyerType, rateType: PropertyFormData["sdltRateType"] = "residential") {
+  // FTB relief requires occupation as the purchaser's only/main residence.
+  // A first purchase held as an investment pays standard rates, not the
+  // additional-property surcharge and not first-time-buyer relief.
+  return calculateSDLT(price, buyerType === "first-time" ? "standard" : buyerType, rateType)
+}
+
 export function calculateAll(data: PropertyFormData): CalculationResults {
   // ── Property Development (new-build / conversion / refurb) ──────────────
   // Delegates the full cost-stack + finance + RLV + IRR calc to the
@@ -296,7 +303,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     const { calculateDevelopment } =
       require("./developmentCalculations") as typeof import("./developmentCalculations")
     const dev = calculateDevelopment(data)
-    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
       data.purchasePrice,
       data.buyerType,
       data.sdltRateType ?? "residential",
@@ -396,7 +403,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     }
 
     // ── SA-Owned: you own the property, run it as SA ──
-    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
       data.purchasePrice,
       data.buyerType
     )
@@ -462,7 +469,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   if (data.investmentType === "flip") {
     const arv = data.arv || data.purchasePrice // selling price
     const { total: sdltAmount, breakdown: sdltBreakdown } =
-      calculateSDLT(data.purchasePrice, data.buyerType)
+      calculateInvestmentSDLT(data.purchasePrice, data.buyerType, data.sdltRateType)
 
     // ── Phase 1 — Acquisition ───────────────────────────────────
     const flipAcquisitionCost = Math.round(
@@ -724,7 +731,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     }
   }
 
-  const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+  const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
     data.purchasePrice,
     data.buyerType,
     data.sdltRateType

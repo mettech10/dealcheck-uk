@@ -116,9 +116,9 @@ describe("BTL Headline Metrics", () => {
 })
 
 describe("BTL FTB SDLT branch", () => {
-  test("FTB BTL £200k pays £0 SDLT", () => {
+  test("First purchase BTL £200k pays £1,500: not an owner-occupied home", () => {
     const result = calculateAll(makeBTL({ buyerType: "first-time" }))
-    expect(result.sdltAmount).toBe(0)
+    expect(result.sdltAmount).toBe(1500)
   })
 })
 

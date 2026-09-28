@@ -20,7 +20,7 @@
  */
 
 import type { PropertyFormData } from "./types"
-import { calculateSDLT } from "./calculations"
+import { calculateInvestmentSDLT } from "./calculations"
 
 /** Per-unit-type GDV contribution. */
 export interface DevelopmentUnitLine {
@@ -181,7 +181,7 @@ export function calculateDevelopment(
   // ── 2 · Acquisition ─────────────────────────────────────
   const acquisitionPrice = Number(data.purchasePrice) || 0
   const sdltRateTypeUsed = data.sdltRateType ?? "residential"
-  const { total: acquisitionSDLT } = calculateSDLT(
+  const { total: acquisitionSDLT } = calculateInvestmentSDLT(
     acquisitionPrice,
     data.buyerType,
     sdltRateTypeUsed,
