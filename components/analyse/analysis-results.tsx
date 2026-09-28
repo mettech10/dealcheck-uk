@@ -233,7 +233,7 @@ function buildStripMetrics(
           positive: results.grossYield >= 8,
         },
         {
-          label: "Net Yield",
+          label: "Yield After Finance",
           value: formatPercent(results.netYield),
           positive: results.netYield >= 4,
         },
@@ -286,7 +286,7 @@ function buildStripMetrics(
         positive: results.grossYield >= 6,
       },
       {
-        label: "Net Yield",
+        label: "Yield After Finance",
         value: formatPercent(results.netYield),
         positive: results.netYield >= 4,
       },
@@ -2008,7 +2008,7 @@ export function AnalysisResults({
                         <span className={`font-semibold ${results.grossYield >= 8 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Net Yield</span>
+                        <span className="text-muted-foreground">Yield After Finance</span>
                         <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
@@ -2326,7 +2326,7 @@ export function AnalysisResults({
                   <span className={`font-semibold ${results.grossYield >= 6 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Net Yield</span>
+                  <span className="text-muted-foreground">Yield After Finance</span>
                   <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">

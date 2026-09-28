@@ -71,7 +71,7 @@ describe("getCardMetrics — strategy-aware", () => {
       "Gross Yield",
       "Monthly Cashflow",
       "Purchase Price",
-      "Net Yield",
+      "Yield After Finance",
     ])
     expect(metrics).toHaveLength(4)
   })

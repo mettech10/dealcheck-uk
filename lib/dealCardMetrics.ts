@@ -183,7 +183,7 @@ export function getCardMetrics(
           value: fmtK(data.purchasePrice),
         },
         {
-          label: "Net Yield",
+          label: "Yield After Finance",
           value: fmtPct(results.netYield),
           isPositive: results.netYield >= 3,
         },

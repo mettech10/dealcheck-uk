@@ -349,7 +349,7 @@ function PropertyCard({
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <span>Gross Yield: <strong className="text-foreground">{p.gross_yield.toFixed(2)}%</strong></span>
-          <span>Net Yield: <strong className="text-foreground">{p.net_yield.toFixed(2)}%</strong></span>
+          <span>Yield After Finance: <strong className="text-foreground">{p.net_yield.toFixed(2)}%</strong></span>
         </div>
         {p.purchase_date && (
           <div className="text-xs text-muted-foreground">
@@ -596,7 +596,7 @@ function PropertyModal({
           <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs sm:grid-cols-4">
             <Preview label="Cashflow" value={`${preview.cashflow >= 0 ? "+" : ""}${formatCurrency(preview.cashflow)}/mo`} />
             <Preview label="Gross Yield" value={`${preview.grossYield.toFixed(2)}%`} />
-            <Preview label="Net Yield" value={`${preview.netYield.toFixed(2)}%`} />
+            <Preview label="Yield After Finance" value={`${preview.netYield.toFixed(2)}%`} />
             <Preview label="LTV" value={`${preview.ltv.toFixed(1)}%`} />
           </div>
         </CardContent>

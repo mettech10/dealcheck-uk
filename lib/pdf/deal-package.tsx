@@ -941,7 +941,7 @@ function FinancialAnalysisPage({ input }: { input: DealPackageInput }) {
       <View style={s.row}>
         {[
           { label: "Gross yield", value: pct(results.grossYield) },
-          { label: "Net yield", value: pct(results.netYield) },
+          { label: "Yield after finance", value: pct(results.netYield) },
           { label: "Cash-on-cash ROI", value: pct(results.cashOnCashReturn) },
           {
             label: "Total capital",

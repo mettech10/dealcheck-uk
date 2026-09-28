@@ -169,7 +169,7 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
   formatted += `📊 KEY METRICS\n`
   formatted += `─`.repeat(55) + `\n`
   formatted += `  • Gross Yield: ${r.gross_yield || 'N/A'}%\n`
-  formatted += `  • Net Yield: ${r.net_yield || 'N/A'}%\n`
+  formatted += `  • Yield After Finance: ${r.net_yield || 'N/A'}%\n`
   formatted += `  • Monthly Cashflow: £${r.monthly_cashflow || 'N/A'}\n`
   formatted += `  • Cash-on-Cash: ${r.cash_on_cash || 'N/A'}%\n\n`
   
