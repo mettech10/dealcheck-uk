@@ -21,6 +21,7 @@ import {
   type LtdCoCompareResult,
   type LtdCoYearRow,
 } from "@/lib/ltdCoCompare"
+import { fetchCalculation } from "@/lib/calculation-fetch"
 
 export type LtdCoCalcSource = "backend"
 
@@ -332,12 +333,12 @@ export async function fetchLtdCoCompare(
   const url = backendLtdCoUrl(opts?.backendUrl ?? BACKEND_API_URL)
 
   try {
-    const resp = await fetchImpl(url, {
+    const resp = await fetchCalculation(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(toBackendComparePayload(input)),
       signal: AbortSignal.timeout(timeoutMs),
-    })
+    }, fetchImpl)
     if (resp.ok) {
       const json = await resp.json().catch(() => null)
       const native = unwrapLtdCoComparePayload(json)
