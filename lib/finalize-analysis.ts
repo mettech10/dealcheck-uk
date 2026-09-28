@@ -20,11 +20,18 @@ export function narrativeConflicts(text: string, score: number): boolean {
 export function finalizeAnalysis(data: PropertyFormData, results: CalculationResults, backend: BackendResults): BackendResults {
   const score = scoreDeal(buildScoringInput(data, results, backend))
   let withheld = false
-  const clean = (text: string | undefined) => {
+  const clean = (text: unknown): string | undefined => {
+    if (text == null) return undefined
+    if (typeof text !== "string") { withheld = true; return undefined }
     if (text && narrativeConflicts(text, score.total)) { withheld = true; return undefined }
     return text
   }
-  const cleanList = (items: string[] | undefined) => items?.map(clean).filter((item): item is string => !!item)
+  const cleanList = (items: unknown) => {
+    if (items == null) return undefined
+    const list = Array.isArray(items) ? items : typeof items === "string" ? items.split(/<br\s*\/?\s*>/i) : null
+    if (!list) { withheld = true; return [] }
+    return list.map(clean).filter((item): item is string => !!item)
+  }
   const verdict = clean(backend.ai_verdict) ??
     `${score.label}: ${score.total}/100. Gross yield is ${results.grossYield.toFixed(2)}%; monthly cashflow is £${results.monthlyCashFlow.toFixed(0)}. Review the score breakdown and assumptions before proceeding.`
   const output: BackendResults = {
