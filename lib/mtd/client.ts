@@ -8,6 +8,7 @@
 
 import { mtdBffUrl, flaskPropertyLinkBody, requirePlatformPropertyId } from "./config"
 import { csvTemplate } from "./csv"
+import { userMessageForMtdError } from "./errors"
 import { poundsToPence, requireAmountPence } from "./money"
 import { currentTaxYear, toIsoDate } from "./taxYear"
 import type {
@@ -24,7 +25,7 @@ async function parseJson(res: Response) {
   const json = await res.json().catch(() => ({}))
   if (!res.ok) {
     const body = json as { error?: string; code?: string }
-    const err = new Error(body.error || `Request failed (${res.status})`) as Error & {
+    const err = new Error(userMessageForMtdError(res.status, body.code, body.error)) as Error & {
       status: number
       code?: string
     }

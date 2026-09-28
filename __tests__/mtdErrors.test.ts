@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest"
 import {
+  STORAGE_UNAVAILABLE,
+  STORAGE_UNAVAILABLE_MESSAGE,
   UPSTREAM_AUTH_FAILED,
   UPSTREAM_AUTH_FAILED_MESSAGE,
   messageForEnsureFailure,
   remapUpstreamMtdStatus,
   shellStateAfterSignedIn,
+  userMessageForMtdError,
 } from "@/lib/mtd/errors"
 
 describe("remapUpstreamMtdStatus", () => {
@@ -38,5 +41,23 @@ describe("signed-in ledger failures are never the auth gate", () => {
       UPSTREAM_AUTH_FAILED_MESSAGE,
     )
     expect(messageForEnsureFailure({ status: 502, message: "Flask down" })).toBe("Flask down")
+  })
+})
+
+describe("storage_unavailable (Flask refused to write)", () => {
+  test("users see a plain message, not Flask's operator text", () => {
+    const flaskText = "MTD storage is not configured on this server... Set SUPABASE_URL"
+    expect(userMessageForMtdError(503, STORAGE_UNAVAILABLE, flaskText)).toBe(
+      STORAGE_UNAVAILABLE_MESSAGE,
+    )
+    expect(messageForEnsureFailure({ status: 503, code: STORAGE_UNAVAILABLE, message: flaskText })).toBe(
+      STORAGE_UNAVAILABLE_MESSAGE,
+    )
+    expect(STORAGE_UNAVAILABLE_MESSAGE).not.toMatch(/SUPABASE|Flask/)
+  })
+
+  test("other errors keep the upstream message or a status fallback", () => {
+    expect(userMessageForMtdError(409, undefined, "duplicate ledger entry")).toBe("duplicate ledger entry")
+    expect(userMessageForMtdError(500, undefined, "  ")).toBe("Request failed (500)")
   })
 })
