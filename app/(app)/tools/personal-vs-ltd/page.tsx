@@ -1,3 +1,4 @@
+import { IncorporationCalculator } from "@/components/tools/incorporation-calculator"
 import { PersonalVsLtdCalculator } from "@/components/tools/personal-vs-ltd-calculator"
 import { fetchLtdCoCompare } from "@/lib/ltdCoBackend"
 import {
@@ -177,6 +178,8 @@ export default async function PersonalVsLtdPage({
         years: String(input.horizon.years),
         discountRatePercent: String(input.horizon.discountRatePercent),
       }}
-    />
+    >
+      <IncorporationCalculator />
+    </PersonalVsLtdCalculator>
   )
 }

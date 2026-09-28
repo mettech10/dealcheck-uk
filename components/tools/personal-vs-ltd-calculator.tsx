@@ -111,6 +111,8 @@ export type LtdCoCalculatorProps = {
   initialMode?: CalculatorMode
   initialLens?: Lens
   initialFields?: Partial<FormFields>
+  /** Extra sections shown once the disclaimer is accepted (e.g. "Already own it?"). */
+  children?: React.ReactNode
 }
 
 function toInput(fields: FormFields, mode: CalculatorMode, dealId: string | null): LtdCoCompareInput {
@@ -154,6 +156,7 @@ export function PersonalVsLtdCalculator({
   initialMode = "landlord",
   initialLens = "retained",
   initialFields,
+  children,
 }: LtdCoCalculatorProps) {
   const [fields, setFields] = useState<FormFields>(() => ({
     ...fromDefaults(),
@@ -868,6 +871,8 @@ export function PersonalVsLtdCalculator({
       </div>
         </form>
       )}
+
+      {disclaimerAccepted && children}
 
       {disclaimerAccepted && <StickyDisclaimer />}
     </div>
