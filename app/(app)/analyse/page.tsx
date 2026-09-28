@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
+import { readSdltPrefill } from "@/lib/analysis-prefill"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -392,6 +393,11 @@ function AnalysePage() {
   // scraping + analysis spend real credits, so the user presses the button.
   useEffect(() => {
     const dealId = searchParams.get("dealId")
+    const taxPrefill = readSdltPrefill(searchParams)
+    if (taxPrefill && !dealId && !searchParams.get("url")) {
+      setPrefillData(taxPrefill)
+      setInputMode("manual")
+    }
     const deepUrl = searchParams.get("url")
     const strat = (searchParams.get("strategy") ?? "").toUpperCase()
     const map: Record<string, PropertyFormData["investmentType"]> = {

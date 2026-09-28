@@ -405,7 +405,8 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     // ── SA-Owned: you own the property, run it as SA ──
     const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
       data.purchasePrice,
-      data.buyerType
+      data.buyerType,
+      data.sdltRateType
     )
     const depositAmount = data.purchaseType === "cash"
       ? data.purchasePrice
