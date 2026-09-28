@@ -55,7 +55,7 @@ import {
   DEFAULT_LTD_CO_INPUT,
   LTD_CO_DISCLAIMER,
   LTD_CO_DISCLAIMER_WALL,
-  LTD_CO_TAX_YEAR,
+  LTD_CO_RATES_LABEL,
   validateLtdCoFormFields,
   type CalculatorMode,
   type LtdCoCompareInput,
@@ -379,7 +379,7 @@ export function PersonalVsLtdCalculator({
             <div className="mt-1 flex flex-wrap gap-1.5">
               <Badge variant="outline" className="w-fit gap-1 text-xs">
                 <CheckCircle2 className="size-3 text-emerald-500" />
-                {LTD_CO_TAX_YEAR} England &amp; NI rates
+                {LTD_CO_RATES_LABEL} England &amp; NI rates
               </Badge>
               <Badge variant="outline" className="w-fit text-xs">
                 Educational only · not advice
