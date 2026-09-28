@@ -389,9 +389,9 @@ export function AuthForm({ initialMode }: { initialMode: "login" | "signup" }) {
           {mode === "signup" && (
             <p className="mt-4 text-center text-xs text-muted-foreground">
               By creating an account, you agree to our{" "}
-              <span className="cursor-pointer text-primary hover:underline">Terms of Service</span>{" "}
+              <Link href="/terms-of-service" className="text-primary hover:underline">Terms of Service</Link>{" "}
               and{" "}
-              <span className="cursor-pointer text-primary hover:underline">Privacy Policy</span>.
+              <Link href="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>.
             </p>
           )}
         </div>

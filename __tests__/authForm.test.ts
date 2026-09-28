@@ -13,6 +13,11 @@ vi.mock("@/app/auth/actions", () => ({
 import { AuthForm } from "@/components/auth/auth-form"
 
 describe("authentication before JavaScript hydration", () => {
+  test("signup exposes working legal destinations before accepting terms", () => {
+    const html = renderToStaticMarkup(React.createElement(AuthForm, { initialMode: "signup" }))
+    expect(html).toMatch(/<a[^>]*href="\/terms-of-service"[^>]*>Terms of Service<\/a>/)
+    expect(html).toMatch(/<a[^>]*href="\/privacy-policy"[^>]*>Privacy Policy<\/a>/)
+  })
   test.each(["login", "signup"] as const)("%s cannot submit credentials with native GET", (mode) => {
     const html = renderToStaticMarkup(React.createElement(AuthForm, { initialMode: mode }))
     const form = html.match(/<form\b[^>]*>/)?.[0]
