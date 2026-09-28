@@ -54,6 +54,8 @@ export function calculateSDLT(
   if (rateType === "non-residential" || rateType === "mixed-use") {
     return calculateNonResidentialSDLT(price)
   }
+  // An ordinary standalone dwelling below £40,000 is outside higher rates.
+  if (price < 40000) return { total: 0, breakdown: [] }
   // First-time buyer relief (England/NI, from 1 April 2025): 0% up to £300k,
   // 5% on £300k–£500k, relief removed entirely if price > £500,000.
   // (The temporary £425k/£625k thresholds expired 31 March 2025.)
