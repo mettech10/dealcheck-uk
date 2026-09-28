@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react"
 import Link from "next/link"
+import { areaAnalysisContext } from "@/lib/area-analysis-context"
 import { vacancyPercent, vacancyWeeks } from "@/lib/sensitivity"
 import dynamic from "next/dynamic"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
@@ -2442,6 +2443,7 @@ export function AnalysisResults({
           strategy's investor questions — not a one-size BTL-style report. */}
       {data.postcode && (
         <AiAreaAnalysisCard
+          enabled={!aiLoading}
           postcode={data.postcode}
           strategy={data.investmentType}
           dealData={{
@@ -2492,14 +2494,7 @@ export function AnalysisResults({
             devProfitOnCostPct: results.development?.profitOnCost,
             devRlv: results.development?.residualLandValue,
           }}
-          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
-          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
-          marketContext={{
-            soldComparables: backendData?.sold_comparables ?? null,
-            rentComparables: backendData?.rent_comparables ?? null,
-            avgSoldPrice: backendData?.avg_sold_price ?? null,
-            houseValuation: backendData?.house_valuation ?? null,
-          }}
+          {...areaAnalysisContext(backendData, pdfEvidence)}
           fallbackText={backendData?.ai_area}
         />
       )}

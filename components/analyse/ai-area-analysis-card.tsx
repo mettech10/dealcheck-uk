@@ -47,6 +47,7 @@ interface AreaPayload {
 }
 
 interface Props {
+  enabled?: boolean
   postcode?: string
   strategy?: string
   dealData?: Record<string, unknown>
@@ -74,6 +75,7 @@ function normaliseSections(s: Sections): NewSections {
 }
 
 export function AiAreaAnalysisCard({
+  enabled = true,
   postcode,
   strategy,
   dealData,
@@ -86,8 +88,12 @@ export function AiAreaAnalysisCard({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { markDone } = useLoadingTracker()
+  // Stable primitive dependency: refresh when evidence or the deal changes,
+  // not merely when postcode/strategy changes, and not on every render.
+  const requestBody = JSON.stringify({ postcode, strategy, dealData, benchmark, articleFour, marketContext })
 
   useEffect(() => {
+    if (!enabled) return
     if (!postcode) {
       // No postcode → the card itself renders nothing; still flip
       // the key so the overlay can lift.
@@ -95,6 +101,8 @@ export function AiAreaAnalysisCard({
       return
     }
     let cancelled = false
+    const controller = new AbortController()
+    setData(null)
     setLoading(true)
     setError(null)
 
@@ -106,14 +114,8 @@ export function AiAreaAnalysisCard({
       const r = await fetch("/api/analysis/area", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          postcode,
-          strategy,
-          dealData,
-          benchmark,
-          articleFour,
-          marketContext,
-        }),
+        body: requestBody,
+        signal: controller.signal,
       })
       const j = await r.json().catch(() => null)
       if (!r.ok || !j?.success) {
@@ -137,14 +139,15 @@ export function AiAreaAnalysisCard({
         }
       } finally {
         if (!cancelled) setLoading(false)
-        markDone("aiAreaAnalysis")
+        if (!cancelled) markDone("aiAreaAnalysis")
       }
     })()
 
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [postcode, strategy, markDone])
+  }, [enabled, postcode, requestBody, markDone])
 
   if (!postcode && !fallbackText) return null
 
