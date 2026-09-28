@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react"
 import Link from "next/link"
+import { vacancyPercent, vacancyWeeks } from "@/lib/sensitivity"
 import dynamic from "next/dynamic"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { openSupportChat } from "@/lib/crisp-context"
@@ -1405,7 +1406,7 @@ function SensitivityAnalysisPanel({
   const [mortgageRate,   setMortgageRate]   = useState<number>(baseFormData.interestRate ?? 3.75)
   const [monthlyRent,    setMonthlyRent]    = useState<number>(baseFormData.monthlyRent ?? 0)
   const [vacancyRate,    setVacancyRate]    = useState<number>(
-    baseFormData.voidWeeks ? Math.round((baseFormData.voidWeeks / 52) * 100 * 10) / 10 : 4.2
+    vacancyPercent(baseFormData.voidWeeks)
   )
   // BRRRR + Flip extra sliders
   const [arv,            setArv]            = useState<number>(baseARV)
@@ -1423,7 +1424,7 @@ function SensitivityAnalysisPanel({
   const refurbMax  = Math.max(50000, Math.round(baseRefurb * 2 / 1000) * 1000)
 
   const runSensitivity = useCallback(() => {
-    const voidWeeks = Math.round((vacancyRate / 100) * 52 * 10) / 10
+    const voidWeeks = vacancyWeeks(vacancyRate)
     const scenarioData: PropertyFormData = {
       ...baseFormData,
       purchasePrice,
