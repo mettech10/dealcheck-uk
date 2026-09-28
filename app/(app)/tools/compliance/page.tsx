@@ -6,7 +6,8 @@
  * In-platform tool (same shell as Portfolio / SDLT / Compare). Tabs:
  *   Dashboard  — traffic lights per linked portfolio property
  *   Calendar   — expiry + reminder dates
- *   Catalogue  — GAS, EICR, EPC, DEP, HTR, LIC_HMO, LIC_SEL
+ *   Catalogue  — GAS, EICR, EPC, DEP, SMOKE_CO, RTR, TERMS, RRA_INFO, HTR,
+ *                LIC_HMO, LIC_SEL, EPC_2030, PRS_DB
  *   Settings   — reminder offsets + channels
  *
  * Wired to Flask /v1/compliance/* via the BFF. Production never writes a
@@ -381,7 +382,7 @@ function DashboardTab({
                       title={`${code}: ${row.lights[code]}`}
                     >
                       <TrafficLightDot status={row.lights[code]} size="sm" />
-                      {code.replace("LIC_", "")}
+                      {code.replace("LIC_", "").replace("_", " ")}
                     </span>
                   ))}
                 </div>
@@ -556,8 +557,8 @@ function CatalogueTab() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        MVP catalogue for England private rented property. Rows on each
-        property file come from these seven codes only.
+        Catalogue for England private rented property, updated for the
+        Renters&apos; Rights Act. Rows on each property file come from these codes.
       </p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {COMPLIANCE_CATALOGUE_LIST.map((item) => (

@@ -52,11 +52,17 @@ const beItems = [
   { code: "HTR", name: "How to Rent", defaultValidityYears: null },
   { code: "LIC_HMO", name: "HMO licence", defaultValidityYears: 5 },
   { code: "LIC_SEL", name: "Selective licence", defaultValidityYears: 5 },
+  { code: "SMOKE_CO", name: "Smoke and carbon monoxide alarms", defaultValidityYears: null },
+  { code: "RTR", name: "Right to Rent check", defaultValidityYears: null },
+  { code: "TERMS", name: "Written statement of terms", defaultValidityYears: null },
+  { code: "RRA_INFO", name: "Renters' Rights Act Information Sheet", defaultValidityYears: null },
+  { code: "EPC_2030", name: "EPC C by 1 October 2030", defaultValidityYears: null },
+  { code: "PRS_DB", name: "PRS Database registration", defaultValidityYears: null },
   { code: "MTD", name: "Making Tax Digital" },
 ]
 
 describe("mapCatalogueResponse {items}", () => {
-  test("maps the seven MVP codes and ignores unknown modules", () => {
+  test("maps every catalogue code and ignores unknown modules", () => {
     const mapped = mapCatalogueResponse({ success: true, items: beItems })
     expect(mapped.map((c) => c.code)).toEqual([...OBLIGATION_CODES])
     expect(mapped.find((c) => (c as { code: string }).code === "MTD")).toBeUndefined()
@@ -94,7 +100,7 @@ describe("mapBeStatus", () => {
 })
 
 describe("composePropertyFile / composeDashboard", () => {
-  test("overlays seven catalogue rows; LIC_HMO is N/A on BTL when no instance", () => {
+  test("overlays every catalogue row; LIC_HMO is N/A on BTL when no instance", () => {
     const now = new Date(2026, 8, 14, 12)
     const gas: BeObligation = {
       id: "ob-gas",
@@ -106,7 +112,7 @@ describe("composePropertyFile / composeDashboard", () => {
       evidence: [],
     }
     const file = composePropertyFile(btl, [gas], now)
-    expect(file.obligations).toHaveLength(7)
+    expect(file.obligations).toHaveLength(OBLIGATION_CODES.length)
     expect(file.obligations.find((o) => o.code === "GAS")?.status).toBe("green")
     expect(file.obligations.find((o) => o.code === "GAS")?.instanceId).toBe("ob-gas")
     expect(file.obligations.find((o) => o.code === "EICR")?.status).toBe("red")
@@ -183,12 +189,15 @@ describe("composePropertyFile / composeDashboard", () => {
     const unlogged = file.obligations.filter(
       (o) => o.applicability === "required" && !o.issuedOn && o.evidence.length === 0,
     )
-    expect(unlogged.map((o) => o.code)).toEqual(["DEP", "HTR"])
-    expect(dash.summary.missing).toBe(2)
-    expect(dash.properties[0].missingCount).toBe(2)
+    // HTR was replaced on 1 May 2026 (N/A by default); alarms and Right to
+    // Rent are required on every let. TERMS/RRA_INFO/EPC_2030/PRS_DB start unknown.
+    expect(unlogged.map((o) => o.code)).toEqual(["DEP", "SMOKE_CO", "RTR"])
+    expect(dash.summary.missing).toBe(3)
+    expect(dash.properties[0].missingCount).toBe(3)
     expect(dash.summary.overdue).toBe(1)
     expect(dash.properties[0].overdueCount).toBe(1)
-    expect(dash.summary.unknown).toBe(1)
+    // LIC_SEL plus TERMS / RRA_INFO / EPC_2030 / PRS_DB, which depend on the tenancy or EPC.
+    expect(dash.summary.unknown).toBe(5)
     expect(file.obligations.find((o) => o.code === "LIC_SEL")?.applicability).toBe(
       "unknown",
     )
@@ -232,8 +241,8 @@ describe("composePropertyFile / composeDashboard", () => {
       ],
       now,
     )
-    // GAS is N/A; remaining required-without-record: EICR, EPC, DEP, HTR
-    expect(dash.summary.missing).toBe(4)
-    expect(dash.properties[0].missingCount).toBe(4)
+    // GAS is N/A; remaining required-without-record: EICR, EPC, DEP, SMOKE_CO, RTR
+    expect(dash.summary.missing).toBe(5)
+    expect(dash.properties[0].missingCount).toBe(5)
   })
 })

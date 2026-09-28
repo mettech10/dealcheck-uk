@@ -48,15 +48,31 @@ function at(iso: string): Date {
 }
 
 describe("catalogue MVP", () => {
-  test("exposes exactly the seven England codes", () => {
+  test("defaults reflect the Renters' Rights Act (1 May 2026)", () => {
+    const btl = { strategy: "BTL", bedrooms: 3 }
+    expect(defaultApplicability("HTR", btl)).toBe("not_applicable")
+    expect(defaultApplicability("SMOKE_CO", btl)).toBe("required")
+    expect(defaultApplicability("RTR", btl)).toBe("required")
+    for (const code of ["TERMS", "RRA_INFO", "EPC_2030", "PRS_DB"] as const) {
+      expect(defaultApplicability(code, btl)).toBe("unknown")
+    }
+  })
+
+  test("exposes exactly the England codes, including the 2026 additions", () => {
     expect([...OBLIGATION_CODES]).toEqual([
       "GAS",
       "EICR",
       "EPC",
       "DEP",
+      "SMOKE_CO",
+      "RTR",
+      "TERMS",
+      "RRA_INFO",
       "HTR",
       "LIC_HMO",
       "LIC_SEL",
+      "EPC_2030",
+      "PRS_DB",
     ])
     expect(COMPLIANCE_CATALOGUE_LIST.map((c) => c.code)).toEqual([...OBLIGATION_CODES])
     for (const item of COMPLIANCE_CATALOGUE_LIST) {

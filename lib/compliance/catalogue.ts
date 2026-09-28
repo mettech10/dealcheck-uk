@@ -1,7 +1,8 @@
 /**
  * England (private rented) obligation catalogue — MVP.
  *
- * In scope: GAS, EICR, EPC, DEP, HTR, LIC_HMO, LIC_SEL.
+ * In scope: GAS, EICR, EPC, DEP, SMOKE_CO, RTR, TERMS, RRA_INFO, HTR (pre-May
+ * 2026 tenancies), LIC_HMO, LIC_SEL, EPC_2030, PRS_DB.
  * Explicitly out of scope: MTD, deal screener, limited-company modules,
  * and full licensing applications (those codes are tracker rows only).
  *
@@ -58,7 +59,7 @@ export const COMPLIANCE_CATALOGUE: Record<ObligationCode, ObligationDefinition> 
       summary:
         "Energy rating that must be given to new tenants and meet the current minimum standard for letting.",
       legalNote:
-        "An EPC is typically valid for 10 years. Minimum energy-efficiency standards (currently band E, with tighter rules proposed) are separate from certificate validity.",
+        "An EPC is typically valid for 10 years. The minimum rating is currently E, rising to C for all tenancies by 1 October 2030 — track upgrade works under EPC C by 2030.",
       englandOnly: true,
     },
     DEP: {
@@ -74,17 +75,68 @@ export const COMPLIANCE_CATALOGUE: Record<ObligationCode, ObligationDefinition> 
         "Usually within 30 days of receiving the deposit. Record the scheme and reference here. Mark not applicable if no deposit was taken.",
       englandOnly: true,
     },
-    HTR: {
-      code: "HTR",
-      name: "How to Rent guide",
-      shortName: "How to Rent",
-      typicalValidity: "At grant / renewal",
+    SMOKE_CO: {
+      code: "SMOKE_CO",
+      name: "Smoke and carbon monoxide alarms",
+      shortName: "Alarms",
+      typicalValidity: "Each tenancy",
+      typicalValidityMonths: null,
+      expiryModel: "tenancy",
+      summary:
+        "A smoke alarm on every storey with living space, and a CO alarm in any room with a fixed combustion appliance (not gas cookers).",
+      legalNote:
+        "Check the alarms work on the day each tenancy starts and repair faults as soon as reasonably practicable (Smoke and Carbon Monoxide Alarm (Amendment) Regulations 2022).",
+      englandOnly: true,
+    },
+    RTR: {
+      code: "RTR",
+      name: "Right to Rent check",
+      shortName: "Right to Rent",
+      typicalValidity: "Before each tenancy",
+      typicalValidityMonths: null,
+      expiryModel: "tenancy",
+      summary: "Check every adult occupier's right to rent before the tenancy starts.",
+      legalNote:
+        "For time-limited permission, check no more than 28 days before the start and set the expiry to the earlier of the permission end date or 12 months, then re-check. Keep evidence for the tenancy plus a year.",
+      englandOnly: true,
+    },
+    TERMS: {
+      code: "TERMS",
+      name: "Written statement of terms",
+      shortName: "Written terms",
+      typicalValidity: "Before each tenancy",
+      typicalValidityMonths: null,
+      expiryModel: "tenancy",
+      summary:
+        "Renters' Rights Act: tenancies starting on or after 1 May 2026 need a written statement of the terms before they begin.",
+      legalNote:
+        "It can be part of the tenancy agreement. Mark not applicable if the current tenancy began before 1 May 2026 (use the Information Sheet instead).",
+      englandOnly: true,
+    },
+    RRA_INFO: {
+      code: "RRA_INFO",
+      name: "Renters' Rights Act Information Sheet",
+      shortName: "RRA info sheet",
+      typicalValidity: "One-off (deadline 31 May 2026)",
       typicalValidityMonths: null,
       expiryModel: "one_off",
       summary:
-        "The current government How to Rent guide must be given to the tenant in England.",
+        "Tenants whose tenancy began before 1 May 2026 had to receive the government's Information Sheet by 31 May 2026.",
       legalNote:
-        "Serve the latest version at the start of an AST and when the government reissues the guide. Optional expiry can track the next tenancy start.",
+        "Record the date you served it. Mark not applicable if the tenancy began on or after 1 May 2026.",
+      englandOnly: true,
+    },
+    HTR: {
+      code: "HTR",
+      name: "How to Rent guide (tenancies before 1 May 2026)",
+      shortName: "How to Rent",
+      typicalValidity: "Replaced 1 May 2026",
+      typicalValidityMonths: null,
+      expiryModel: "one_off",
+      summary:
+        "No longer required from 1 May 2026 — replaced by the written statement of terms and the Information Sheet.",
+      legalNote:
+        "Keep existing records for tenancies that began before 1 May 2026. New tenancies use Written terms instead.",
       englandOnly: true,
     },
     LIC_HMO: {
@@ -111,6 +163,32 @@ export const COMPLIANCE_CATALOGUE: Record<ObligationCode, ObligationDefinition> 
         "Local-authority selective licensing of privately rented homes — tracker only.",
       legalNote:
         "Only applies in designated areas. Default is “check with the council”. Mark required or not applicable once you know. This is not a full licensing module.",
+      englandOnly: true,
+    },
+    EPC_2030: {
+      code: "EPC_2030",
+      name: "EPC C by 1 October 2030",
+      shortName: "EPC C 2030",
+      typicalValidity: "Deadline 1 Oct 2030",
+      typicalValidityMonths: null,
+      expiryModel: "one_off",
+      summary:
+        "All private rented homes must reach EPC C by 1 October 2030 (Warm Homes Plan, confirmed January 2026).",
+      legalNote:
+        "Spending is capped at £10,000 per property (or 10% of value under £100,000); penalties go up to £30,000. Mark not applicable if the current EPC is already C or above.",
+      englandOnly: true,
+    },
+    PRS_DB: {
+      code: "PRS_DB",
+      name: "PRS Database registration",
+      shortName: "PRS Database",
+      typicalValidity: "Opens from 15 Dec 2026",
+      typicalValidityMonths: null,
+      expiryModel: "one_off",
+      summary:
+        "Renters' Rights Act: register yourself and each rented property, with compliance details, on the Private Rented Sector Database.",
+      legalNote:
+        "Registration opens by region from 15 December 2026 (West Midlands first) and carries a fee. Record your registration once done.",
       englandOnly: true,
     },
   }
@@ -158,6 +236,12 @@ export function defaultApplicability(
     return "not_applicable"
   }
   if (code === "LIC_SEL") return "unknown"
+  // Replaced on 1 May 2026; only relevant to records of earlier tenancies.
+  if (code === "HTR") return "not_applicable"
+  // Depend on the tenancy start date, the EPC rating or the regional rollout.
+  if (code === "TERMS" || code === "RRA_INFO" || code === "EPC_2030" || code === "PRS_DB") {
+    return "unknown"
+  }
   return "required"
 }
 
