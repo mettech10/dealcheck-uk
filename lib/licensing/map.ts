@@ -288,6 +288,8 @@ function mapDealImpact(raw: unknown): LicensingDealImpact | null {
       min: asNumber(fees.min),
       max: asNumber(fees.max),
       known: asBool(fees.known) === true,
+      basis: asString(fees.basis) ?? undefined,
+      note: asString(fees.note) ?? undefined,
       items: mapFeeItems(fees.items),
     },
     analyse_hooks: {

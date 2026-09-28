@@ -283,6 +283,9 @@ function DealImpactBlock({ impact }: { impact: LicensingDealImpact }) {
         <p className="mt-1.5 text-xs text-foreground">
           Estimated licence fees: <span className="font-medium">{feeLabel}</span>
           <span className="text-muted-foreground"> — not added to cashflow</span>
+          {fees.note && (
+            <span className="block text-[11px] text-muted-foreground">{fees.note}</span>
+          )}
         </p>
       )}
       {capex.length > 0 && (
