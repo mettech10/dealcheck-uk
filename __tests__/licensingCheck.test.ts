@@ -206,6 +206,31 @@ describe("mapFlaskLicensingResponse", () => {
     assertNoPositiveClearance(r)
   })
 
+  test("carries Flask's one-licence fee basis and note through to the UI", () => {
+    const r = mapFlaskLicensingResponse(
+      flaskOk({
+        deal_impact: {
+          level: "compliance_cost",
+          verdict: "compliance_cost",
+          killers: [],
+          estimated_licence_fees_gbp: {
+            min: 700,
+            max: 1300,
+            known: true,
+            basis: "one_licence",
+            note: "A property needs one licence (HMO or selective), not several. The range covers whichever applies.",
+            items: [],
+          },
+          analyse_hooks: { add_capex_lines: [], add_risk_notes: [] },
+        },
+      }),
+    )
+    const fees = r.dealImpact?.estimated_licence_fees_gbp
+    expect(fees?.basis).toBe("one_licence")
+    expect(fees?.note).toMatch(/one licence/)
+    expect([fees?.min, fees?.max]).toEqual([700, 1300])
+  })
+
   test("Article 4 miss (possible) stays amber, not green", () => {
     const r = mapFlaskLicensingResponse(
       flaskOk({

@@ -141,6 +141,9 @@ export interface LicensingDealImpact {
     min: number | null
     max: number | null
     known: boolean
+    /** Flask: "one_licence" — the range covers whichever single licence applies. */
+    basis?: string
+    note?: string
     items: LicensingFeeItem[]
   }
   analyse_hooks: {
