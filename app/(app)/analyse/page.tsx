@@ -20,7 +20,8 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 // production TDZ (see b43cd13 revert). The inline gate banner is
 // re-introduced as a self-contained client island below.
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
-import { CREDITS_REFRESH_EVENT, CreditsPill } from "@/components/landing/credits-pill"
+import { CreditsPill } from "@/components/landing/credits-pill"
+import { notifyCreditsChanged } from "@/lib/useCredits"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { sendAnalysisContextToCrisp, openSupportChat } from "@/lib/crisp-context"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
@@ -722,13 +723,9 @@ function AnalysePage() {
         if (typeof window !== "undefined") {
           const newBalance: unknown = data.newCreditBalance
           if (typeof newBalance === "number") {
-            window.dispatchEvent(
-              new CustomEvent(CREDITS_REFRESH_EVENT, {
-                detail: { newCreditBalance: newBalance },
-              }),
-            )
+            notifyCreditsChanged({ newCreditBalance: newBalance })
           } else {
-            window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT))
+            notifyCreditsChanged()
           }
         }
 
