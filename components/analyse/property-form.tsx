@@ -169,7 +169,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     watch,
     setValue,
     getValues,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<PropertyFormData>({
     resolver: zodResolver(schema),
     defaultValues: { ...baseDefaults, ...defaultValues },
@@ -468,10 +468,11 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
             </FormField>
           )}
           <FormField label="Floor Size (sqft)" hint={
-            sqftSource === "epc" ? "Floor size from EPC register"
+            dirtyFields.sqft ? "Floor size entered or edited by you"
+            : sqftSource === "epc" ? "Floor size from EPC register"
             : sqftSource === "listing" ? "Floor size from listing"
             : sqftSource === "estimated" ? "Estimated from bedrooms + property type \u2014 please verify"
-            : sqftValue ? "From listing or EPC certificate"
+            : sqftValue ? "Floor size entered by you — not independently verified"
             : "Floor size not found \u2014 enter manually"
           }>
             <div className="relative">
@@ -1138,7 +1139,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                 />
               </FormField>
             </div>
-            <FormField label="Refurbishment Budget" hint={sqftValue ? "Estimated based on property condition and size. Adjust if you have a specific quote." : "Enter manually or set floor size + condition above"}>
+            <FormField label="Refurbishment Budget" hint={dirtyFields.refurbishmentBudget ? "Your entered refurbishment budget" : sqftValue ? "Estimate based on condition and size; replace with your quote if available." : "Enter manually or set floor size + condition above"}>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                 <Input type="number" className="pl-7" {...register("refurbishmentBudget")} />

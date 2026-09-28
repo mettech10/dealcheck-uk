@@ -23,3 +23,8 @@ test("field error is connected to its input and marks it invalid", () => {
   expect(html).toContain(`id="${descriptionId}"`)
   expect(html).toContain("Enter a positive rent")
 })
+test("manual floor area is not presented as a listing or EPC measurement", () => {
+  const html = renderToStaticMarkup(React.createElement(PropertyForm, { onSubmit: vi.fn(), isLoading: false, defaultValues: { sqft: 1000 } }))
+  expect(html).toContain("Floor size entered by you")
+  expect(html).not.toContain("From listing or EPC certificate")
+})
