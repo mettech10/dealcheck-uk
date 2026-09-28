@@ -88,7 +88,7 @@ There is **no** `GET/PUT /settings`, **no** `PUT /properties/:id`,
 }
 ```
 
-MVP codes: `GAS`, `EICR`, `EPC`, `DEP`, `HTR`, `LIC_HMO`, `LIC_SEL`.
+Codes: `GAS`, `EICR`, `EPC`, `DEP`, `SMOKE_CO`, `RTR`, `TERMS`, `RRA_INFO`, `HTR` (tenancies before 1 May 2026), `LIC_HMO`, `LIC_SEL`, `EPC_2030`, `PRS_DB`. Deadline items (`RRA_INFO`, `EPC_2030`) default their expiry to the statutory date and count as compliant once done.
 
 The adapter maps each item onto the cockpit catalogue shape (shortName,
 legal note, expiry model stay FE copy). Traffic lights map Flask status:
@@ -123,7 +123,7 @@ GAS N/A requires `applicabilityReason` (e.g. `no gas supply`).
 ```
 
 The UI still rolls up **per portfolio property** (traffic-light cards)
-by grouping `obligations[]` on `propertyId` and overlaying the seven
+by grouping `obligations[]` on `propertyId` and overlaying the catalogue
 catalogue rows. Flask `counts` are per-obligation; the tiles use the
 composed property roll-up.
 
@@ -143,7 +143,7 @@ POST /v1/compliance/obligations
 
 Opening `/tools/compliance/:propertyId` is
 `GET /properties/:propertyId/obligations` only. Empty file = no
-instances yet; we do **not** pre-insert seven rows.
+instances yet; we do **not** pre-insert catalogue rows.
 
 ---
 

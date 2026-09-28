@@ -2,6 +2,7 @@
  * Dual-SoT hold: production/preview must never construct the localStorage stub.
  */
 import { afterEach, describe, expect, test, vi } from "vitest"
+import { OBLIGATION_CODES } from "@/lib/compliance/types"
 import {
   getComplianceClient,
   resetComplianceClientCache,
@@ -63,7 +64,7 @@ describe("host gates", () => {
   test("unit tests may still construct a memory stub", async () => {
     const api = createStubClient({ storage: memoryStorage() })
     const cat = await api.getCatalogue()
-    expect(cat).toHaveLength(7)
+    expect(cat).toHaveLength(OBLIGATION_CODES.length)
   })
 })
 
@@ -97,7 +98,7 @@ describe("getComplianceClient fail-closed", () => {
     })
     expect(handle.source).toBe("stub")
     expect(handle.api).not.toBeNull()
-    await expect(handle.api!.getCatalogue()).resolves.toHaveLength(7)
+    await expect(handle.api!.getCatalogue()).resolves.toHaveLength(OBLIGATION_CODES.length)
   })
 
   test("127.0.0.1 demo hatch uses the stub without calling live", async () => {

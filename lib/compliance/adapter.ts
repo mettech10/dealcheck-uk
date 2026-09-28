@@ -169,9 +169,12 @@ export function mapCatalogueResponse(body: unknown): ObligationDefinition[] {
       ? rec.catalogue
       : null
   if (!list) return COMPLIANCE_CATALOGUE_LIST
+  const order = new Map<string, number>(OBLIGATION_CODES.map((code, i) => [code, i]))
   const mapped = list
     .map(mapCatalogueItem)
     .filter((row): row is ObligationDefinition => row != null)
+    // Display in catalogue order whatever order Flask returns.
+    .sort((a, b) => (order.get(a.code) ?? 99) - (order.get(b.code) ?? 99))
   return mapped.length ? mapped : COMPLIANCE_CATALOGUE_LIST
 }
 

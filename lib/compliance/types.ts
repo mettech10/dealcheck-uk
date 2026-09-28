@@ -11,9 +11,15 @@ export const OBLIGATION_CODES = [
   "EICR",
   "EPC",
   "DEP",
+  "SMOKE_CO",
+  "RTR",
+  "TERMS",
+  "RRA_INFO",
   "HTR",
   "LIC_HMO",
   "LIC_SEL",
+  "EPC_2030",
+  "PRS_DB",
 ] as const
 
 export type ObligationCode = (typeof OBLIGATION_CODES)[number]
