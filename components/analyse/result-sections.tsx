@@ -16,7 +16,8 @@
  * text-success/-warning/-destructive, Card/border styles) — no new colours.
  */
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useCredits } from "@/lib/useCredits"
 import Link from "next/link"
 import {
   Bar,
@@ -604,15 +605,6 @@ export function MonthlyCashFlowCard({
 
 // ── C-right. "Analyse another property" CTA card ───────────────────────────
 
-interface CreditsResponse {
-  authenticated: boolean
-  tier: string
-  isUnlimited: boolean
-  creditBalance: number
-  freeUsed: number
-  freeLimit: number
-}
-
 export function AnalyseAnotherCard({
   onNewAnalysis,
   onUpgrade,
@@ -620,22 +612,7 @@ export function AnalyseAnotherCard({
   onNewAnalysis?: () => void
   onUpgrade?: () => void
 }) {
-  const [credits, setCredits] = useState<CreditsResponse | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    fetch("/api/user/credits")
-      .then((r) => (r.ok ? (r.json() as Promise<CreditsResponse>) : null))
-      .then((d) => {
-        if (!cancelled && d) setCredits(d)
-      })
-      .catch(() => {
-        /* silent — card still renders without the usage note */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const credits = useCredits()
 
   const remaining = credits
     ? Math.max(0, credits.freeLimit - credits.freeUsed) + credits.creditBalance

@@ -6,6 +6,7 @@
  */
 
 const DEFAULT_ANALYZER_URL = "https://metusa-deal-analyzer.onrender.com"
+import { fetchCalculation } from "@/lib/calculation-fetch"
 
 export function analyzerApiUrl(): string {
   const raw =
@@ -63,7 +64,7 @@ export async function postLicensingCheck(
   const url = licensingCheckUrl()
   let res: Response
   try {
-    res = await fetch(url, {
+    res = await fetchCalculation(url, {
       method: "POST",
       headers: analyzerAuthHeaders(),
       body: JSON.stringify(body),

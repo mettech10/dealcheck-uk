@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react"
 import Link from "next/link"
+import { areaAnalysisContext } from "@/lib/area-analysis-context"
+import { vacancyPercent, vacancyWeeks } from "@/lib/sensitivity"
 import dynamic from "next/dynamic"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { openSupportChat } from "@/lib/crisp-context"
@@ -231,7 +233,7 @@ function buildStripMetrics(
           positive: results.grossYield >= 8,
         },
         {
-          label: "Net Yield",
+          label: "Yield After Finance",
           value: formatPercent(results.netYield),
           positive: results.netYield >= 4,
         },
@@ -284,7 +286,7 @@ function buildStripMetrics(
         positive: results.grossYield >= 6,
       },
       {
-        label: "Net Yield",
+        label: "Yield After Finance",
         value: formatPercent(results.netYield),
         positive: results.netYield >= 4,
       },
@@ -1405,7 +1407,7 @@ function SensitivityAnalysisPanel({
   const [mortgageRate,   setMortgageRate]   = useState<number>(baseFormData.interestRate ?? 3.75)
   const [monthlyRent,    setMonthlyRent]    = useState<number>(baseFormData.monthlyRent ?? 0)
   const [vacancyRate,    setVacancyRate]    = useState<number>(
-    baseFormData.voidWeeks ? Math.round((baseFormData.voidWeeks / 52) * 100 * 10) / 10 : 4.2
+    vacancyPercent(baseFormData.voidWeeks)
   )
   // BRRRR + Flip extra sliders
   const [arv,            setArv]            = useState<number>(baseARV)
@@ -1423,7 +1425,7 @@ function SensitivityAnalysisPanel({
   const refurbMax  = Math.max(50000, Math.round(baseRefurb * 2 / 1000) * 1000)
 
   const runSensitivity = useCallback(() => {
-    const voidWeeks = Math.round((vacancyRate / 100) * 52 * 10) / 10
+    const voidWeeks = vacancyWeeks(vacancyRate)
     const scenarioData: PropertyFormData = {
       ...baseFormData,
       purchasePrice,
@@ -1653,7 +1655,7 @@ export function AnalysisResults({
   // backend single-axis dealScore + verdictLabel. Computed client-side so
   // it can see Article 4 / benchmark / comparables alongside form inputs.
   const scoreResult: ScoreResult = useMemo(
-    () => scoreDeal(buildScoringInput(data, results, backendData ?? undefined)),
+    () => backendData?.canonical_score ?? scoreDeal(buildScoringInput(data, results, backendData ?? undefined)),
     [data, results, backendData],
   )
   const dealScore = scoreResult.total
@@ -2006,7 +2008,7 @@ export function AnalysisResults({
                         <span className={`font-semibold ${results.grossYield >= 8 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Net Yield</span>
+                        <span className="text-muted-foreground">Yield After Finance</span>
                         <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
@@ -2324,7 +2326,7 @@ export function AnalysisResults({
                   <span className={`font-semibold ${results.grossYield >= 6 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Net Yield</span>
+                  <span className="text-muted-foreground">Yield After Finance</span>
                   <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -2441,6 +2443,7 @@ export function AnalysisResults({
           strategy's investor questions — not a one-size BTL-style report. */}
       {data.postcode && (
         <AiAreaAnalysisCard
+          enabled={!aiLoading}
           postcode={data.postcode}
           strategy={data.investmentType}
           dealData={{
@@ -2491,14 +2494,7 @@ export function AnalysisResults({
             devProfitOnCostPct: results.development?.profitOnCost,
             devRlv: results.development?.residualLandValue,
           }}
-          benchmark={(backendData?.regional_benchmark || backendData?.postcode_benchmark) as Record<string, unknown> | null | undefined}
-          articleFour={backendData?.article_4 as Record<string, unknown> | null | undefined}
-          marketContext={{
-            soldComparables: backendData?.sold_comparables ?? null,
-            rentComparables: backendData?.rent_comparables ?? null,
-            avgSoldPrice: backendData?.avg_sold_price ?? null,
-            houseValuation: backendData?.house_valuation ?? null,
-          }}
+          {...areaAnalysisContext(backendData, pdfEvidence)}
           fallbackText={backendData?.ai_area}
         />
       )}
@@ -2522,6 +2518,7 @@ export function AnalysisResults({
           {verdictHeadline && (
             <p className="text-sm font-medium text-foreground">{verdictHeadline}</p>
           )}
+          {backendData?.ai_validation_note && <p className="text-sm text-warning">{backendData.ai_validation_note}</p>}
           <div>
             {backendData?.ai_verdict ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">

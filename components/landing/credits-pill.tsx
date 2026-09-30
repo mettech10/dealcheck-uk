@@ -20,82 +20,12 @@
  */
 
 import Link from "next/link"
-import { useCallback, useEffect, useState } from "react"
+import { useCredits } from "@/lib/useCredits"
+export { CREDITS_REFRESH_EVENT, type CreditsRefreshDetail } from "@/lib/credits-store"
 import { Sparkles, Zap } from "lucide-react"
 
-/** Window event other components can dispatch to update the pill.
- *
- *  Two modes:
- *    - Plain Event (no detail) → pill refetches /api/user/credits.
- *      Use when the caller doesn't know the new balance.
- *    - CustomEvent with `detail: { newCreditBalance: number }` →
- *      pill applies the value directly, no refetch. Use after
- *      /api/analyse since the response carries the authoritative
- *      post-deduction balance (no read-after-write race).
- */
-export const CREDITS_REFRESH_EVENT = "metalyzi:credits-refresh"
-
-export interface CreditsRefreshDetail {
-  newCreditBalance?: number
-}
-
-interface CreditsResponse {
-  authenticated: boolean
-  tier: string
-  isUnlimited: boolean
-  creditBalance: number
-  freeUsed: number
-  freeLimit: number
-}
-
 export function CreditsPill() {
-  const [state, setState] = useState<CreditsResponse | null>(null)
-
-  const fetchOnce = useCallback(() => {
-    let cancelled = false
-    fetch("/api/user/credits")
-      .then((r) => (r.ok ? (r.json() as Promise<CreditsResponse>) : null))
-      .then((d) => {
-        if (!cancelled && d) setState(d)
-      })
-      .catch(() => {
-        /* silent — pill just stays hidden */
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  // Initial fetch on mount.
-  useEffect(() => {
-    return fetchOnce()
-  }, [fetchOnce])
-
-  // Refresh trigger — two paths:
-  //   - CustomEvent with detail.newCreditBalance → apply directly,
-  //     no refetch. Kills the read-after-write race where
-  //     /api/user/credits would return the OLD balance because
-  //     the deduction commit hadn't propagated through the
-  //     connection pool yet.
-  //   - Plain Event (no detail) → refetch /api/user/credits.
-  //     Used by callers that only know "something changed".
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<CreditsRefreshDetail>).detail
-      if (detail && typeof detail.newCreditBalance === "number") {
-        setState((prev) =>
-          prev
-            ? { ...prev, creditBalance: detail.newCreditBalance ?? prev.creditBalance }
-            : prev,
-        )
-        return
-      }
-      fetchOnce()
-    }
-    window.addEventListener(CREDITS_REFRESH_EVENT, handler)
-    return () => window.removeEventListener(CREDITS_REFRESH_EVENT, handler)
-  }, [fetchOnce])
+  const state = useCredits()
 
   if (!state) return null
 

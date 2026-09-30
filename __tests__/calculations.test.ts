@@ -44,6 +44,11 @@ function makeBTL(overrides: Partial<PropertyFormData> = {}): PropertyFormData {
 }
 
 describe("SDLT Calculations", () => {
+  test.each([[0, 0], [39999, 0], [40000, 2000], [40001, 2000]])(
+    "additional dwelling £%i has £%i SDLT (whole-pound display)", (price, tax) => {
+      expect(calculateSDLT(price, "additional").total).toBe(tax)
+    },
+  )
   test("Investment buyer £200k = £11,500 (5% surcharge stacking)", () => {
     // 0-125k @ 5% = 6,250 + 125-200k @ 7% = 5,250 → 11,500
     expect(calculateSDLT(200000, "additional").total).toBe(11500)
@@ -111,9 +116,9 @@ describe("BTL Headline Metrics", () => {
 })
 
 describe("BTL FTB SDLT branch", () => {
-  test("FTB BTL £200k pays £0 SDLT", () => {
+  test("First purchase BTL £200k pays £1,500: not an owner-occupied home", () => {
     const result = calculateAll(makeBTL({ buyerType: "first-time" }))
-    expect(result.sdltAmount).toBe(0)
+    expect(result.sdltAmount).toBe(1500)
   })
 })
 

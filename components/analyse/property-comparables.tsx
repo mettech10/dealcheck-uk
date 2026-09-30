@@ -1,4 +1,5 @@
 "use client"
+import { soldPriceDifference } from "@/lib/valuation"
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -333,10 +334,7 @@ export function PropertyComparables({
     )
   }
 
-  const priceDiff =
-    currentPrice && soldData?.average
-      ? ((currentPrice - soldData.average) / soldData.average) * 100
-      : null
+  const priceDiff = soldPriceDifference(soldData?.average, currentPrice)
 
   return (
     <Card>
@@ -419,8 +417,8 @@ export function PropertyComparables({
                   {formatCurrency(soldData.average)}
                 </div>
                 {priceDiff !== null && (
-                  <div className={`text-sm mt-1 ${priceDiff > 0 ? "text-destructive" : "text-success"}`}>
-                    {priceDiff > 0 ? "↑" : "↓"} {Math.abs(priceDiff).toFixed(1)}% vs asking price
+                  <div className={`text-sm mt-1 ${priceDiff < 0 ? "text-destructive" : "text-success"}`}>
+                    {Math.abs(priceDiff).toFixed(1)}% {priceDiff > 0 ? "above" : priceDiff < 0 ? "below" : "difference from"} asking price
                   </div>
                 )}
               </div>

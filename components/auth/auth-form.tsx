@@ -54,6 +54,11 @@ export function AuthForm({ initialMode }: { initialMode: "login" | "signup" }) {
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [isHydrated, setIsHydrated] = useState(false)
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   useEffect(() => {
     setMode(initialMode)
@@ -237,7 +242,8 @@ export function AuthForm({ initialMode }: { initialMode: "login" | "signup" }) {
             <Separator className="flex-1" />
           </div>
 
-          <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+          {/* Never allow the native pre-hydration fallback to put credentials in a GET URL. */}
+          <form method="post" onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
             {mode === "signup" && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="name" className="text-sm text-foreground">
@@ -340,7 +346,7 @@ export function AuthForm({ initialMode }: { initialMode: "login" | "signup" }) {
               </div>
             )}
 
-            <Button type="submit" size="lg" className="mt-2 w-full" disabled={isPending}>
+            <Button type="submit" size="lg" className="mt-2 w-full" disabled={!isHydrated || isPending}>
               {isPending ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
@@ -383,9 +389,9 @@ export function AuthForm({ initialMode }: { initialMode: "login" | "signup" }) {
           {mode === "signup" && (
             <p className="mt-4 text-center text-xs text-muted-foreground">
               By creating an account, you agree to our{" "}
-              <span className="cursor-pointer text-primary hover:underline">Terms of Service</span>{" "}
+              <Link href="/terms-of-service" className="text-primary hover:underline">Terms of Service</Link>{" "}
               and{" "}
-              <span className="cursor-pointer text-primary hover:underline">Privacy Policy</span>.
+              <Link href="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>.
             </p>
           )}
         </div>

@@ -442,6 +442,8 @@ export interface HouseValuation {
 
 // Full structured response from the Flask /ai-analyze endpoint
 export interface BackendResults {
+  canonical_score?: import("./dealScoring").ScoreResult
+  ai_validation_note?: string
   verdict?: "PROCEED" | "REVIEW" | "AVOID"
   deal_score?: number
   deal_score_label?: string

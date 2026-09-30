@@ -3,15 +3,14 @@
 import { useEffect, useState } from "react"
 import { useForm, Controller, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
+import { propertyFormSchema as schema } from "@/lib/property-form-schema"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { FormField, FieldInput as Input, FieldSelectTrigger as SelectTrigger } from "./form-field"
 import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { Loader2, Link2, Info, Trash2, Plus, X } from "lucide-react"
@@ -20,191 +19,6 @@ import { estimateRefurbCost } from "@/lib/calculations"
 import { AutoArvButton, type ArvEstimate } from "./auto-arv"
 import { AutoGdvButton } from "./auto-gdv"
 
-const schema = z.object({
-  address: z.string().min(1, "Address is required"),
-  postcode: z.string().min(1, "Postcode is required"),
-  purchasePrice: z.coerce.number().min(0),
-  propertyType: z.enum(["house", "flat", "commercial"]),
-  propertyTypeDetail: z.enum([
-    "terraced", "semi-detached", "detached", "end-of-terrace",
-    "flat-apartment", "bungalow", "maisonette", "other",
-  ]).optional(),
-  tenureType: z.enum(["freehold", "leasehold"]).optional(),
-  leaseYears: z.coerce.number().min(1).max(999).optional(),
-  investmentType: z.enum(["btl", "brr", "hmo", "flip", "r2sa", "development"]),
-  sqft: z.coerce.number().min(0).optional(),
-  bedrooms: z.coerce.number().min(0).max(20),
-  condition: z.enum(["excellent", "good", "cosmetic", "full-refurb", "structural"]),
-  buyerType: z.enum(["first-time", "standard", "additional"]),
-  refurbishmentBudget: z.coerce.number().min(0),
-  legalFees: z.coerce.number().min(0),
-  surveyCosts: z.coerce.number().min(0),
-  purchaseType: z.enum(["mortgage", "bridging-loan", "cash"]),
-  depositPercentage: z.coerce.number().min(0).max(100),
-  interestRate: z.coerce.number().min(0).max(20),
-  mortgageTerm: z.coerce.number().min(1).max(40),
-  // Bridging loan fields
-  bridgingLTV: z.coerce.number().min(0).max(100).optional(),
-  bridgingMonthlyRate: z.coerce.number().min(0).max(5).optional(),
-  bridgingTermMonths: z.coerce.number().min(1).max(36).optional(),
-  bridgingArrangementFee: z.coerce.number().min(0).max(5).optional(),
-  bridgingExitFee: z.coerce.number().min(0).max(5).optional(),
-  // BRR / Flip
-  arv: z.coerce.number().min(0).optional(),
-  arvBasis: z.enum(["comparables", "surveyor", "agent", "manual"]).optional(),
-  brrrExitStrategy: z.enum(["btl", "hmo", "sa"]).optional(),
-  // BRRRR refurb extras
-  refurbContingencyPercent: z.coerce.number().min(0).max(50).optional(),
-  refurbHoldingMonths: z.coerce.number().min(0).max(24).optional(),
-  refurbHoldingCostPerMonth: z.coerce.number().min(0).optional(),
-  // BRRRR refinance fields (separate from initial mortgage)
-  refinanceLTV: z.coerce.number().min(0).max(100).optional(),
-  refinanceRate: z.coerce.number().min(0).max(20).optional(),
-  refinanceTermYears: z.coerce.number().min(1).max(40).optional(),
-  refinanceArrangementFeePercent: z.coerce.number().min(0).max(5).optional(),
-  refinanceValuationFee: z.coerce.number().min(0).optional(),
-  // ── Flip-specific ──────────────────────────────────────────────
-  // Refurb line items — summed into refurbishmentBudget when builder is used.
-  refurbKitchen: z.coerce.number().min(0).optional(),
-  refurbBathroom: z.coerce.number().min(0).optional(),
-  refurbFlooring: z.coerce.number().min(0).optional(),
-  refurbDecoration: z.coerce.number().min(0).optional(),
-  refurbElectrical: z.coerce.number().min(0).optional(),
-  refurbPlumbing: z.coerce.number().min(0).optional(),
-  refurbExterior: z.coerce.number().min(0).optional(),
-  refurbStructural: z.coerce.number().min(0).optional(),
-  // Flip holding during works + marketing.
-  flipHoldingMonths: z.coerce.number().min(0).max(36).optional(),
-  flipCouncilTaxMonthly: z.coerce.number().min(0).optional(),
-  flipInsuranceMonthly: z.coerce.number().min(0).optional(),
-  flipUtilitiesMonthly: z.coerce.number().min(0).optional(),
-  flipServiceChargeMonthly: z.coerce.number().min(0).optional(),
-  // Flip exit strategy.
-  flipAgentFeePercent: z.coerce.number().min(0).max(10).optional(),
-  flipSaleLegalFees: z.coerce.number().min(0).optional(),
-  flipMarketingCosts: z.coerce.number().min(0).optional(),
-  flipSaleMonths: z.coerce.number().min(0).max(24).optional(),
-  // Flip tax.
-  flipOwnershipStructure: z.enum(["individual", "limited-company"]).optional(),
-  flipTaxBand: z.enum(["basic", "higher"]).optional(),
-  flipCGTAllowanceRemaining: z.coerce.number().min(0).max(3000).optional(),
-  flipCorporationTaxRate: z.coerce.number().min(0).max(40).optional(),
-  flipOtherGainsThisYear: z.coerce.number().min(0).optional(),
-  // HMO
-  roomCount: z.coerce.number().min(0).max(20).optional(),
-  avgRoomRate: z.coerce.number().min(0).optional(),
-  hmoLicenceCost: z.coerce.number().min(0).optional(),
-  hmoLicenceTermYears: z.coerce.number().min(1).max(10).optional(),
-  hmoRoomVoidWeeks: z.coerce.number().min(0).max(52).optional(),
-  // SA / R2SA
-  saMonthlySARevenue: z.coerce.number().min(0).optional(),
-  saSetupCosts: z.coerce.number().min(0).optional(),
-  saOwnershipType: z.enum(["own", "rent-to-sa"]).optional(),
-  saNightlyRate: z.coerce.number().min(0).optional(),
-  saOccupancyRate: z.coerce.number().min(0).max(100).optional(),
-  saPlatformFeePercent: z.coerce.number().min(0).max(100).optional(),
-  saCleaningCostPerStay: z.coerce.number().min(0).optional(),
-  saAvgStaysPerMonth: z.coerce.number().min(0).max(60).optional(),
-  saAvgStayLengthNights: z.coerce.number().min(1).optional(),
-  saMonthlyLease: z.coerce.number().min(0).optional(),
-  saUtilitiesMonthly: z.coerce.number().min(0).optional(),
-  saInsuranceAnnual: z.coerce.number().min(0).optional(),
-  saManagementFeePercent: z.coerce.number().min(0).max(100).optional(),
-  saMaintenancePercent: z.coerce.number().min(0).max(100).optional(),
-  // ── Property Development ──────────────────────────────────────
-  devSiteType: z.enum([
-    "greenfield", "brownfield", "existing-building",
-    "demolition-and-build", "land-only",
-  ]).optional(),
-  devSiteAreaM2: z.coerce.number().min(0).optional(),
-  devPlanningStatus: z.enum([
-    "no-planning", "pre-application", "outline",
-    "full-planning", "permitted-development", "lapsed",
-  ]).optional(),
-  devPlanningRef: z.string().optional(),
-  devUnitMix: z.array(z.object({
-    unitType: z.enum([
-      "studio", "1-bed-flat", "2-bed-flat", "3-bed-flat",
-      "1-bed-house", "2-bed-house", "3-bed-house",
-      "4-bed-house", "5-bed-house", "commercial", "other",
-    ]),
-    numberOfUnits: z.coerce.number().min(0).max(500),
-    avgSizeM2: z.coerce.number().min(0).max(10000),
-    salePricePerUnit: z.coerce.number().min(0),
-    rentalValuePerUnit: z.coerce.number().min(0).optional(),
-  })).optional(),
-  sdltRateType: z.enum(["residential", "non-residential", "mixed-use"]).optional(),
-  devConstructionType: z.enum([
-    "new-build-traditional", "new-build-timber-frame", "new-build-modular",
-    "conversion", "extension", "refurbishment",
-  ]).optional(),
-  devBuildCostPerM2: z.coerce.number().min(0).optional(),
-  devAbnormals: z.coerce.number().min(0).optional(),
-  devContingencyPercent: z.coerce.number().min(0).max(50).optional(),
-  devArchitectPercent: z.coerce.number().min(0).max(20).optional(),
-  devStructuralEngineerPercent: z.coerce.number().min(0).max(10).optional(),
-  devQsPercent: z.coerce.number().min(0).max(10).optional(),
-  devProjectManagerPercent: z.coerce.number().min(0).max(10).optional(),
-  devPlanningConsultantFixed: z.coerce.number().min(0).optional(),
-  devBuildingControlFixed: z.coerce.number().min(0).optional(),
-  devWarrantyPercent: z.coerce.number().min(0).max(5).optional(),
-  devSapEpcCostPerUnit: z.coerce.number().min(0).optional(),
-  devPartyWallCost: z.coerce.number().min(0).optional(),
-  devCILRatePerM2: z.coerce.number().min(0).optional(),
-  devS106PerUnit: z.coerce.number().min(0).optional(),
-  devAffordableHousingPercent: z.coerce.number().min(0).max(100).optional(),
-  devBuildingRegsFixed: z.coerce.number().min(0).optional(),
-  devPlanningAppFee: z.coerce.number().min(0).optional(),
-  devFinanceLTC: z.coerce.number().min(0).max(100).optional(),
-  devFinanceDay1Percent: z.coerce.number().min(0).max(100).optional(),
-  devFinanceRate: z.coerce.number().min(0).max(20).optional(),
-  devFinanceArrangementFeePercent: z.coerce.number().min(0).max(10).optional(),
-  devFinanceMonitoringFeeMonthly: z.coerce.number().min(0).optional(),
-  devFinanceTermMonths: z.coerce.number().min(1).max(60).optional(),
-  devFinanceExitFeePercent: z.coerce.number().min(0).max(10).optional(),
-  devFinanceRolledUp: z.boolean().optional(),
-  devLenderValuationFee: z.coerce.number().min(0).optional(),
-  devExitStrategy: z.enum(["sell-all", "hold-and-refinance", "hybrid"]).optional(),
-  devSalesAgentPercent: z.coerce.number().min(0).max(10).optional(),
-  devSalesLegalPerUnit: z.coerce.number().min(0).optional(),
-  devMarketingCostsFixed: z.coerce.number().min(0).optional(),
-  devMarketingPerUnit: z.coerce.number().min(0).optional(),
-  devShowHomeCost: z.coerce.number().min(0).optional(),
-  devSalesPeriodMonths: z.coerce.number().min(0).max(60).optional(),
-  devAbsorptionRatePerMonth: z.coerce.number().min(0).max(50).optional(),
-  devVATApplicable: z.boolean().optional(),
-  capitalGrowthRate: z.coerce.number().min(0).max(30).optional(),
-  mortgageType: z.enum(["repayment", "interest-only"]),
-  monthlyRent: z.coerce.number().min(0),
-  annualRentIncrease: z.coerce.number().min(0).max(20),
-  voidWeeks: z.coerce.number().min(0).max(52),
-  managementFeePercent: z.coerce.number().min(0).max(100),
-  insurance: z.coerce.number().min(0),
-  maintenance: z.coerce.number().min(0),
-  maintenancePercent: z.coerce.number().min(0).max(100),
-  groundRent: z.coerce.number().min(0),
-  bills: z.coerce.number().min(0),
-}).superRefine((data, ctx) => {
-  // BRRRR requires a positive ARV — without it, every BRRRR-specific
-  // metric (refinance amount, capital recycled, equity gained) evaluates
-  // to zero and the results page shows blank tiles. Was the root cause
-  // of the "every BRRRR metric shows 0" report.
-  if (data.investmentType === "brr" && (!data.arv || data.arv <= 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "BRRRR analyses need an After-Repair Value (ARV) > 0",
-      path: ["arv"],
-    })
-  }
-  // Flip also needs ARV to compute exit profit / 70% rule.
-  if (data.investmentType === "flip" && (!data.arv || data.arv <= 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Flip analyses need an After-Repair Value (ARV) > 0",
-      path: ["arv"],
-    })
-  }
-})
 
 interface PropertyFormProps {
   onSubmit: (data: PropertyFormData) => void
@@ -212,29 +26,6 @@ interface PropertyFormProps {
   defaultValues?: Partial<PropertyFormData>
   prefilled?: boolean
   sqftSource?: string // "listing" | "epc" | undefined
-}
-
-function FormField({
-  label,
-  error,
-  children,
-  hint,
-}: {
-  label: string
-  error?: string
-  children: React.ReactNode
-  hint?: string
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Label className="text-sm text-foreground">{label}</Label>
-      {children}
-      {hint && !error && (
-        <span className="text-xs text-muted-foreground">{hint}</span>
-      )}
-      {error && <span className="text-xs text-destructive">{error}</span>}
-    </div>
-  )
 }
 
 export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sqftSource }: PropertyFormProps) {
@@ -378,7 +169,7 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
     watch,
     setValue,
     getValues,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<PropertyFormData>({
     resolver: zodResolver(schema),
     defaultValues: { ...baseDefaults, ...defaultValues },
@@ -677,10 +468,11 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
             </FormField>
           )}
           <FormField label="Floor Size (sqft)" hint={
-            sqftSource === "epc" ? "Floor size from EPC register"
+            dirtyFields.sqft ? "Floor size entered or edited by you"
+            : sqftSource === "epc" ? "Floor size from EPC register"
             : sqftSource === "listing" ? "Floor size from listing"
             : sqftSource === "estimated" ? "Estimated from bedrooms + property type \u2014 please verify"
-            : sqftValue ? "From listing or EPC certificate"
+            : sqftValue ? "Floor size entered by you — not independently verified"
             : "Floor size not found \u2014 enter manually"
           }>
             <div className="relative">
@@ -1339,15 +1131,15 @@ export function PropertyForm({ onSubmit, isLoading, defaultValues, prefilled, sq
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="additional">Second Home / Investment (5% SDLT surcharge)</SelectItem>
-                        <SelectItem value="standard">Standard Buyer (primary residence, not a first-time buyer)</SelectItem>
-                        <SelectItem value="first-time">First-Time Buyer (0% up to £300k, 5% on £300k–£500k)</SelectItem>
+                        <SelectItem value="standard">Standard Buyer (no additional-property surcharge)</SelectItem>
+                        <SelectItem value="first-time">First property — investment (standard SDLT; no FTB relief)</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
                 />
               </FormField>
             </div>
-            <FormField label="Refurbishment Budget" hint={sqftValue ? "Estimated based on property condition and size. Adjust if you have a specific quote." : "Enter manually or set floor size + condition above"}>
+            <FormField label="Refurbishment Budget" hint={dirtyFields.refurbishmentBudget ? "Your entered refurbishment budget" : sqftValue ? "Estimate based on condition and size; replace with your quote if available." : "Enter manually or set floor size + condition above"}>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">{"£"}</span>
                 <Input type="number" className="pl-7" {...register("refurbishmentBudget")} />

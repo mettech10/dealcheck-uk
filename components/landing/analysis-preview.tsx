@@ -9,12 +9,15 @@
  * The figures are illustrative sample output, deliberately realistic.
  */
 import { Sparkles, TrendingUp, Wallet, PieChart, Receipt } from "lucide-react"
+import { calculateSDLT, formatCurrency } from "@/lib/calculations"
+
+const SAMPLE_PRICE = 215000
 
 const METRICS = [
   { icon: TrendingUp, label: "Gross yield", value: "7.4%", note: "+1.2% vs area", accent: true },
   { icon: Wallet, label: "Monthly cashflow", value: "£412", note: "after all costs", accent: true },
   { icon: PieChart, label: "Cash-on-cash ROI", value: "11.2%", note: "year one", accent: true },
-  { icon: Receipt, label: "SDLT payable", value: "£8,750", note: "incl. 5% surcharge", accent: false },
+  { icon: Receipt, label: "SDLT payable", value: formatCurrency(calculateSDLT(SAMPLE_PRICE, "additional").total), note: "incl. 5% surcharge", accent: false },
 ]
 
 /** 5-year projected cashflow — smooth area chart. */
@@ -129,7 +132,7 @@ export function AnalysisPreview() {
                 14 Beresford Road, Manchester M13
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
-                3 bed terraced · £215,000 asking · HMO strategy
+                3 bed terraced · {formatCurrency(SAMPLE_PRICE)} asking · HMO strategy
               </div>
             </div>
             <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">

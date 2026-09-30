@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, Suspense } from "react"
 import Link from "next/link"
+import { readSdltPrefill } from "@/lib/analysis-prefill"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -19,7 +20,8 @@ import { useAnalysisAccess } from "@/lib/useAnalysisAccess"
 // production TDZ (see b43cd13 revert). The inline gate banner is
 // re-introduced as a self-contained client island below.
 import { CreditGateBanner } from "@/components/analyse/credit-gate-banner"
-import { CREDITS_REFRESH_EVENT, CreditsPill } from "@/components/landing/credits-pill"
+import { CreditsPill } from "@/components/landing/credits-pill"
+import { notifyCreditsChanged } from "@/lib/useCredits"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { sendAnalysisContextToCrisp, openSupportChat } from "@/lib/crisp-context"
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay"
@@ -167,7 +169,7 @@ function formatAnalysisResults(r: Record<string, any>, overridePostcode?: string
   formatted += `📊 KEY METRICS\n`
   formatted += `─`.repeat(55) + `\n`
   formatted += `  • Gross Yield: ${r.gross_yield || 'N/A'}%\n`
-  formatted += `  • Net Yield: ${r.net_yield || 'N/A'}%\n`
+  formatted += `  • Yield After Finance: ${r.net_yield || 'N/A'}%\n`
   formatted += `  • Monthly Cashflow: £${r.monthly_cashflow || 'N/A'}\n`
   formatted += `  • Cash-on-Cash: ${r.cash_on_cash || 'N/A'}%\n\n`
   
@@ -392,6 +394,11 @@ function AnalysePage() {
   // scraping + analysis spend real credits, so the user presses the button.
   useEffect(() => {
     const dealId = searchParams.get("dealId")
+    const taxPrefill = readSdltPrefill(searchParams)
+    if (taxPrefill && !dealId && !searchParams.get("url")) {
+      setPrefillData(taxPrefill)
+      setInputMode("manual")
+    }
     const deepUrl = searchParams.get("url")
     const strat = (searchParams.get("strategy") ?? "").toUpperCase()
     const map: Record<string, PropertyFormData["investmentType"]> = {
@@ -716,13 +723,9 @@ function AnalysePage() {
         if (typeof window !== "undefined") {
           const newBalance: unknown = data.newCreditBalance
           if (typeof newBalance === "number") {
-            window.dispatchEvent(
-              new CustomEvent(CREDITS_REFRESH_EVENT, {
-                detail: { newCreditBalance: newBalance },
-              }),
-            )
+            notifyCreditsChanged({ newCreditBalance: newBalance })
           } else {
-            window.dispatchEvent(new Event(CREDITS_REFRESH_EVENT))
+            notifyCreditsChanged()
           }
         }
 

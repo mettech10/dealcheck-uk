@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { sendVerificationEmail, sendPasswordResetEmail } from "@/lib/brevo-email"
 import { safeReturnTo } from "@/lib/auth/returnTo"
+import { verificationUrl } from "@/lib/auth/verification-url"
 
 export async function signInWithEmail(formData: FormData) {
   const supabase = await createClient()
@@ -64,12 +65,7 @@ export async function signUpWithEmail(formData: FormData) {
   // causing exchangeCodeForSession to fail silently and the user to land on
   // the wrong page).  Instead, the button takes the user straight to our
   // /auth/callback which calls verifyOtp({ token_hash, type }).
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL?.replace(/\/auth\/callback.*$/, "") ||
-    origin
-  const verificationUrl = `${siteUrl}/auth/callback?token_hash=${data.properties.hashed_token}&type=signup`
-  await sendVerificationEmail(email, verificationUrl)
+  await sendVerificationEmail(email, verificationUrl(origin, data.properties.hashed_token))
 
   return { success: "Check your email to confirm your account." }
 }

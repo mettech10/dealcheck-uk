@@ -330,7 +330,7 @@ function ComparisonResults({ deals, isPro }: { deals: SavedDealFull[]; isPro: bo
                 get={(d) => `${d.results.grossYield.toFixed(2)}%`}
                 winnerIdx={winners.grossYield}
               />
-              <Row label="Net Yield" deals={deals} get={(d) => `${d.results.netYield.toFixed(2)}%`} winnerIdx={winners.netYield} />
+              <Row label="Yield After Finance" deals={deals} get={(d) => `${d.results.netYield.toFixed(2)}%`} winnerIdx={winners.netYield} />
               <Row
                 label="Monthly Cashflow"
                 deals={deals}

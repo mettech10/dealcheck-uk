@@ -1,4 +1,5 @@
 import type { PropertyFormData, CalculationResults, YearProjection, BuyerType } from "./types"
+import { calculateDevelopment } from "./developmentCalculations"
 
 /**
  * Non-residential / mixed-use SDLT bands (England/NI).
@@ -54,6 +55,8 @@ export function calculateSDLT(
   if (rateType === "non-residential" || rateType === "mixed-use") {
     return calculateNonResidentialSDLT(price)
   }
+  // An ordinary standalone dwelling below £40,000 is outside higher rates.
+  if (price < 40000) return { total: 0, breakdown: [] }
   // First-time buyer relief (England/NI, from 1 April 2025): 0% up to £300k,
   // 5% on £300k–£500k, relief removed entirely if price > £500,000.
   // (The temporary £425k/£625k thresholds expired 31 March 2025.)
@@ -280,6 +283,13 @@ function calculateProjection(
 /**
  * Run full analysis calculations
  */
+export function calculateInvestmentSDLT(price: number, buyerType: BuyerType, rateType: PropertyFormData["sdltRateType"] = "residential") {
+  // FTB relief requires occupation as the purchaser's only/main residence.
+  // A first purchase held as an investment pays standard rates, not the
+  // additional-property surcharge and not first-time-buyer relief.
+  return calculateSDLT(price, buyerType === "first-time" ? "standard" : buyerType, rateType)
+}
+
 export function calculateAll(data: PropertyFormData): CalculationResults {
   // ── Property Development (new-build / conversion / refurb) ──────────────
   // Delegates the full cost-stack + finance + RLV + IRR calc to the
@@ -288,13 +298,8 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   // (SDLT, TDC, equity, yields=0, no monthly cashflow) so downstream code
   // never has to null-check.
   if (data.investmentType === "development") {
-    // Lazy import to avoid a circular (developmentCalculations imports
-    // calculateSDLT from this file).
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { calculateDevelopment } =
-      require("./developmentCalculations") as typeof import("./developmentCalculations")
     const dev = calculateDevelopment(data)
-    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
       data.purchasePrice,
       data.buyerType,
       data.sdltRateType ?? "residential",
@@ -394,9 +399,10 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     }
 
     // ── SA-Owned: you own the property, run it as SA ──
-    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+    const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
       data.purchasePrice,
-      data.buyerType
+      data.buyerType,
+      data.sdltRateType
     )
     const depositAmount = data.purchaseType === "cash"
       ? data.purchasePrice
@@ -460,7 +466,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
   if (data.investmentType === "flip") {
     const arv = data.arv || data.purchasePrice // selling price
     const { total: sdltAmount, breakdown: sdltBreakdown } =
-      calculateSDLT(data.purchasePrice, data.buyerType)
+      calculateInvestmentSDLT(data.purchasePrice, data.buyerType, data.sdltRateType)
 
     // ── Phase 1 — Acquisition ───────────────────────────────────
     const flipAcquisitionCost = Math.round(
@@ -722,7 +728,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     }
   }
 
-  const { total: sdltAmount, breakdown: sdltBreakdown } = calculateSDLT(
+  const { total: sdltAmount, breakdown: sdltBreakdown } = calculateInvestmentSDLT(
     data.purchasePrice,
     data.buyerType,
     data.sdltRateType

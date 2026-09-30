@@ -20,6 +20,7 @@
  */
 
 import Link from "next/link"
+import { sdltAnalysisLink } from "@/lib/analysis-prefill"
 import { useMemo, useState } from "react"
 import {
   Calculator,
@@ -262,7 +263,7 @@ export default function SdltCalculatorPage() {
               </Button>
               <Button asChild className="flex-1 gap-2">
                 <Link
-                  href={`/analyse?purchasePrice=${price}&buyerType=${buyerType}`}
+                  href={sdltAnalysisLink(price, buyerType, rateType)}
                 >
                   Analyse this Property
                   <ArrowRight className="size-4" />

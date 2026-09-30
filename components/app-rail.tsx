@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCredits } from "@/lib/useCredits"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -12,12 +12,7 @@ import {
   visiblePrimaryNav,
   SECONDARY_NAV,
   type AppNavItem,
-  type CreditLabelInput,
 } from "@/lib/app-nav"
-import {
-  CREDITS_REFRESH_EVENT,
-  type CreditsRefreshDetail,
-} from "@/components/landing/credits-pill"
 
 function RailDot({ active }: { active: boolean }) {
   return (
@@ -65,39 +60,7 @@ function RailLink({
 }
 
 function RailCredits() {
-  const [state, setState] = useState<CreditLabelInput | null>(null)
-
-  const load = useCallback(() => {
-    let cancelled = false
-    fetch("/api/user/credits")
-      .then((r) => (r.ok ? (r.json() as Promise<CreditLabelInput>) : null))
-      .then((data) => {
-        if (!cancelled) setState(data)
-      })
-      .catch(() => {
-        if (!cancelled) setState(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => load(), [load])
-
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<CreditsRefreshDetail>).detail
-      if (detail && typeof detail.newCreditBalance === "number") {
-        setState((prev) =>
-          prev ? { ...prev, creditBalance: detail.newCreditBalance ?? prev.creditBalance } : prev,
-        )
-        return
-      }
-      load()
-    }
-    window.addEventListener(CREDITS_REFRESH_EVENT, handler)
-    return () => window.removeEventListener(CREDITS_REFRESH_EVENT, handler)
-  }, [load])
+  const state = useCredits()
 
   const label = formatCreditsLabel(state)
   if (!label) return null
