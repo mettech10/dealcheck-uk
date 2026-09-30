@@ -50,7 +50,7 @@ export const metadata: Metadata = {
   },
   alternates: { canonical: '/' },
   // Open Graph — used by X, WhatsApp, LinkedIn, Slack, iMessage, Facebook.
-  // The image itself is generated at /opengraph-image (app/opengraph-image.tsx).
+  // The image is a static 1200×630 screenshot of the landing hero (app/opengraph-image.png).
   openGraph: {
     type: 'website',
     siteName: SITE_NAME,
