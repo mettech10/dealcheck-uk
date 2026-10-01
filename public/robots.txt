@@ -4,4 +4,4 @@ Disallow: /admin/
 Disallow: /api/
 Disallow: /coming-soon
 
-Sitemap: https://metalyzi.co.uk/sitemap.xml
+Sitemap: https://www.metalyzi.co.uk/sitemap.xml
