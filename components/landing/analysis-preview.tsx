@@ -94,107 +94,128 @@ function ScoreRing({ score = 84 }: { score?: number }) {
   )
 }
 
+/**
+ * Shared window chrome. Extracted so the animated hero sequence
+ * (analysis-sequence.tsx) can keep ONE persistent browser frame while the
+ * body swaps between scenes — cutting whole cards looks like a slideshow,
+ * holding the frame looks like a real session.
+ */
+export function PreviewChrome({ url = "metalyzi.co.uk/analyse" }: { url?: string }) {
+  return (
+    <div className="flex items-center gap-3 border-b border-border/50 px-4 py-3">
+      <div className="flex gap-1.5">
+        <span className="size-2.5 rounded-full bg-muted-foreground/25" />
+        <span className="size-2.5 rounded-full bg-muted-foreground/25" />
+        <span className="size-2.5 rounded-full bg-muted-foreground/25" />
+      </div>
+      <div className="mx-auto hidden min-w-[260px] items-center justify-center rounded-md border border-border/50 bg-background/50 px-3 py-1 text-xs text-muted-foreground sm:flex">
+        {url}
+      </div>
+    </div>
+  )
+}
+
+/** The result body on its own — the final scene of the hero sequence. */
+export function AnalysisPreviewBody() {
+  return (
+    <div className="p-5 md:p-7">
+      {/* Address row */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Analysis complete
+          </div>
+          <div className="mt-1.5 text-base font-semibold tracking-tight text-foreground">
+            14 Beresford Road, Manchester M13
+          </div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            3 bed terraced · {formatCurrency(SAMPLE_PRICE)} asking · HMO strategy
+          </div>
+        </div>
+        <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+          Strong buy
+        </span>
+      </div>
+
+      {/* Metrics + score */}
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
+        <div className="grid grid-cols-2 gap-3">
+          {METRICS.map((m) => {
+            const Icon = m.icon
+            return (
+              <div
+                key={m.label}
+                className="rounded-lg border border-border/50 bg-background/40 p-3.5"
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="size-3.5 text-primary" strokeWidth={1.5} />
+                  <span className="text-xs text-muted-foreground">{m.label}</span>
+                </div>
+                <div className="mt-2 text-[1.375rem] font-semibold tracking-tight text-foreground">
+                  {m.value}
+                </div>
+                <div
+                  className={`mt-0.5 text-[0.6875rem] ${
+                    m.accent ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  {m.note}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="grid place-items-center rounded-lg border border-border/50 bg-background/40 px-8 py-6">
+          <ScoreRing />
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="mt-4 overflow-hidden rounded-lg border border-border/50 bg-background/40 p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-medium text-foreground">5-year cashflow projection</span>
+          <span className="text-xs text-muted-foreground">incl. 3% rent growth</span>
+        </div>
+        <Sparkline />
+      </div>
+
+      {/* AI insight */}
+      <div className="mt-4 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10">
+          <Sparkles className="size-3.5 text-primary" strokeWidth={1.5} />
+        </span>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          <span className="text-foreground">AI insight — </span>
+          Yield sits 1.2% above the M13 median and cashflow stays positive at 6.5% interest.
+          Check Article 4 status before committing to an HMO conversion.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/** Soft glow pooled beneath the panel — depth without a hard shadow. */
+export function PreviewGlow() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute -inset-x-10 -bottom-10 top-10 -z-10 blur-3xl"
+      style={{
+        background:
+          "radial-gradient(60% 60% at 50% 40%, color-mix(in oklab, var(--primary) 18%, transparent), transparent 70%)",
+      }}
+    />
+  )
+}
+
 export function AnalysisPreview() {
   return (
     <div className="relative mx-auto w-full max-w-5xl text-left">
-      {/* Soft glow pooled beneath the panel — depth without a hard shadow */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -inset-x-10 -bottom-10 top-10 -z-10 blur-3xl"
-        style={{
-          background:
-            "radial-gradient(60% 60% at 50% 40%, color-mix(in oklab, var(--primary) 18%, transparent), transparent 70%)",
-        }}
-      />
-
+      <PreviewGlow />
       <div className="overflow-hidden rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm">
-        {/* Window chrome */}
-        <div className="flex items-center gap-3 border-b border-border/50 px-4 py-3">
-          <div className="flex gap-1.5">
-            <span className="size-2.5 rounded-full bg-muted-foreground/25" />
-            <span className="size-2.5 rounded-full bg-muted-foreground/25" />
-            <span className="size-2.5 rounded-full bg-muted-foreground/25" />
-          </div>
-          <div className="mx-auto hidden min-w-[260px] items-center justify-center rounded-md border border-border/50 bg-background/50 px-3 py-1 text-xs text-muted-foreground sm:flex">
-            metalyzi.co.uk/analyse
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="p-5 md:p-7">
-          {/* Address row */}
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Analysis complete
-              </div>
-              <div className="mt-1.5 text-base font-semibold tracking-tight text-foreground">
-                14 Beresford Road, Manchester M13
-              </div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                3 bed terraced · {formatCurrency(SAMPLE_PRICE)} asking · HMO strategy
-              </div>
-            </div>
-            <span className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              Strong buy
-            </span>
-          </div>
-
-          {/* Metrics + score */}
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto]">
-            <div className="grid grid-cols-2 gap-3">
-              {METRICS.map((m) => {
-                const Icon = m.icon
-                return (
-                  <div
-                    key={m.label}
-                    className="rounded-lg border border-border/50 bg-background/40 p-3.5"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className="size-3.5 text-primary" strokeWidth={1.5} />
-                      <span className="text-xs text-muted-foreground">{m.label}</span>
-                    </div>
-                    <div className="mt-2 text-[1.375rem] font-semibold tracking-tight text-foreground">
-                      {m.value}
-                    </div>
-                    <div
-                      className={`mt-0.5 text-[0.6875rem] ${
-                        m.accent ? "text-primary" : "text-muted-foreground"
-                      }`}
-                    >
-                      {m.note}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="grid place-items-center rounded-lg border border-border/50 bg-background/40 px-8 py-6">
-              <ScoreRing />
-            </div>
-          </div>
-
-          {/* Chart */}
-          <div className="mt-4 overflow-hidden rounded-lg border border-border/50 bg-background/40 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-medium text-foreground">5-year cashflow projection</span>
-              <span className="text-xs text-muted-foreground">incl. 3% rent growth</span>
-            </div>
-            <Sparkline />
-          </div>
-
-          {/* AI insight */}
-          <div className="mt-4 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary/10">
-              <Sparkles className="size-3.5 text-primary" strokeWidth={1.5} />
-            </span>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              <span className="text-foreground">AI insight — </span>
-              Yield sits 1.2% above the M13 median and cashflow stays positive at 6.5% interest.
-              Check Article 4 status before committing to an HMO conversion.
-            </p>
-          </div>
-        </div>
+        <PreviewChrome />
+        <AnalysisPreviewBody />
       </div>
     </div>
   )
