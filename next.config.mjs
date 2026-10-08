@@ -20,6 +20,28 @@ const analyzerConnectSrc = Array.from(
   ]),
 ).join(" ")
 
+/**
+ * Third-party origins the browser must be allowed to load.
+ *
+ * These were missing, and the CSP silently broke two live features:
+ *   • Crisp — client.crisp.chat was blocked, so the support widget never
+ *     rendered in production at all, while the beta banner was telling
+ *     users to "report any issues via the chat widget".
+ *   • Convex website analytics — the beacon in app/layout.tsx was blocked,
+ *     so it has never recorded a single page view.
+ * Verified against www.metalyzi.co.uk before changing anything.
+ *
+ * Crisp's own requirements: script/style/font from client.crisp.chat, plus
+ * websockets to its relay for live chat. Vercel Analytics and Speed
+ * Insights are same-origin in production (/_vercel/*) but load from
+ * va.vercel-scripts.com in development, hence that origin too.
+ */
+const CRISP_ORIGIN = "https://client.crisp.chat"
+const CRISP_SOCKETS = "wss://client.relay.crisp.chat wss://stream.relay.crisp.chat"
+const CONVEX_ANALYTICS_ORIGIN = "https://aromatic-caribou-889.convex.site"
+const VERCEL_SCRIPTS = "https://va.vercel-scripts.com"
+const VERCEL_VITALS = "https://vitals.vercel-insights.com"
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -83,12 +105,14 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline'",
+              `script-src 'self' 'unsafe-eval' 'unsafe-inline' ${CRISP_ORIGIN} ${CONVEX_ANALYTICS_ORIGIN} ${VERCEL_SCRIPTS}`,
+              `style-src 'self' 'unsafe-inline' ${CRISP_ORIGIN}`,
               // blob: — client-generated share-card PNG previews
               "img-src 'self' data: blob: https:",
-              "font-src 'self'",
-              `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerConnectSrc} http://localhost:5000 http://127.0.0.1:5000`,
+              `font-src 'self' ${CRISP_ORIGIN}`,
+              // Crisp plays a notification sound on new messages.
+              `media-src 'self' ${CRISP_ORIGIN}`,
+              `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerConnectSrc} ${CRISP_ORIGIN} ${CRISP_SOCKETS} ${CONVEX_ANALYTICS_ORIGIN} ${VERCEL_VITALS} ${VERCEL_SCRIPTS} http://localhost:5000 http://127.0.0.1:5000`,
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
