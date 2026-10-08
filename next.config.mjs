@@ -101,23 +101,11 @@ const nextConfig = {
       {
         source: '/(.*)',
         headers: [
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              `script-src 'self' 'unsafe-eval' 'unsafe-inline' ${CRISP_ORIGIN} ${CONVEX_ANALYTICS_ORIGIN} ${VERCEL_SCRIPTS}`,
-              `style-src 'self' 'unsafe-inline' ${CRISP_ORIGIN}`,
-              // blob: — client-generated share-card PNG previews
-              "img-src 'self' data: blob: https:",
-              `font-src 'self' ${CRISP_ORIGIN}`,
-              // Crisp plays a notification sound on new messages.
-              `media-src 'self' ${CRISP_ORIGIN}`,
-              `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerConnectSrc} ${CRISP_ORIGIN} ${CRISP_SOCKETS} ${CONVEX_ANALYTICS_ORIGIN} ${VERCEL_VITALS} ${VERCEL_SCRIPTS} http://localhost:5000 http://127.0.0.1:5000`,
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join('; '),
-          },
+          // NOTE: Content-Security-Policy is NOT set here. It needs a
+          // per-request nonce so script-src can drop 'unsafe-inline', and a
+          // static header can't carry one — it lives in middleware.ts.
+          // Two CSP headers would both be enforced (intersected), so this
+          // must not be reinstated alongside it.
           {
             key: 'X-Frame-Options',
             value: 'DENY',

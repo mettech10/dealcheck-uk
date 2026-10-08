@@ -25,6 +25,80 @@ import { isAdminEmail } from "@/lib/admin"
 
 const ADMIN_PATH_PREFIX = "/admin"
 
+/**
+ * Content-Security-Policy, built per request so script-src can carry a nonce.
+ *
+ * This used to be a static header in next.config.mjs, which forced
+ * script-src to include 'unsafe-inline' — that allows ANY injected inline
+ * script to run and undoes most of what a CSP is for. A fresh nonce per
+ * response means only scripts we emitted can execute. Next.js reads the
+ * nonce from the CSP on the REQUEST headers and stamps its own inline
+ * bootstrap/flight scripts with it; next-themes' pre-paint script is nonced
+ * explicitly in app/layout.tsx.
+ *
+ * 'unsafe-eval' stays in development only — React Refresh and Turbopack HMR
+ * need it; production bundles do not.
+ *
+ * style-src keeps 'unsafe-inline' deliberately: Next, Tailwind and Crisp all
+ * write inline styles and there is no nonce path for them. Inline style is a
+ * far smaller risk than inline script, so this is the usual trade-off.
+ */
+const CRISP_ORIGIN = "https://client.crisp.chat"
+const CRISP_SOCKETS = "wss://client.relay.crisp.chat wss://stream.relay.crisp.chat"
+const CONVEX_ANALYTICS_ORIGIN = "https://aromatic-caribou-889.convex.site"
+const VERCEL_SCRIPTS = "https://va.vercel-scripts.com"
+const VERCEL_VITALS = "https://vitals.vercel-insights.com"
+
+function analyzerConnectSrc(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_ANALYZER_API_URL ||
+    process.env.ANALYZER_API_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_API_URL ||
+    process.env.BACKEND_API_URL ||
+    "https://metusa-deal-analyzer.onrender.com"
+  let origin = "https://metusa-deal-analyzer.onrender.com"
+  try {
+    origin = new URL(raw).origin
+  } catch {
+    /* keep the default */
+  }
+  return Array.from(
+    new Set([
+      origin,
+      "https://metusa-deal-analyzer.onrender.com",
+      "https://analyzer.metusaproperty.co.uk",
+    ]),
+  ).join(" ")
+}
+
+/** Edge-safe random nonce — no Buffer in the edge runtime. */
+function makeNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  let binary = ""
+  for (const b of bytes) binary += String.fromCharCode(b)
+  return btoa(binary)
+}
+
+function buildCsp(nonce: string): string {
+  const isDev = process.env.NODE_ENV !== "production"
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ""} ${CRISP_ORIGIN} ${CONVEX_ANALYTICS_ORIGIN} ${VERCEL_SCRIPTS}`,
+    `style-src 'self' 'unsafe-inline' ${CRISP_ORIGIN}`,
+    // blob: — client-generated share-card PNG previews
+    "img-src 'self' data: blob: https:",
+    `font-src 'self' ${CRISP_ORIGIN}`,
+    // Crisp plays a notification sound on new messages.
+    `media-src 'self' ${CRISP_ORIGIN}`,
+    `connect-src 'self' https://*.supabase.co https://api.brevo.com https://r.jina.ai https://api.openai.com ${analyzerConnectSrc()} ${CRISP_ORIGIN} ${CRISP_SOCKETS} ${CONVEX_ANALYTICS_ORIGIN} ${VERCEL_VITALS} ${VERCEL_SCRIPTS} http://localhost:5000 http://127.0.0.1:5000`,
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join("; ")
+}
+
+
 const ALLOWED_ORIGINS = [
   "https://metalyzi.co.uk",
   "https://www.metalyzi.co.uk",
@@ -107,9 +181,19 @@ async function gateAdmin(request: NextRequest): Promise<NextResponse | null> {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
+  // CSP nonce for this response. Applied to every path we return so no
+  // route is left without a policy.
+  const nonce = makeNonce()
+  const csp = buildCsp(nonce)
+  const nonceHeaders = { "x-nonce": nonce, "content-security-policy": csp }
+  const withCsp = <T extends NextResponse>(res: T): T => {
+    res.headers.set("content-security-policy", csp)
+    return res
+  }
+
   // 1. Admin gate first — must short-circuit before anything else.
   const adminRedirect = await gateAdmin(request)
-  if (adminRedirect) return adminRedirect
+  if (adminRedirect) return withCsp(adminRedirect)
 
   // 2. CORS preflight + session refresh for API routes and static.
   const origin = request.headers.get("origin")
@@ -127,7 +211,7 @@ export async function proxy(request: NextRequest) {
     )
     preflight.headers.set("Access-Control-Max-Age", "86400")
     preflight.headers.set("Vary", "Origin")
-    return preflight
+    return withCsp(preflight)
   }
 
   if (
@@ -154,12 +238,13 @@ export async function proxy(request: NextRequest) {
       }
       response.headers.set("Vary", "Origin")
     }
-    return response
+    return withCsp(response)
   }
 
-  // 3. Everything else — refresh the Supabase session and pass
-  //    through. No coming-soon wall, no dev-secret check.
-  return await updateSession(request)
+  // 3. Everything else — HTML. Forward the nonce on the REQUEST headers so
+  //    Next.js can stamp its own inline scripts with it, and set the policy
+  //    on the response for the browser.
+  return withCsp(await updateSession(request, nonceHeaders))
 }
 
 export const config = {

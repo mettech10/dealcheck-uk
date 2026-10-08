@@ -2,10 +2,26 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { mergeAuthCookieOptions } from '@/lib/supabase/cookieOptions'
 
-export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+/**
+ * @param requestHeaderOverrides extra headers to forward to the app on the
+ *   REQUEST (not the response) — used to pass the per-request CSP nonce, which
+ *   Next.js reads in order to stamp its own inline scripts. Rebuilt on every
+ *   NextResponse.next() so cookie updates written by setAll are preserved.
+ */
+export async function updateSession(
+  request: NextRequest,
+  requestHeaderOverrides?: Record<string, string>,
+) {
+  const nextInit = () => {
+    if (!requestHeaderOverrides) return { request }
+    const headers = new Headers(request.headers)
+    for (const [key, value] of Object.entries(requestHeaderOverrides)) {
+      headers.set(key, value)
+    }
+    return { request: { headers } }
+  }
+
+  let supabaseResponse = NextResponse.next(nextInit())
 
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
@@ -21,9 +37,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           )
-          supabaseResponse = NextResponse.next({
-            request,
-          })
+          supabaseResponse = NextResponse.next(nextInit())
           // sameSite: 'lax' (not 'strict') — strict drops the session
           // cookie on cross-site top-level navigations (e.g. the OAuth
           // round-trip back from supabase.co), leaving users

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import Script from 'next/script'
 import { ThemeProvider } from '@/components/theme-provider'
 import { ConditionalFooter } from '@/components/conditional-footer'
@@ -68,11 +69,16 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // Nonce minted per request by middleware.ts. Next.js stamps its own inline
+  // scripts automatically; next-themes' pre-paint script needs it passed in
+  // explicitly, or it is blocked and the theme flashes/never applies.
+  const nonce = (await headers()).get('x-nonce') ?? undefined
+
   return (
     // suppressHydrationWarning: next-themes sets the theme class on <html>
     // before hydration, which would otherwise trip React's mismatch warning.
@@ -84,6 +90,7 @@ export default function RootLayout({
         <Script
           src="https://aromatic-caribou-889.convex.site/api/a/am_Movu6eGVA2n09tOX"
           strategy="afterInteractive"
+          nonce={nonce}
         />
       </head>
       <body className="font-sans antialiased bg-background text-foreground flex min-h-screen flex-col">
@@ -98,6 +105,7 @@ export default function RootLayout({
           enableSystem={false}
           storageKey="metalyzi-theme"
           disableTransitionOnChange
+          nonce={nonce}
         >
           <AppShellProvider>
             <BetaBanner />
