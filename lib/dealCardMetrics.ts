@@ -8,6 +8,7 @@
  */
 
 import type { CalculationResults, PropertyFormData } from "@/lib/types"
+import { yieldAfterFinanceOf } from "@/lib/calculations"
 import type { CardMetric } from "@/components/analyse/deal-share-card"
 
 const fmtSigned = (n: number) =>
@@ -184,8 +185,8 @@ export function getCardMetrics(
         },
         {
           label: "Yield After Finance",
-          value: fmtPct(results.netYield),
-          isPositive: results.netYield >= 3,
+          value: fmtPct(yieldAfterFinanceOf(results)),
+          isPositive: yieldAfterFinanceOf(results) >= 3,
         },
       ]
   }

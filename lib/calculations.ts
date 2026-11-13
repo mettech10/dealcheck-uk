@@ -243,6 +243,15 @@ export function calculateNetYield(
 }
 
 /**
+ * Yield after finance for display. Results saved before 13 Nov 2026 have no
+ * `yieldAfterFinance` field, and their `netYield` held the after-finance
+ * figure, so fall back to it for those.
+ */
+export function yieldAfterFinanceOf(results: Pick<CalculationResults, "netYield" | "yieldAfterFinance">): number {
+  return results.yieldAfterFinance ?? results.netYield
+}
+
+/**
  * Calculate 5-year projection
  */
 function calculateProjection(
@@ -425,7 +434,11 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     const grossYield = data.purchasePrice > 0
       ? Math.round((annualSARevenue / data.purchasePrice) * 10000) / 100
       : 0
+    // Net yield excludes finance; the after-finance figure is kept separately.
     const netYield = data.purchasePrice > 0
+      ? Math.round(((annualSARevenue - monthlyOpCosts * 12) / data.purchasePrice) * 10000) / 100
+      : 0
+    const yieldAfterFinance = data.purchasePrice > 0
       ? Math.round(((annualSARevenue - monthlyExpenses * 12) / data.purchasePrice) * 10000) / 100
       : 0
     const cashOnCashReturn = totalCapitalRequired > 0
@@ -450,6 +463,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       bridgingLoanDetails: undefined,
       grossYield,
       netYield,
+      yieldAfterFinance,
       monthlyIncome: Math.round(saRevenue * 100) / 100,
       monthlyExpenses,
       monthlyCashFlow,
@@ -973,18 +987,20 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       brrrrBridgingTotal = 0
     }
 
-    // Phase 1 — Acquisition cost (cash-equivalent upfront before refurb).
-    // BUG FIX: when buying with a bridging loan, the investor only puts down
-    // the non-bridged portion of the purchase price. Previously the FULL
-    // purchase price was counted as own cash, inflating totalCashInvested
-    // by the bridging amount and tanking the capital-recycled %.
-    // For cash/standard-mortgage purchases, ownCashPurchase = purchasePrice
-    // (the deposit is part of cash invested in the BRRRR model — the
-    // standard BTL mortgage is never drawn since the property is refinanced
-    // straight after refurb).
-    const ownCashPurchase = data.purchaseType === "bridging-loan"
-      ? data.purchasePrice - bridgingLoanAmount
-      : data.purchasePrice
+    // Phase 1 — Acquisition cost (own cash upfront before refurb).
+    // Only the part of the price NOT borrowed is the investor's cash:
+    //   bridging → price − bridging loan
+    //   mortgage → price − mortgage (i.e. the deposit)
+    //   cash     → full price (mortgageAmount is 0)
+    // The loan is then repaid out of the refinance in Phase 5
+    // (originalLoanPayoff), so each pound of borrowing is counted once.
+    // Counting the full price here AND deducting the mortgage payoff at
+    // refinance double-counted the mortgage and overstated money left in
+    // the deal by the whole original loan.
+    const originalLoanPayoff = data.purchaseType === "bridging-loan"
+      ? bridgingLoanAmount
+      : mortgageAmount
+    const ownCashPurchase = data.purchasePrice - originalLoanPayoff
     brrrrAcquisitionCost = Math.round(
       ownCashPurchase + sdltAmount + data.legalFees + data.surveyCosts
     )
@@ -1025,18 +1041,8 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
       brrrrBridgingTotal +
       brrrrRefinanceFees
     )
-    // Capital returned at refinance = new loan - whatever loan was actually
-    // outstanding pre-refinance.
-    // BUG FIX: for bridging-loan BRRRR the loan being paid off is the
-    // BRIDGING loan, not the standard mortgage (which was never drawn in
-    // this scenario). Previously this used `mortgageAmount` (purchase -
-    // deposit, computed assuming a standard mortgage), so capitalReturned
-    // was off by (bridgingLoan - mortgageAmount). For non-bridging BRRRR
-    // (cash or standard mortgage) the original-loan-payoff is the standard
-    // mortgageAmount (0 for cash).
-    const originalLoanPayoff = data.purchaseType === "bridging-loan"
-      ? bridgingLoanAmount
-      : mortgageAmount
+    // Capital returned at refinance = new loan − the loan it pays off
+    // (bridging loan, purchase mortgage, or 0 for cash — see Phase 1).
     brrrrCapitalReturned = Math.max(0, refinancedMortgageAmount - originalLoanPayoff)
     moneyLeftInDeal = Math.max(0, brrrrTotalCashInvested - brrrrCapitalReturned)
     finalTotalCapital = moneyLeftInDeal
@@ -1072,9 +1078,12 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
 
   // Yields
   // Gross yield = contract rent / price (no void adjustment) — UK industry convention
-  // Net yield = void-adjusted income net of running costs and finance — true return
+  // Net yield = void-adjusted income net of running costs, EXCLUDING finance
+  //   (UK convention — comparable across buyers regardless of how they fund).
+  // Yield after finance = the same, also net of mortgage payments.
   const grossYield = calculateGrossYield(contractAnnualRent, data.purchasePrice)
-  const netYield = calculateNetYield(
+  const netYield = calculateNetYield(annualRent, annualRunningCosts, data.purchasePrice)
+  const yieldAfterFinance = calculateNetYield(
     annualRent,
     annualRunningCosts + finalAnnualMortgage,
     data.purchasePrice
@@ -1127,6 +1136,7 @@ export function calculateAll(data: PropertyFormData): CalculationResults {
     bridgingLoanDetails,
     grossYield,
     netYield,
+    yieldAfterFinance,
     monthlyIncome,
     monthlyExpenses: finalMonthlyExpenses,
     monthlyCashFlow: finalMonthlyCashFlow,

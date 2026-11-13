@@ -38,7 +38,7 @@ import {
 import { ToolsTopBar } from "@/components/tools/tools-top-bar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { formatCurrency } from "@/lib/calculations"
+import { formatCurrency, yieldAfterFinanceOf } from "@/lib/calculations"
 import { scoreDeal, type ScoreResult } from "@/lib/dealScoring"
 import { buildScoringInput } from "@/lib/buildScoringInput"
 import { permissionsForTier } from "@/lib/permissions"
@@ -330,7 +330,7 @@ function ComparisonResults({ deals, isPro }: { deals: SavedDealFull[]; isPro: bo
                 get={(d) => `${d.results.grossYield.toFixed(2)}%`}
                 winnerIdx={winners.grossYield}
               />
-              <Row label="Yield After Finance" deals={deals} get={(d) => `${d.results.netYield.toFixed(2)}%`} winnerIdx={winners.netYield} />
+              <Row label="Yield After Finance" deals={deals} get={(d) => `${yieldAfterFinanceOf(d.results).toFixed(2)}%`} winnerIdx={winners.netYield} />
               <Row
                 label="Monthly Cashflow"
                 deals={deals}
@@ -531,7 +531,7 @@ function computeWinners(deals: SavedDealFull[]) {
   return {
     dealScore: bestIdx(deals, (d) => d.scoreResult.total),
     grossYield: bestIdx(deals, (d) => d.results.grossYield),
-    netYield: bestIdx(deals, (d) => d.results.netYield),
+    netYield: bestIdx(deals, (d) => yieldAfterFinanceOf(d.results)),
     monthlyCashflow: bestIdx(deals, (d) => d.results.monthlyCashFlow),
     annualCashflow: bestIdx(deals, (d) => d.results.annualCashFlow),
     cashOnCash: bestIdx(deals, (d) => d.results.cashOnCashReturn),
