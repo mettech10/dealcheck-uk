@@ -57,7 +57,7 @@ import {
   Cell,
 } from "recharts"
 import type { PropertyFormData, CalculationResults, BackendResults, RiskFlag, RegionalBenchmark, InvestmentType } from "@/lib/types"
-import { formatCurrency, formatPercent, calculateDealScore, calculateAll, estimateRefurbCost } from "@/lib/calculations"
+import { formatCurrency, formatPercent, calculateDealScore, calculateAll, estimateRefurbCost, yieldAfterFinanceOf } from "@/lib/calculations"
 import { scoreDeal, type ScoreResult } from "@/lib/dealScoring"
 import { buildScoringInput } from "@/lib/buildScoringInput"
 import {
@@ -234,8 +234,8 @@ function buildStripMetrics(
         },
         {
           label: "Yield After Finance",
-          value: formatPercent(results.netYield),
-          positive: results.netYield >= 4,
+          value: formatPercent(yieldAfterFinanceOf(results)),
+          positive: yieldAfterFinanceOf(results) >= 4,
         },
       )
     } else {
@@ -287,8 +287,8 @@ function buildStripMetrics(
       },
       {
         label: "Yield After Finance",
-        value: formatPercent(results.netYield),
-        positive: results.netYield >= 4,
+        value: formatPercent(yieldAfterFinanceOf(results)),
+        positive: yieldAfterFinanceOf(results) >= 4,
       },
       {
         label: "Monthly Cash Flow",
@@ -2007,9 +2007,15 @@ export function AnalysisResults({
                         <span className="text-muted-foreground">Gross Yield</span>
                         <span className={`font-semibold ${results.grossYield >= 8 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
                       </div>
+                      {results.yieldAfterFinance !== undefined && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Net Yield (before finance)</span>
+                          <span className="font-semibold text-foreground">{formatPercent(results.netYield)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Yield After Finance</span>
-                        <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
+                        <span className={`font-semibold ${yieldAfterFinanceOf(results) >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(yieldAfterFinanceOf(results))}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">ROI (Cash-on-Cash)</span>
@@ -2325,9 +2331,15 @@ export function AnalysisResults({
                   <span className="text-muted-foreground">Gross Yield</span>
                   <span className={`font-semibold ${results.grossYield >= 6 ? "text-success" : "text-foreground"}`}>{formatPercent(results.grossYield)}</span>
                 </div>
+                {results.yieldAfterFinance !== undefined && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Net Yield (before finance)</span>
+                    <span className="font-semibold text-foreground">{formatPercent(results.netYield)}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Yield After Finance</span>
-                  <span className={`font-semibold ${results.netYield >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(results.netYield)}</span>
+                  <span className={`font-semibold ${yieldAfterFinanceOf(results) >= 4 ? "text-success" : "text-foreground"}`}>{formatPercent(yieldAfterFinanceOf(results))}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Cash-on-Cash ROI</span>

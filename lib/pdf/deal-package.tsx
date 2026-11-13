@@ -32,6 +32,7 @@ import {
 } from "@react-pdf/renderer"
 import { PDF_BRAND as B, COMPANY } from "./brand"
 import { getCardMetrics, getStrategyLabel } from "@/lib/dealCardMetrics"
+import { yieldAfterFinanceOf } from "@/lib/calculations"
 import type {
   BackendResults,
   CalculationResults,
@@ -941,7 +942,7 @@ function FinancialAnalysisPage({ input }: { input: DealPackageInput }) {
       <View style={s.row}>
         {[
           { label: "Gross yield", value: pct(results.grossYield) },
-          { label: "Yield after finance", value: pct(results.netYield) },
+          { label: "Yield after finance", value: pct(yieldAfterFinanceOf(results)) },
           { label: "Cash-on-cash ROI", value: pct(results.cashOnCashReturn) },
           {
             label: "Total capital",
