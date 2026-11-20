@@ -305,3 +305,87 @@ describe("Result shape — all numerics finite", () => {
     }
   })
 })
+
+describe("BRRRR money left in — mortgage counted once (audit 13 Nov 2026)", () => {
+  // Real-world shaped deal: £230k, ARV £232k, 5-room HMO exit.
+  const deal = (overrides: Partial<PropertyFormData> = {}) =>
+    makeBTL({
+      investmentType: "brr",
+      purchasePrice: 230000,
+      arv: 232000,
+      refurbishmentBudget: 10698,
+      interestRate: 4,
+      brrrExitStrategy: "hmo",
+      roomCount: 5,
+      avgRoomRate: 596,
+      monthlyRent: 2980,
+      bills: 300,
+      hmoLicenceCost: 1000,
+      refurbContingencyPercent: 10,
+      refurbHoldingMonths: 6,
+      refurbHoldingCostPerMonth: 250,
+      refinanceLTV: 75,
+      refinanceRate: 5.5,
+      refinanceArrangementFeePercent: 1,
+      refinanceValuationFee: 400,
+      ...overrides,
+    })
+
+  test("same money left in whether bought with a mortgage or cash", () => {
+    const mortgage = calculateAll(deal({ purchaseType: "mortgage" }))
+    const cash = calculateAll(deal({ purchaseType: "cash" }))
+    // price 230,000 + SDLT 13,600 + legal 1,500 + survey 500
+    // + refurb 13,268 (inc. contingency + holding) + refi fees 2,140
+    // − refinance 174,000 = 87,008
+    expect(cash.moneyLeftInDeal).toBe(87008)
+    expect(mortgage.moneyLeftInDeal).toBe(87008)
+    expect(mortgage.cashOnCashReturn).toBe(cash.cashOnCashReturn)
+  })
+
+  test("mortgage purchase: cash invested is the deposit plus costs, not the full price", () => {
+    const r = calculateAll(deal({ purchaseType: "mortgage" }))
+    // deposit 57,500 + 13,600 + 1,500 + 500 + 13,268 + 2,140
+    expect(r.brrrrTotalCashInvested).toBe(88508)
+    // refinance 174,000 repays the 172,500 purchase mortgage
+    expect(r.brrrrCapitalReturned).toBe(1500)
+  })
+
+  test("bridging purchase: money left = cash-purchase figure + bridging cost", () => {
+    const cash = calculateAll(deal({ purchaseType: "cash" }))
+    const bridged = calculateAll(
+      deal({
+        purchaseType: "bridging-loan",
+        bridgingLTV: 70,
+        bridgingMonthlyRate: 0.75,
+        bridgingTermMonths: 6,
+        bridgingArrangementFee: 1,
+        bridgingExitFee: 0.5,
+      }),
+    )
+    expect(bridged.moneyLeftInDeal).toBe(
+      (cash.moneyLeftInDeal ?? 0) + (bridged.brrrrBridgingTotal ?? 0),
+    )
+  })
+})
+
+describe("Net yield excludes finance; yield after finance kept separately", () => {
+  test("BTL baseline", () => {
+    const r = calculateAll(makeBTL())
+    // rent collected 10,962 − running costs 4,380 = 6,582 ÷ 200,000
+    expect(r.netYield).toBe(3.29)
+    // also less interest-only mortgage 7,500
+    expect(r.yieldAfterFinance).toBe(-0.46)
+  })
+
+  test("cash purchase: both figures equal", () => {
+    const r = calculateAll(makeBTL({ purchaseType: "cash" }))
+    expect(r.netYield).toBe(r.yieldAfterFinance)
+  })
+
+  test("financing never changes net yield", () => {
+    const a = calculateAll(makeBTL({ depositPercentage: 25, interestRate: 5 }))
+    const b = calculateAll(makeBTL({ depositPercentage: 40, interestRate: 7 }))
+    expect(a.netYield).toBe(b.netYield)
+    expect(a.yieldAfterFinance).not.toBe(b.yieldAfterFinance)
+  })
+})

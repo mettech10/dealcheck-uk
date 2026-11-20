@@ -288,7 +288,12 @@ export interface CalculationResults {
 
   // Yields
   grossYield: number
+  /** Net yield: (rent collected − running costs) ÷ price. Excludes finance. */
   netYield: number
+  /** (Rent collected − running costs − mortgage) ÷ price. Optional because
+   *  results saved before 13 Nov 2026 lack it — and in those, `netYield`
+   *  held this after-finance figure. Read via `yieldAfterFinanceOf()`. */
+  yieldAfterFinance?: number
 
   // Cash Flow
   monthlyIncome: number
